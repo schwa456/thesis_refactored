@@ -1,0 +1,72 @@
+# configs/base_config.yaml
+
+# ==========================================
+# 0. 전역 설정 & 데이터 경로
+# ==========================================
+experiment_name: "base"
+paths:
+  data_dir: "../data/raw/BIRD_dev"
+  cache_dir: "../data/processed"
+
+# ==========================================
+# 1. Graph Builder (스키마 -> 그래프 구축)
+# ==========================================
+graph_builder:
+  name: "HeteroGraphBuilder"   # Factory에 등록된 빌더 이름
+  params:
+    include_views: false
+    run_leiden_clustering: true # 오프라인 커뮤니티 탐지 여부
+
+# ==========================================
+# 2. NLQ Encoder (자연어 임베딩)
+# ==========================================
+nlq_encoder:
+  name: "APIEncoder"             # 또는 로컬 모델인 "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"  # 💡 바로 여기서 모델명을 통제합니다!
+    base_url: "http://localhost:8000/v1"  # vLLM 등을 띄웠을 경우 경로 (OpenAI면 생략 가능)
+
+# ==========================================
+# 3. Latent Space Projection (임베딩 공간 통일)
+# ==========================================
+projection:
+  enabled: true                # 투영을 할지 말지 토글!
+  name: "DualTowerAlignment"
+  params:
+    in_dim: 384
+    hidden_dim: 256
+    out_dim: 256
+    dropout: 0.2
+
+# ==========================================
+# 4. Seed Node Selector (초기 후보 노드 선별)
+# ==========================================
+# 옵션: "BinaryClassifier", "KNN", "Reranker", "LLMAgent"
+seed_selector:
+  name: "FixedTopKSelector"
+  params:
+    threshold: 0.5
+    use_pos_weight: true
+    weights_path: "./checkpoints/pretrained/classifier_best.pt"
+
+# ==========================================
+# 5. Connectivity Extractor (구조적 연결성 확보)
+# ==========================================
+# 옵션: "DynamicPCST", "MST", "TopK", "None"
+connectivity_extractor:
+  name: "PCST"          
+  params:
+    base_cost: 0.2
+    inter_comm_penalty: 0.5
+    hybrid_alpha: 0.7          # GNN 점수와 InfoNCE 점수의 비율
+
+# ==========================================
+# 6. Schema Filtering (최종 정제)
+# ==========================================
+# 옵션: "SingleAgent", "MultiAgent", "None"
+filter:
+  name: "SingleAgent"
+  params:
+    llm_model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    temperature: 0.0
+    prompt_template: "schema_refinement_v1"

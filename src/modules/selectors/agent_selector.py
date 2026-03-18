@@ -1,0 +1,119 @@
+import json
+import ast
+import re
+from typing import Dict, Any, List
+
+from modules.registry import register
+from modules.base import BaseSelector
+from llm_client.api_handler import APIClient
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+@register("selector", "AgentNodeSelector")
+class AgentNodeSelector(BaseSelector):
+    """ LLM Agent 기반 Seed 선택기, Uncertainty를 PCST의 Prize로 활용 """
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-Coder-32B-Instruct", temperature: float = 0.0, **kwargs):
+        self.model_name = model_name
+        self.temperature = temperature
+        # 💡 외부에서 주입받지 않고 APIClient를 내부에서 초기화하여 사용합니다!
+        self.client = APIClient() 
+        logger.info(f"Initialized AgentNodeSelector with model: [{self.model_name}]")
+
+    def select(self, question: str, candidates: List[str], **kwargs) -> Dict[str, float]:
+        if not question or not candidates:
+            raise ValueError("AgentNodeSelector requires 'question' and 'candidates'.")
+        
+        prompt = self._construct_prompt(question, candidates)
+        logger.debug(f"[AgentSelector] Prompt Preview: {prompt[:300]}...")
+
+        # 💡 통일된 클라이언트 호출
+        response = self.client.generate_text(
+            prompt=prompt, 
+            model=self.model_name, 
+            temperature=self.temperature
+        )
+
+        logger.debug(f"\n[DEBUG] >>> Agent Raw Output:\n{response}\n{'-'*50}")
+
+        try:
+            parsed_result = self._parse_json_response(response)
+        except Exception as e:
+            logger.error(f"[ERROR] JSON Parsing Failed: {e}")
+            return {}
+        
+        if not parsed_result.get('is_answerable', True):
+            logger.info("[AgentSelector] Agent decided the question is UNANSWERABLE.")
+            return {}
+        
+        weighted_seeds = parsed_result.get('selected_items', parsed_result.get('selected_tables', {}))
+
+        final_seeds = {}
+        for k, v in weighted_seeds.items():
+            try:
+                # 점수 정규화 (0.0 ~ 1.0)
+                final_seeds[k] = min(max(float(v), 0.0), 1.0)
+            except ValueError:
+                continue
+        
+        if not final_seeds:
+            logger.warning("[AgentSelector] Parsed JSON has no valid 'selected_items'.")
+
+        return final_seeds
+    
+    def _construct_prompt(self, question: str, candidates: List[str]) -> str:
+        return f"""
+        You are a database expert focusing on selecting relevant tables AND columns for a SQL query.
+        Given the user's question and the list of available schema elements, select the elements that are **strictly necessary** to answer the question.
+
+        * Note: Column names are provided in the format 'table_name.column_name'.
+
+        Current Task:
+        1. Analyze the question: "{question}"
+        2. Review available tables and columns: {candidates}
+        3. Select relevant tables AND their specific columns. 
+        4. Assign a **confidence score (0.0 to 1.0)** for each selected item.
+        
+        * STRICT CONSTRAINT ON REASONING: Keep your reasoning VERY concise (maximum 3 sentences). Do not overthink.
+
+        Output Format (JSON Only):
+        {{
+            "is_answerable": true,
+            "reasoning": "Brief explanation here...",
+            "selected_items": {{
+                "table_name_A": 0.95,
+                "table_name_A.column_name_1": 0.90
+            }}
+        }}
+        """
+    
+    def _parse_json_response(self, response: str) -> dict:
+        """
+        LLM 응답에서 JSON을 추출하고 파싱합니다. (기존 로직 완벽 유지)
+        """
+        text_to_parse = response.strip()
+
+        json_match = re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
+        if json_match:
+            text_to_parse = json_match.group(1)
+        else:
+            json_match = re.search(r"(\{.*\})", response, re.DOTALL)
+            if json_match:
+                text_to_parse = json_match.group(1)
+
+        try:
+            return json.loads(text_to_parse)
+        except json.JSONDecodeError:
+            pass 
+
+        py_compatible_text = (
+            text_to_parse
+            .replace("true", "True")
+            .replace("false", "False")
+            .replace("null", "None")
+        )
+        
+        try:
+            return ast.literal_eval(py_compatible_text)
+        except Exception:
+            raise ValueError(f"Failed to parse JSON content: {text_to_parse[:50]}...")
