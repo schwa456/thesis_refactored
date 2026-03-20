@@ -92,12 +92,12 @@ class HeteroGraphBuilder(BaseGraphBuilder):
             fk_texts.append(desc)
 
         # Step 2: Encoding
-        data['table'].x = self.encoder.encode(table_texts, convert_to_tensor=True)
-        data['column'].x = self.encoder.encode(col_texts, convert_to_tensor=True)
+        data['table'].x = self.encoder.encode(table_texts, convert_to_tensor=True).cpu()
+        data['column'].x = self.encoder.encode(col_texts, convert_to_tensor=True).cpu()
         if fk_texts:
-            data['fk_node'].x = self.encoder.encode(fk_texts, convert_to_tensor=True)
+            data['fk_node'].x = self.encoder.encode(fk_texts, convert_to_tensor=True).cpu()
         else:
-            data['fk_node'].x = torch.empty((0, self.encoder.get_sentence_embedding_dimension()))
+            data['fk_node'].x = torch.empty((0, self.encoder.get_sentence_embedding_dimension())).cpu()
 
         # Step 3: Edges
         h_src, h_dst = [], [] # Table -> Column

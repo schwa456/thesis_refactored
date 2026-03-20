@@ -19,7 +19,7 @@ def main():
     log_dir = config['paths']['log_dir']
     output_dir = config['paths']['output_dir']
     
-    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'])
+    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'], sub_dir="ëval")
     logger = get_logger(__name__)
     
     logger.info("=" * 60)

@@ -70,8 +70,8 @@ class BIRDGraphDataset(Dataset):
             num_tables = data['table'].x.size(0)
             num_cols = data['column'].x.size(0)
 
-            y_table = torch.zeros(num_tables, dtype=torch.float)
-            y_col = torch.zeros(num_cols, dtype=torch.float)
+            y_table = torch.zeros(num_tables, dtype=torch.float).cpu()
+            y_col = torch.zeros(num_cols, dtype=torch.float).cpu()
 
             table_to_id = metadata.get('table_to_id', {})
             col_to_id = metadata.get('col_to_id', {})

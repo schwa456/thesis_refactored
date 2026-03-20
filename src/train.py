@@ -19,8 +19,6 @@ from models.gat_network import SchemaHeteroGAT
 from modules.projectors.dual_tower import DualTowerProjector
 from utils.logger import setup_logger, get_logger
 
-logger = get_logger(__name__)
-
 # ----------------------------------------------------------------
 # 1. 경로 설정
 # ----------------------------------------------------------------
@@ -87,7 +85,7 @@ def run_train(config_path: str):
         config=cfg
     )
 
-    setup_logger(log_dir="./logs/training", exp_name=cfg['experiment_name'])
+    setup_logger(log_dir="./logs/", exp_name=cfg['experiment_name'], sub_dir="train")
     logger = get_logger(__name__)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -134,7 +132,7 @@ def run_train(config_path: str):
     gat_model.train()
     
     # 데이터셋에서 첫 번째 샘플 하나를 가져옵니다.
-    dummy_batch = full_train_dataset[0].to(device)
+    dummy_batch = full_train_dataset[0].clone().to(device)
     
     # 모델에 한 번 통과시켜 가중치를 생성합니다.
     with torch.no_grad():
@@ -155,7 +153,7 @@ def run_train(config_path: str):
         )
 
     best_recall = 0.0
-    epochs = 20
+    epochs = cfg['training']['epochs']
 
     for epoch in range(epochs):
         gat_model.train()

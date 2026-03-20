@@ -1,49 +1,47 @@
+# src/utils/logger.py
+
 import logging
 import os
 import sys
+from datetime import datetime
 
-def setup_logger(log_dir: str, exp_name: str = "experiment") -> logging.Logger:
+def setup_logger(log_dir: str, exp_name: str = "experiment", sub_dir: str = "") -> logging.Logger:
     """
-    실험 디렉토리에 run.log 파일을 생성하고, 콘솔과 파일에 동시에 로그를 출력하도록 설정합니다.
+    지정된 sub_dir(train 또는 eval) 아래에 로그 파일을 생성합니다.
     """
+    # 최종 로그 저장 경로 설정 (예: ./logs/train)
+    final_log_dir = os.path.join(log_dir, sub_dir) if sub_dir else log_dir
+    os.makedirs(final_log_dir, exist_ok=True)
 
-    # 최상위 로거 이름 지정
     logger = logging.getLogger("ThesisRefactored")
     logger.setLevel(logging.INFO)
 
-    # 중복 핸들러 방지
     if logger.hasHandlers():
         logger.handlers.clear()
     
-    # 로그 포맷 정의
     formatter = logging.Formatter(
         fmt="[%(asctime)s] %(levelname)-8s [%(name)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # 1. 콘솔 출력 핸들러(터미널 용)
+    # 1. 콘솔 출력
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # 2. 파일 출력 핸들러 (logs 폴더 저장)
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-        log_file_path = os.path.join(log_dir, 'run.log')
-        file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+    # 2. 파일 출력 (타임스탬프 포함)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"{exp_name}_{timestamp}.log"
+    log_file_path = os.path.join(final_log_dir, log_filename)
     
-    logger.info(f"{'='*50}")
-    logger.info(f"🚀 Logger Initialized for Experiment: {exp_name}")
-    logger.info(f"{'='*50}")
-
+    file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    logger.info(f"📂 Log directory: {final_log_dir}")
+    logger.info(f"💾 Log file: {log_filename}")
+    
     return logger
 
 def get_logger(module_name: str):
-    """
-    각 파이썬 파일에서 호출하여 사용할 자식(Child) 로거를 반환합니다.
-    사용법: logger = get_logger(__name__)
-    """
-
     return logging.getLogger("ThesisRefactored").getChild(module_name)
