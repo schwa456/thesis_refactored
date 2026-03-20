@@ -1,0 +1,12 @@
+experiment_name: "baseline_vector_only"
+
+seed_selector:
+  name: "VectorOnlySelector"
+  params:
+    top_k: 20
+
+connectivity_extractor:
+  name: "None"
+
+filter:
+  name: "None"

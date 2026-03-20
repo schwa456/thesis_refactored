@@ -23,7 +23,7 @@ graph_builder:
 nlq_encoder:
   name: "APIEncoder"             # 또는 로컬 모델인 "LocalPLMEncoder"
   params:
-    model_name: "sentence-transformers/all-MiniLM-L6-v2"  # 💡 바로 여기서 모델명을 통제합니다!
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
     base_url: "http://localhost:8000/v1"  # vLLM 등을 띄웠을 경우 경로 (OpenAI면 생략 가능)
 
 # ==========================================
