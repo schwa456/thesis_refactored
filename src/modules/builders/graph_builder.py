@@ -1,7 +1,9 @@
+import os
+import sqlite3
 import torch
 from torch_geometric.data import HeteroData
 from sentence_transformers import SentenceTransformer
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 
 from modules.registry import register
 from modules.base import BaseGraphBuilder
@@ -11,121 +13,131 @@ logger = get_logger(__name__)
 
 @register("builder", "HeteroGraphBuilder")
 class HeteroGraphBuilder(BaseGraphBuilder):
-    """
-    파싱된 스키마 정보와 LLM이 생성한 FK Description을 결합하여,
-    PyTorch Geometric의 HeteroData(이종 그래프) 객체를 생성합니다.
-    (핵심 기여: FK 관계를 독립적인 'fk_node'로 승격시키는 Line Graph Transformation 적용)
-    """
     def __init__(self, plm_model_name: str = 'sentence-transformers/all-MiniLM-L6-v2', **kwargs):
         super().__init__()
         logger.info(f"Loading PLM for initial node features: {plm_model_name}...")
         self.encoder = SentenceTransformer(plm_model_name)
 
-    def build(self, schema_info: Dict[str, Any], fk_descriptions: Dict[str, str]) -> Tuple[HeteroData, Dict]:
-            logger.debug(f"Building HeteroData graph for DB...")
-            data = HeteroData()
-
-            # 1. ID 매핑 딕셔너리 초기화 (문자열 고유 ID -> 정수 인덱스)
-            table_to_id = {}
-            col_to_id = {}
-            fk_to_id = {}
-
-            # 노드의 초기 텍스트 피처를 담을 리스트
-            table_texts = []
-            col_texts = []
-            fk_texts = []
-
-            # ---------------------------------------------------------
-            # Step 1: Node 생성 및 초기 텍스트 수집
-            # ---------------------------------------------------------
-            # Tables
-            for idx, table_name in enumerate(schema_info.get("tables", [])):
-                table_to_id[table_name] = idx
-                table_texts.append(f"Table: {table_name}")
-
+    def _get_schema_info(self, db_path: str) -> Dict[str, Any]:
+        """SQLite 파일에서 직접 스키마 정보를 추출합니다."""
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. Tables 추출
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = [row[0] for row in cursor.fetchall() if row[0] != 'sqlite_sequence']
+        
+        # 2. Columns & Foreign Keys 추출
+        columns_dict = {}
+        all_fks = []
+        for table in tables:
             # Columns
-            col_idx = 0
-            for table, cols in schema_info.get("columns", {}).items():
-                for col in cols:
-                    col_name = col["name"]
-                    col_type = col["type"]
-                    col_full_name = f"{table}.{col_name}"
-                    col_to_id[col_full_name] = col_idx
-                    col_texts.append(f"Column: {col_name} in table {table}, type {col_type}")
-                    col_idx += 1
-
-            # FK (Edge-as-Node)
-            for idx, (edge_id, desc) in enumerate(fk_descriptions.items()):
-                fk_to_id[edge_id] = idx
-                fk_texts.append(desc) # LLM이 생성한 자연어 Description 그대로 사용
-
-            # ---------------------------------------------------------
-            # Step 2: PLM을 이용한 Node Feature Tensor 생성 (초기 임베딩)
-            # ---------------------------------------------------------
-            logger.debug("Encoding node features into dense vectors...")
-            # (N, D) 형태의 Float Tensor로 변환됨
-            data['table'].x = self.encoder.encode(table_texts, convert_to_tensor=True)
-            data['column'].x = self.encoder.encode(col_texts, convert_to_tensor=True)
+            cursor.execute(f"PRAGMA table_info('{table}');")
+            columns_dict[table] = [{"name": row[1], "type": row[2]} for row in cursor.fetchall()]
             
-            if fk_texts: # FK가 없는 DB도 있을 수 있으므로 방어 로직
-                data['fk_node'].x = self.encoder.encode(fk_texts, convert_to_tensor=True)
-            else:
-                data['fk_node'].x = torch.empty((0, self.encoder.get_sentence_embedding_dimension()))
+            # Foreign Keys
+            cursor.execute(f"PRAGMA foreign_key_list('{table}');")
+            for row in cursor.fetchall():
+                all_fks.append({
+                    "from_table": table,
+                    "from_column": row[3],
+                    "to_table": row[2],
+                    "to_column": row[4]
+                })
+        conn.close()
+        return {"tables": tables, "columns": columns_dict, "foreign_keys": all_fks}
 
-            # ---------------------------------------------------------
-            # Step 3: Edge Index (연결 구조) 생성
-            # ---------------------------------------------------------
-            has_col_src, has_col_dst = [], []
-            fk_src, fk_dst = [], []
-            fk_rev_src, fk_rev_dst = [], []
+    def _generate_fk_descriptions(self, foreign_keys: List[Dict]) -> Dict[str, str]:
+        """FK 관계를 자연어 설명으로 변환합니다 (GAT 학습용)."""
+        descriptions = {}
+        for fk in foreign_keys:
+            edge_id = f"{fk['from_table']}.{fk['from_column']}->{fk['to_table']}.{fk['to_column']}"
+            desc = f"Foreign key relationship connecting {fk['from_table']}'s {fk['from_column']} to {fk['to_table']}'s {fk['to_column']}."
+            descriptions[edge_id] = desc
+        return descriptions
 
-            # A. Table <-> Column (belongs_to 관계)
-            for table, cols in schema_info.get("columns", {}).items():
-                t_id = table_to_id[table]
-                for col in cols:
-                    c_id = col_to_id[f"{table}.{col['name']}"]
-                    has_col_src.append(t_id)
-                    has_col_dst.append(c_id)
-
-            # B. Column <-> FK Node <-> Column (관계의 승격)
-            for fk in schema_info.get("foreign_keys", []):
-                from_col_name = f"{fk.get('from_table')}.{fk.get('from_column')}"
-                to_col_name = f"{fk.get('to_table')}.{fk.get('to_column')}"
-                edge_id = f"{from_col_name}->{to_col_name}"
-
-                if edge_id not in fk_to_id:
-                    continue
-
-                if from_col_name not in col_to_id or to_col_name not in col_to_id:
-                    logger.warning(f"Skipping broken FK: {from_col_name} -> {to_col_name}")
-                    continue
-                
-                f_id = fk_to_id[edge_id]
-                from_c_id = col_to_id[from_col_name]
-                to_c_id = col_to_id[to_col_name]
-
-                # Source Column -> FK Node 연결
-                fk_src.append(from_c_id)
-                fk_dst.append(f_id)
-
-                # FK Node -> Target Column 연결
-                fk_rev_src.append(f_id)
-                fk_rev_dst.append(to_c_id)
-
-            # Edge Tensor 할당
-            data['table', 'has_column', 'column'].edge_index = torch.tensor([has_col_src, has_col_dst], dtype=torch.long)
-            data['column', 'belongs_to', 'table'].edge_index = torch.tensor([has_col_dst, has_col_src], dtype=torch.long)
+    def build(self, db_id: str, db_dir: str) -> Tuple[HeteroData, Dict]:
+        """
+        [수정됨] db_id와 db_dir을 받아 스키마를 로드하고 그래프를 빌드합니다.
+        """
+        db_path = os.path.join(db_dir, db_id, f"{db_id}.sqlite")
+        if not os.path.exists(db_path):
+            # BIRD 구조상 db_id 폴더 안에 db_id.sqlite가 있음
+            db_path = os.path.join(db_dir, db_id, f"{db_id}.sqlite")
             
-            data['column', 'is_source_of', 'fk_node'].edge_index = torch.tensor([fk_src, fk_dst], dtype=torch.long)
-            data['fk_node', 'points_to', 'column'].edge_index = torch.tensor([fk_rev_src, fk_rev_dst], dtype=torch.long)
+        schema_info = self._get_schema_info(db_path)
+        fk_descriptions = self._generate_fk_descriptions(schema_info["foreign_keys"])
+        
+        data = HeteroData()
+        table_to_id, col_to_id, fk_to_id = {}, {}, {}
+        table_texts, col_texts, fk_texts = [], [], []
 
-            # 디버깅 및 추적을 위해 매핑 딕셔너리 생성
-            metadata_mapping = {
-                'table_to_id': table_to_id,
-                'col_to_id': col_to_id,
-                'fk_to_id': fk_to_id
-            }
+        # ---------------------------------------------------------
+        # Step 1: Nodes (기존 로직 유지)
+        # ---------------------------------------------------------
+        for idx, t in enumerate(schema_info["tables"]):
+            table_to_id[t] = idx
+            table_texts.append(f"Table: {t}")
 
-            logger.debug(f"Graph built successfully! Tables: {len(table_to_id)}, Columns: {len(col_to_id)}, FK Nodes: {len(fk_to_id)}")
+        c_idx = 0
+        for table, cols in schema_info["columns"].items():
+            for col in cols:
+                full_name = f"{table}.{col['name']}"
+                col_to_id[full_name] = c_idx
+                col_texts.append(f"Column: {col['name']} in table {table}, type {col['type']}")
+                c_idx += 1
 
-            return data, metadata_mapping
+        for idx, (edge_id, desc) in enumerate(fk_descriptions.items()):
+            fk_to_id[edge_id] = idx
+            fk_texts.append(desc)
+
+        # Step 2: Encoding
+        data['table'].x = self.encoder.encode(table_texts, convert_to_tensor=True)
+        data['column'].x = self.encoder.encode(col_texts, convert_to_tensor=True)
+        if fk_texts:
+            data['fk_node'].x = self.encoder.encode(fk_texts, convert_to_tensor=True)
+        else:
+            data['fk_node'].x = torch.empty((0, self.encoder.get_sentence_embedding_dimension()))
+
+        # Step 3: Edges
+        h_src, h_dst = [], [] # Table -> Column
+        f_src, f_dst = [], [] # Col -> FK
+        r_src, r_dst = [], [] # FK -> Col
+
+        for table, cols in schema_info["columns"].items():
+            t_id = table_to_id[table]
+            for col in cols:
+                c_id = col_to_id[f"{table}.{col['name']}"]
+                h_src.append(t_id); h_dst.append(c_id)
+
+        for fk in schema_info["foreign_keys"]:
+            f_col = f"{fk['from_table']}.{fk['from_column']}"
+            t_col = f"{fk['to_table']}.{fk['to_column']}"
+            edge_id = f"{f_col}->{t_col}"
+            if edge_id in fk_to_id and f_col in col_to_id and t_col in col_to_id:
+                fid, cid1, cid2 = fk_to_id[edge_id], col_to_id[f_col], col_to_id[t_col]
+                f_src.append(cid1); f_dst.append(fid)
+                r_src.append(fid); r_dst.append(cid2)
+
+        data['table', 'has_column', 'column'].edge_index = torch.tensor([h_src, h_dst], dtype=torch.long)
+        data['column', 'belongs_to', 'table'].edge_index = torch.tensor([h_dst, h_src], dtype=torch.long)
+        if f_src:
+            data['column', 'is_source_of', 'fk_node'].edge_index = torch.tensor([f_src, f_dst], dtype=torch.long)
+            data['fk_node', 'points_to', 'column'].edge_index = torch.tensor([r_src, r_dst], dtype=torch.long)
+
+        # Step 4: Metadata for PCST
+        num_t, num_c = len(table_to_id), len(col_to_id)
+        node_meta = {}
+        for k, v in table_to_id.items(): node_meta[v] = k
+        for k, v in col_to_id.items(): node_meta[v + num_t] = k
+        for k, v in fk_to_id.items(): node_meta[v + num_t + num_c] = k
+
+        metadata = {
+            'table_to_id': table_to_id, 'col_to_id': col_to_id, 'fk_to_id': fk_to_id,
+            'node_metadata': node_meta,
+            'edges': [(s, d + num_t) for s, d in zip(h_src, h_dst)] + \
+                     [(s + num_t, d + num_t + num_c) for s, d in zip(f_src, f_dst)] + \
+                     [(s + num_t + num_c, d + num_t) for s, d in zip(r_src, r_dst)],
+            'edge_types': ['belongs_to']*len(h_src) + ['fk_link']*len(f_src)*2
+        }
+        return data, metadata

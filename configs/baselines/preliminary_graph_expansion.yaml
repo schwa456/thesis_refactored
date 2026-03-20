@@ -1,0 +1,14 @@
+experiment_name: "ablation_graph_expansion"
+
+seed_selector:
+  name: "VectorOnlySelector"
+  params:
+    top_k: 15
+
+connectivity_extractor:
+  name: "MSTExtractor"
+  params:
+    max_depth: 2
+    
+filter:
+  name: "None"

@@ -1,3 +1,7 @@
-from .dual_tower import DualTowerAlignment
+from .dual_tower import DualTowerProjector
+from .gat_projector import GATProjector
 
-__all__ = ["DualTowerAlignment"]
+__all__ = [
+    "DualTowerProjector",
+    "GATProjector"
+    ]

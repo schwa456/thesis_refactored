@@ -1,0 +1,17 @@
+experiment_name: "ablation_graph_and_agent"
+
+seed_selector:
+  name: "VectorOnlySelector"
+  params:
+    top_k: 15
+
+connectivity_extractor:
+  name: "MSTExtractor" 
+  params:
+    max_depth: 2
+
+filter:
+  name: "SingleAgentFilter"
+  params:
+    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    temperature: 0.0

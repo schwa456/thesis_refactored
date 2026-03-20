@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Optional
 
 from modules.registry import register
 from modules.base import BaseProjector
@@ -10,14 +10,14 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-@register("projector", "DualTowerAlignment")
-class DualTowerAlignment(BaseProjector):
+@register("projector", "DualTowerProjector")
+class DualTowerProjector(BaseProjector):
     """
     Symmetric Dual-Tower 구조를 통해 텍스트(NLQ)와 그래프(Node) 임베딩을
     동일한 공유 공간(Shared Latent Space)으로 투영합니다.
     """
     def __init__(self, text_dim: int = 384, graph_dim: int = 256, joint_dim: int = 256, dropout_rate: float = 0.1, **kwargs):
-        super(DualTowerAlignment, self).__init__()
+        super(DualTowerProjector, self).__init__()
         
         self.text_dim = text_dim
         self.graph_dim = graph_dim
@@ -44,9 +44,13 @@ class DualTowerAlignment(BaseProjector):
         # 대조 학습을 위한 Temperature 파라미터 (초기값 0.07 기반)
         self.logit_scale = nn.Parameter(torch.ones([]) * math.log(1 / 0.07))
 
-    def forward(self, text_embs: torch.Tensor, graph_embs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, text_embs: torch.Tensor, graph_embs: torch.Tensor, batch_index: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        [Base 규격 구현] 두 모달리티의 벡터를 투영하고 L2 정규화를 수행합니다.
+        batch_index를 사용하여 질의 임베딩을 노드별로 매핑합니다.
+
+        text_embs: (Batch_Size, Text_Dim)
+        graph_embs: (Total_Nodes, Graph_Dim)
+        batch_index: (Total_Nodes,) - 각 노드가 속한 그래프 인덱스
         """
         # 차원 검증
         if text_embs.shape[-1] != self.text_dim:
@@ -57,20 +61,24 @@ class DualTowerAlignment(BaseProjector):
         # 투영 및 L2 정규화
         z_text = F.normalize(self.text_proj(text_embs), p=2, dim=-1)
         z_graph = F.normalize(self.graph_proj(graph_embs), p=2, dim=-1)
-        
+
+        if batch_index is not None:
+            # batch_index가 [0, 0, 1, 1, 1]이면, 0번 질의 벡터 2개와 1번 질의 벡터 3개로 확장
+            z_text = z_text[batch_index] # (Total_Nodes, Joint_Dim)
+            
         return z_text, z_graph
 
-    def compute_similarity(self, z_query_tokens: torch.Tensor, z_schema_nodes: torch.Tensor) -> torch.Tensor:
+    def compute_similarity(self, z_query: torch.Tensor, z_nodes: torch.Tensor) -> torch.Tensor:
         """
-        [Base 규격 구현] 투영된 텐서를 받아 노드별 최종 유사도 점수를 계산합니다. (MaxSim 방식)
+        투영된 두 텐서 간의 코사인 유사도 점수(Logits)를 계산합니다.
+        z_query: (N, D), z_nodes: (N, D)
         """
-        # (N, M) 크기의 유사도 행렬 생성
-        sim_matrix = torch.matmul(z_query_tokens, z_schema_nodes.t()) 
+        # 행 단위 내적 (Row-wise Dot Product)
+        # 이미 L2 정규화가 되어 있으므로 내적은 코사인 유사도와 동일함
+        logits = (z_query * z_nodes).sum(dim=-1) # (N,)
         
-        # 노드(M) 입장에서 질의 토큰(N) 중 가장 높은 유사도 추출
-        max_sim_scores, _ = sim_matrix.max(dim=0)
-        
-        return max_sim_scores
+        # 온도(Temperature) 적용
+        return logits * self.logit_scale.exp()
 
     def compute_contrastive_loss(self, z_text: torch.Tensor, z_graph: torch.Tensor) -> torch.Tensor:
         """

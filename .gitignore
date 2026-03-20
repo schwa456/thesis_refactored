@@ -2,8 +2,8 @@
 ./logs/*
 vllm.log
 schema_embeddings.pkl
-./wandb/
-./wandb/run*
+wandb/
+wandb/run*
 ./wandb/latest-run/
 *.wandb
 *.pyc

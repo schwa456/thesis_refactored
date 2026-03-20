@@ -1,0 +1,19 @@
+experiment_name: "baseline_g_retriever"
+
+# 1. 초기 노드 점수 부여 (Prize 계산)
+seed_selector:
+  name: "VectorOnlySelector"
+  params:
+    top_k: 10000
+
+# 2. G-Retriever의 핵심: PCST 알고리즘을 통한 Subgraph 추출
+connectivity_extractor:
+  name: "PCSTExtractor" # src/modules/extractors/pcst.py에 구현된 클래스명으로 지정
+  params:
+    base_cost: 0.5         # FK 노드를 건너갈 때의 엣지 페널티
+    belongs_to_cost: 0.01  # 같은 테이블 내의 컬럼을 포함시킬 때의 페널티
+    node_threshold: 0.5    # Cosine Similarity 점수가 이 값을 넘어야 Prize(이익)로 간주됨
+
+# 3. 추가적인 Agent 필터링 생략
+filter:
+  name: "None"

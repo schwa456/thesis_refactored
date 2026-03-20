@@ -1,0 +1,16 @@
+experiment_name: "baseline_xiyansql"
+
+seed_selector:
+  name: "XiYanSelector"  # 우리가 만든 XiYan 기반 Retrieval
+  params:
+    top_k: 20
+    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+connectivity_extractor:
+  name: "None" # 논문 비교를 위해 Graph Extractor 끄기
+
+filter:
+  name: "XiyanFilter"
+  params:
+    max_iteration: 1 # 논문에 기재된 ps=1 세팅 반영
+    temperature: 0.0

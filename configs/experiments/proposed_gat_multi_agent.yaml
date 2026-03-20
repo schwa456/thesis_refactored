@@ -1,0 +1,45 @@
+experiment_name: "proposed_gat_pcst_multi_agent"
+
+# 1. Encoding: 토큰 레벨 분석을 위해 spaCy 필터링이 포함된 TokenEncoder 사용
+nlq_encoder:
+  name: "TokenEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+# 2. Projection: 학습된 GAT 가중치를 로드하여 구조적 토폴로지 정보 주입 (기여점 1)
+projection:
+  enabled: true
+  name: "GATProjector"
+  params:
+    hidden_channels: 256
+    num_layers: 2
+    heads: 4
+    checkpoint_path: "./outputs/checkpoints/best_gat_model.pt"
+
+# 3. Selection: 불용어를 제외한 유효 토큰별로 최적 노드 추출 (MaxSim 방식)
+seed_selector:
+  name: "TokenAwareSelector"
+  params:
+    top_k_per_token: 1
+
+# 4. Extraction: GAT가 보정한 Prize를 바탕으로 Implicit Bridge를 찾는 PCST (기여점 1 확장)
+connectivity_extractor:
+  name: "GATAwarePCST"
+  params:
+    base_cost: 0.7         # FK 노드를 건너가는 비용 페널티
+    belongs_to_cost: 0.01  # 동일 테이블 내 컬럼 포함 비용
+    node_threshold: 0.4    # GAT 점수가 이 값을 넘어야 Prize로 인정
+
+# 5. Filtering: 에이전트 간 교차 검증을 통한 최종 노이즈 절제 (기여점 2)
+filter:
+  name: "AdaptiveMultiAgentFilter"
+  params:
+    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    uncertainty_threshold: 0.4
+    temperature: 0.0
+
+# 6. Generation: 정제된 Subschema 기반 SQL 생성
+sql_generator:
+  name: "LLMSQLGenerator"
+  params:
+    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"

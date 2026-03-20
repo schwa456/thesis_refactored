@@ -1,0 +1,15 @@
+experiment_name: "baseline_linkalign"
+
+seed_selector:
+  name: "LinkAlignSelector"
+  params:
+    top_k: 20
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+connectivity_extractor:
+  name: "None" # LinkAlign은 GNN/Graph 탐색을 사용하지 않음
+
+filter:
+  name: "AgentSelector" # 기존 Agent 모듈 재사용하여 Noise Filtering 수행
+  params:
+    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"

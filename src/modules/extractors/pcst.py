@@ -87,3 +87,18 @@ class AdvancedPCSTExtractor(PCSTExtractor):
         edges = graph_data.get('edges', [])
         ppr_prizes = self._compute_ppr_prizes(len(node_scores), edges, node_scores)
         return super().extract(graph_data, ppr_prizes, seed_nodes, **kwargs)
+
+@register("extractor", "GATAwarePCST")
+class GATAwarePCSTExtractor(PCSTExtractor):
+    """
+    본 논문의 제안 모델: 
+    PPR과 같은 정적 확산 대신, 학습된 GAT가 뱉어낸 '구조-문맥 융합 점수'를 
+    PCST의 Prize로 직접 사용하여 Implicit Bridge Table을 확정적으로 포착합니다.
+    """
+    def extract(self, graph_data: Dict[str, Any], node_scores: List[float], **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
+        # node_scores는 이미 Pipeline의 Stage 3에서 GATProjector를 통해 
+        # GAT 임베딩이 반영된 최종 유사도 점수로 넘어옵니다.
+        
+        # PPR 연산 없이, GAT가 보정한 점수 그 자체를 '신뢰할 수 있는 Prize'로 사용합니다.
+        # 이를 통해 GAT의 학습 기여도가 PCST 결과에 직접적으로 투영됩니다.
+        return super().extract(graph_data, node_scores, **kwargs)
