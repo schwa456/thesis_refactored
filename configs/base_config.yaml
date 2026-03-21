@@ -5,8 +5,8 @@
 # ==========================================
 experiment_name: "base"
 paths:
-  data_dir: "../data/raw/BIRD_dev"
-  cache_dir: "../data/processed"
+  data_dir: "data/raw/BIRD_dev"
+  cache_dir: "data/processed"
 
 # ==========================================
 # 1. Graph Builder (스키마 -> 그래프 구축)
@@ -31,7 +31,7 @@ nlq_encoder:
 # ==========================================
 projection:
   enabled: true                # 투영을 할지 말지 토글!
-  name: "DualTowerAlignment"
+  name: "DualTowerProjector"
   params:
     in_dim: 384
     hidden_dim: 256
@@ -70,3 +70,12 @@ filter:
     llm_model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
     temperature: 0.0
     prompt_template: "schema_refinement_v1"
+
+# ==========================================
+# 7. SQL Generation (SQL 쿼리 생성)
+# ==========================================
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  llm_model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+  temperature: 0.0

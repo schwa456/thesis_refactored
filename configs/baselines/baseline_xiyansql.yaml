@@ -1,5 +1,11 @@
 experiment_name: "baseline_xiyansql"
 
+# ==========================================
+# 3. Latent Space Projection (임베딩 공간 통일)
+# ==========================================
+projection:
+  enabled: false                # 투영을 할지 말지 토글!
+
 seed_selector:
   name: "XiYanSelector"  # 우리가 만든 XiYan 기반 Retrieval
   params:
@@ -10,7 +16,7 @@ connectivity_extractor:
   name: "None" # 논문 비교를 위해 Graph Extractor 끄기
 
 filter:
-  name: "XiyanFilter"
+  name: "XiYanFilter"
   params:
     max_iteration: 1 # 논문에 기재된 ps=1 세팅 반영
     temperature: 0.0

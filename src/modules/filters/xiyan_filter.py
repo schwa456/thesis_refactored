@@ -98,6 +98,7 @@ For example, your output should look like this:
 """
             
             response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
+            logger.debug(f"[XiYanFilter] LLM Response: {response}")
             
             # 4. JSON 파싱 및 정제
             try:

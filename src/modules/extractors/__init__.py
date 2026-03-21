@@ -5,7 +5,7 @@ from .baseline import TopKExtractor, NoneExtractor
 __all__ = [
     "PCSTExtractor",
     "AdvancedPCSTExtractor",
-    "GARAwarePCSTExtractor",
+    "GATAwarePCSTExtractor",
     "MSTExtractor",
     "TopKExtractor",
     "NoneExtractor"

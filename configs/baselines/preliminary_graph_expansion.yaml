@@ -1,4 +1,10 @@
-experiment_name: "ablation_graph_expansion"
+experiment_name: "preliminary_graph_expansion"
+
+# ==========================================
+# 3. Latent Space Projection (임베딩 공간 통일)
+# ==========================================
+projection:
+  enabled: false                # 투영을 할지 말지 토글!
 
 seed_selector:
   name: "VectorOnlySelector"

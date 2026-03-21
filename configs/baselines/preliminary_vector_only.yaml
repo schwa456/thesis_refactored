@@ -1,12 +1,29 @@
-experiment_name: "baseline_vector_only"
+experiment_name: "preliminary_vector_only"
 
+# ==========================================
+# 3. Latent Space Projection (임베딩 공간 통일)
+# ==========================================
+projection:
+  enabled: false                # 투영을 할지 말지 토글!
+
+# ==========================================
+# 4. Seed Node Selector (초기 후보 노드 선별)
+# ==========================================
 seed_selector:
   name: "VectorOnlySelector"
   params:
     top_k: 20
 
+# ==========================================
+# 5. Connectivity Extractor (구조적 연결성 확보)
+# ==========================================
+# 옵션: "DynamicPCST", "MST", "TopK", "None"
 connectivity_extractor:
   name: "None"
 
+# ==========================================
+# 6. Schema Filtering (최종 정제)
+# ==========================================
+# 옵션: "SingleAgent", "MultiAgent", "None"
 filter:
   name: "None"

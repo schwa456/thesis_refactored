@@ -43,28 +43,51 @@ class GATProjector(BaseProjector):
         self.dual_tower.eval()
 
     def compute_scores(self, q_emb: torch.Tensor, graph_data: Any) -> torch.Tensor:
-        """
-        [추론 전용] NLQ 임베딩과 HeteroData를 받아 최종 노드별 유사도 점수(1D Tensor)를 반환합니다.
-        """
         with torch.no_grad():
-            # 데이터 디바이스 이동
             x_dict = {k: v.to(self.device) for k, v in graph_data.x_dict.items()}
             edge_index_dict = {k: v.to(self.device) for k, v in graph_data.edge_index_dict.items()}
-            q_emb = q_emb.to(self.device)
+            q_emb = q_emb.to(self.device) # [1, 22, 384]
             
-            # 1. GAT Message Passing
+            # 1. GAT Message Passing & Flattening
             updated_embs_dict = self.gat(x_dict, edge_index_dict)
+            embs_list = [updated_embs_dict[nt] for nt in ['table', 'column', 'fk_node'] if nt in updated_embs_dict]
+            flat_node_embs = torch.cat(embs_list, dim=0) # [94, 256]
             
-            # 2. Flattening (graph_builder.py의 Global ID 순서 보장: Table -> Column -> FK)
-            embs_list = []
-            for node_type in ['table', 'column', 'fk_node']:
-                if node_type in updated_embs_dict:
-                    embs_list.append(updated_embs_dict[node_type])
-            
-            flat_node_embs = torch.cat(embs_list, dim=0) # (Total_Nodes, 256)
-            
-            # 3. Dual Tower Projection 및 유사도 계산
+            # 2. Dual Tower Projection
             z_q, z_nodes = self.dual_tower(q_emb, flat_node_embs)
-            scores = self.dual_tower.compute_similarity(z_q, z_nodes)
+            z_q_sq = z_q.squeeze(0) # [22, 256]
             
-            return scores.cpu() # 후속 파이프라인(Selector 등) 처리를 위해 CPU로 반환
+            # 3. 22 x 94 Cross-Similarity 생성
+            z_q_norm = torch.nn.functional.normalize(z_q_sq, p=2, dim=-1)
+            z_n_norm = torch.nn.functional.normalize(z_nodes, p=2, dim=-1)
+            sim_matrix = torch.matmul(z_q_norm, z_n_norm.transpose(0, 1)) # [22, 94]
+            
+            # 💡 [핵심 구현] "각 Token 별로 최대 점수를 가지는 Node 선택"
+            # dim=1(노드 차원)을 기준으로 최댓값을 뽑으면, 각 토큰(22개)이 선택한 최고 점수와 해당 노드 인덱스가 나옵니다.
+            best_scores_per_token, best_nodes_per_token = torch.max(sim_matrix, dim=1)
+            
+            # PCST에게 넘겨줄 94개짜리 빈 점수판 생성 (기본값 0.0)
+            total_nodes = flat_node_embs.size(0)
+            node_scores = torch.zeros(total_nodes, device=self.device)
+            
+            # 투표 결과 반영: 각 토큰이 선택한 노드에 점수를 부여합니다.
+            for score, node_idx in zip(best_scores_per_token, best_nodes_per_token):
+                # 한 노드가 여러 토큰의 선택을 받았을 수 있으므로, 더 큰 점수로 업데이트합니다.
+                node_scores[node_idx] = torch.max(node_scores[node_idx], score)
+            
+            return node_scores.cpu() # 최종 [94] 형태 반환
+
+    def forward(self, q_emb: torch.Tensor, node_embs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        [BaseProjector 필수 구현] 
+        단순 텐서 기반 투영이 필요할 경우, 내부의 DualTowerProjector로 연산을 위임합니다.
+        """
+        # 디바이스 동기화 후 위임
+        return self.dual_tower(q_emb.to(self.device), node_embs.to(self.device))
+
+    def compute_similarity(self, z_q: torch.Tensor, z_n: torch.Tensor) -> torch.Tensor:
+        """
+        [BaseProjector 필수 구현]
+        투영된 벡터 간의 유사도 계산 역시 내부 DualTowerProjector로 위임합니다.
+        """
+        return self.dual_tower.compute_similarity(z_q, z_n)

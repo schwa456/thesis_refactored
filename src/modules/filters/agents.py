@@ -37,12 +37,12 @@ class AgentUtils:
 # ==========================================
 # 1. Single Agent Filter (단일 검증기)
 # ==========================================
-@register("filter", "SingleAgent")
+@register("filter", "SingleAgentFilter")
 class SingleAgentFilter(BaseFilter):
     def __init__(self, model_name: str = "Qwen/Qwen2.5-Coder-32B-Instruct", temperature: float = 0.0, **kwargs):
         self.model_name = model_name
         self.temperature = temperature
-        self.client = APIClient() # 공통 통신 모듈 사용
+        self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
         logger.info(f"Initialized SingleAgentFilter (Model: {model_name})")
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> Dict[str, Any]:
@@ -67,14 +67,14 @@ class SingleAgentFilter(BaseFilter):
         }
 
 # ==========================================
-# 2. Adaptive Multi-Agent Filter (연구원님의 걸작)
+# 2. Adaptive Multi-Agent Filter
 # ==========================================
-@register("filter", "AdaptiveMultiAgent")
+@register("filter", "AdaptiveMultiAgentFilter")
 class AdaptiveMultiAgentFilter(BaseFilter):
     def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct", uncertainty_threshold: float = 0.6, **kwargs):
         self.model_name = model_name
         self.threshold = uncertainty_threshold
-        self.client = APIClient() 
+        self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
         logger.info(f"Initialized AdaptiveMultiAgentFilter (Threshold: {self.threshold})")
 
     def _call_agent(self, role: str, prompt: str) -> dict:

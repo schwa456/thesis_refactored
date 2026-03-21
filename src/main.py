@@ -15,11 +15,11 @@ from pipeline import SchemaLinkingPipeline
 def main():
     # 1. Config 로드 및 전역 로거 세팅 (config_parser가 폴더들을 다 만들어줍니다!)
     args, config = get_args_and_config()
-    
+
     log_dir = config['paths']['log_dir']
     output_dir = config['paths']['output_dir']
     
-    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'], sub_dir="ëval")
+    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'], sub_dir="eval")
     logger = get_logger(__name__)
     
     logger.info("=" * 60)
@@ -30,7 +30,7 @@ def main():
     pipeline = SchemaLinkingPipeline(config)
 
     # 3. 평가 데이터셋 로드 (dev.json 경로)
-    data_path = config['paths'].get('dev_json', '../data/raw/BIRD_dev/dev.json')
+    data_path = config['paths'].get('dev_json', 'data/raw/BIRD_dev/dev.json')
     try:
         with open(data_path, 'r', encoding='utf-8') as f:
             dataset = json.load(f)
@@ -52,7 +52,7 @@ def main():
         question = item.get("question")
         question_id = item.get("question_id", len(predictions))
         gold_sql = item.get("SQL", item.get("query", ""))
-        db_path = os.path.join("./data/raw/BIRD_dev/dev_databases", db_id, f"{db_id}.sqlite")
+        db_path = os.path.join("data/raw/BIRD_dev/dev_databases", db_id, f"{db_id}.sqlite")
         
         try:
             result = pipeline.run(db_id=db_id, query=question)

@@ -2,6 +2,7 @@ from .basic_selectors import FixedTopKSelector, AdaptiveSelector, VectorOnlySele
 from .agent_selector import AgentNodeSelector
 from .xiyan_selector import XiYanSelector
 from .linkalign_selector import LinkAlignSelector
+from .token_aware_selector import TokenAwareSelector
 
 __all__ = [
     "FixedTopKSelector", 
@@ -9,5 +10,6 @@ __all__ = [
     "VectorOnlySelector",
     "AgentNodeSelector", 
     "XiYanSelector",
-    "LinkAlignSelector"
+    "LinkAlignSelector",
+    "TokenAwareSelector"
     ]

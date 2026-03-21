@@ -1,5 +1,5 @@
 project_name: "Text-to-SQL-Alignment"
-experiment_name: "gat_v1_baseline"
+experiment_name: "gat_v2_pos100_layer3"
 
 # 1. 경로 설정
 paths:
@@ -10,12 +10,12 @@ paths:
   checkpoint_dir: "./outputs/checkpoints"
   cache_dir: "./data/processed"
 
-# 2. 모델 아키텍처 하이퍼파라미터
+# 2. 모델 아키텍처 하이퍼파라미터-
 model:
   in_channels: 384
   hidden_channels: 256
   out_channels: 256
-  num_layers: 2
+  num_layers: 3
   heads: 4
   dropout: 0.1
 
@@ -25,6 +25,6 @@ training:
   batch_size: 8
   learning_rate: 0.0001
   weight_decay: 0.00001
-  pos_weight: 30.0        # 클래스 불균형 가중치
+  pos_weight: 100.0        # 클래스 불균형 가중치
   val_split: 0.1         # 내부 검증 세트 비율
   recall_k: 15           # 검증 지표 Recall@K

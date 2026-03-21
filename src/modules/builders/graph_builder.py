@@ -63,7 +63,7 @@ class HeteroGraphBuilder(BaseGraphBuilder):
         db_path = os.path.join(db_dir, db_id, f"{db_id}.sqlite")
         if not os.path.exists(db_path):
             # BIRD 구조상 db_id 폴더 안에 db_id.sqlite가 있음
-            db_path = os.path.join(db_dir, db_id, f"{db_id}.sqlite")
+            db_path = os.path.join(db_dir, "dev_databases", db_id, f"{db_id}.sqlite")
             
         schema_info = self._get_schema_info(db_path)
         fk_descriptions = self._generate_fk_descriptions(schema_info["foreign_keys"])

@@ -14,7 +14,7 @@ def setup_logger(log_dir: str, exp_name: str = "experiment", sub_dir: str = "") 
     os.makedirs(final_log_dir, exist_ok=True)
 
     logger = logging.getLogger("ThesisRefactored")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     if logger.hasHandlers():
         logger.handlers.clear()
@@ -26,6 +26,7 @@ def setup_logger(log_dir: str, exp_name: str = "experiment", sub_dir: str = "") 
 
     # 1. 콘솔 출력
     console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
@@ -34,7 +35,8 @@ def setup_logger(log_dir: str, exp_name: str = "experiment", sub_dir: str = "") 
     log_filename = f"{exp_name}_{timestamp}.log"
     log_file_path = os.path.join(final_log_dir, log_filename)
     
-    file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     

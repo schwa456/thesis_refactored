@@ -2,6 +2,7 @@ import os
 from openai import OpenAI
 from typing import List, Optional, Union
 from utils.logger import get_logger
+from sentence_transformers import SentenceTransformer
 
 logger = get_logger(__name__)
 
@@ -10,9 +11,9 @@ class APIClient:
     LLM (텍스트 생성) 및 PLM (텍스트 임베딩) 호출을 전담하는 통신 클라이언트입니다.
     OpenAI 표준 규격을 따르므로 vLLM, Ollama, OpenAI, DeepSeek API 모두에 호환됩니다.
     """
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = "vllm", base_url: Optional[str] = "http://localhost:8000/v1"):
         # 환경 변수를 우선적으로 사용하고, 없으면 파라미터로 받습니다.
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "EMPTY") 
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY") 
         # base_url이 있으면 로컬 vLLM/Ollama 서버 등을 찌릅니다.
         self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
         
@@ -22,6 +23,8 @@ class APIClient:
             api_key=self.api_key,
             base_url=self.base_url
         )
+
+        self.local_encoder = None
 
     def get_embeddings(self, texts: Union[str, List[str]], model: str = "sentence-transformers/all-MiniLM-L6-v2") -> List[List[float]]:
         """
@@ -33,15 +36,15 @@ class APIClient:
         logger.debug(f"Calling Embedding API (Model: {model}, Batch Size: {len(texts)})...")
         
         try:
-            response = self.client.embeddings.create(
-                input=texts,
-                model=model
-            )
-            # 결과물에서 임베딩 벡터 리스트만 추출하여 반환
-            return [data.embedding for data in response.data]
+            if self.local_encoder is None:
+                logger.info(f"Loading Local Sentence Transformer Model: {model}")
+                self.local_encoder = SentenceTransformer(model)
+
+            embeddings = self.local_encoder.encode(texts, convert_to_numpy=True)
+            return embeddings.tolist()
             
         except Exception as e:
-            logger.error(f"🚨 Embedding API 호출 실패: {e}")
+            logger.error(f"🚨 Local Embedding 추출 실패: {e}")
             raise
 
     def generate_text(self, prompt: str, model: str = "Meta/Llama-3.1-8B-Instruct", temperature: float = 0.0) -> str:

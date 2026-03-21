@@ -19,7 +19,7 @@ class APIEncoder(BaseEncoder):
         self.model_name = model_name
         
         # 앞서 만든 공통 API 클라이언트 초기화
-        self.client = APIClient(base_url=base_url)
+        self.client = APIClient(api_key="vllm", base_url=base_url)
         logger.info(f"Initialized APIEncoder with model: [{self.model_name}]")
 
     def encode(self, texts: List[str]) -> torch.Tensor:

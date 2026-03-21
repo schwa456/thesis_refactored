@@ -7,7 +7,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-@register("extractor", "MST")
+@register("extractor", "MSTExtractor")
 class MSTExtractor(BaseExtractor):
     """ 선택된 시드 노드들을 잇는 최소 신장 트리(Minimum Spanning Tree)를 추출합니다. """
     def __init__(self, **kwargs):

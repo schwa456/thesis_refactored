@@ -21,7 +21,7 @@ def load_and_merge_config(config_name: str) -> dict:
         config = yaml.safe_load(f) or {}
     
     # 3. Experiment Config 로드 및 병합
-    exp_config_path = base_dir / "configs" / "experiments" / f"{config_name}.yaml"
+    exp_config_path = base_dir / "configs" / f"{config_name}.yaml"
     
     if exp_config_path.exists():
         with open(exp_config_path, 'r', encoding='utf-8') as f:
@@ -37,7 +37,7 @@ def load_and_merge_config(config_name: str) -> dict:
         logger.warning(f"Experiment config '{exp_config_path}' not found. Using base config only.")
 
     # 💡 4. 버그 수정: exp_config가 아니라, '반환될 config 객체'에 이름을 새깁니다!
-    config['experiment_name'] = config_name
+    #config['experiment_name'] = config_name
 
     # 5. 디렉토리 자동 생성
     dirs_to_create = {

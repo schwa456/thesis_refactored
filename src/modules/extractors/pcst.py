@@ -13,7 +13,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-@register("extractor", "PCST")
+@register("extractor", "PCSTExtractor")
 class PCSTExtractor(BaseExtractor):
     def __init__(self, base_cost: float = 1.0, belongs_to_cost: float = 0.01, node_threshold: float = 0.5, **kwargs):
         self.base_cost = base_cost
@@ -41,7 +41,7 @@ class PCSTExtractor(BaseExtractor):
         logger.debug(f"[PCST] Extracted {len(selected_nodes)} nodes and {len(selected_edges)} edges.")
         return selected_nodes.tolist(), selected_edges
 
-@register("extractor", "AdvancedPCST")
+@register("extractor", "AdvancedPCSTExtractor")
 class AdvancedPCSTExtractor(PCSTExtractor):
     def __init__(self, belongs_to_cost: float = 0.01, ppr_alpha: float = 0.15, ppr_max_iter: int = 50, node_threshold: float = 0.5, **kwargs):
         super().__init__(belongs_to_cost=belongs_to_cost, node_threshold=node_threshold)
@@ -88,7 +88,7 @@ class AdvancedPCSTExtractor(PCSTExtractor):
         ppr_prizes = self._compute_ppr_prizes(len(node_scores), edges, node_scores)
         return super().extract(graph_data, ppr_prizes, seed_nodes, **kwargs)
 
-@register("extractor", "GATAwarePCST")
+@register("extractor", "GATAwarePCSTExtractor")
 class GATAwarePCSTExtractor(PCSTExtractor):
     """
     본 논문의 제안 모델: 

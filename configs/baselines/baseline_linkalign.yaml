@@ -1,5 +1,11 @@
 experiment_name: "baseline_linkalign"
 
+# ==========================================
+# 3. Latent Space Projection (임베딩 공간 통일)
+# ==========================================
+projection:
+  enabled: false                # 투영을 할지 말지 토글!
+
 seed_selector:
   name: "LinkAlignSelector"
   params:
@@ -10,6 +16,4 @@ connectivity_extractor:
   name: "None" # LinkAlign은 GNN/Graph 탐색을 사용하지 않음
 
 filter:
-  name: "AgentSelector" # 기존 Agent 모듈 재사용하여 Noise Filtering 수행
-  params:
-    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+  name: "None"
