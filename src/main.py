@@ -44,7 +44,7 @@ def main():
     predictions = []
     csv_records = []
     score_analysis_data = []
-    start_time = time.time()
+    profiling_data = []
 
     total_ex_score = 0
     valid_ex_count = 0
@@ -61,6 +61,11 @@ def main():
         try:
             result = pipeline.run(db_id=db_id, query=question)
             pred_sql = result.get("generated_sql", "")
+
+            if "execution_time" in result:
+                profiling_record = {"query_id": question_id}
+                profiling_record.update(result.get("execution_time"), {})
+                profiling_data.append(profiling_record)
 
             ex_score = 0
             if pred_sql and gold_sql and os.path.exists(db_path):
@@ -183,8 +188,13 @@ def main():
 
     score_analysis_path = os.path.join(output_dir, f"score_analysis_{config['experiment_name']}.json")
     with open(score_analysis_path, 'w', encoding='utf-8') as f:
-        json.jump(score_analysis_data, f, indent=4, ensure_ascii=False)
+        json.dump(score_analysis_data, f, indent=4, ensure_ascii=False)
     logger.info(f"💾 Score analysis data saved to: {score_analysis_path}")
+
+    profiling_path = os.path.join(output_dir, f"profiling_{config['experiment_name']}.json")
+    with open(profiling_path, 'w', encoding='utf-8') as f:
+        json.dump(profiling_data, f, indent=4, ensure_ascii=False)
+    logger.info(f"💾 Profiling data saved to: {profiling_path}")
 
     # 6. 최종 메트릭 로깅
     logger.info("=" * 60)

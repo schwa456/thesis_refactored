@@ -1,20 +1,37 @@
 import sqlite3
+import threading
 from typing import Tuple, Any, Set
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-def execute_sql(db_path: str, sql: str) -> Tuple[bool, Any]:
+def execute_sql(db_path: str, sql: str, timeout: float = 3.0) -> Tuple[bool, Any]:
     """해당 경로의 SQLite DB에 연결하여 SQL을 실행하고 결과를 반환합니다."""
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        res = cursor.fetchall()
-        conn.close()
-        return True, res
-    except Exception as e:
-        return False, str(e)
+    result = [None]
+    exception = [None]
+
+    def target():
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            result[0] = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            exception[0] = str(e)
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    thread.join(timeout)
+
+    if thread.is_alive():
+        logger.warning(f"[Timeout] Query execution exceeded {timeout}s. Possible Cross Join.")
+        return False, "Error: Query Timeout (Possible Cross Join)"
+    
+    if exception[0]:
+        return False, exception[0]
+    
+    return True, result[0]
 
 def evaluate_ex(pred_sql: str, gold_sql: str, db_path: str) -> int:
     """
@@ -41,6 +58,7 @@ def evaluate_ex(pred_sql: str, gold_sql: str, db_path: str) -> int:
     except TypeError:
         # 결과에 unhashable type이 있는 경우 (예: dict) 문자열 처리 후 비교
         if str(pred_res) == str(gold_res):
+            logger.debug("[EX Succeded] EX Evaluation Success")
             return 1
 
     return 0

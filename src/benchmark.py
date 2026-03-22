@@ -33,7 +33,6 @@ def run_benchmarks():
     logger.info(f"📚 Starting total {len(experiments)} experiments...")
 
     try:
-
         for cfg in experiments:
             cfg_path = f"configs/{cfg}"
             if not os.path.exists(cfg_path):

@@ -1,3 +1,4 @@
+import time
 import torch
 from typing import Dict, Any, List
 from modules import build  # 마스터 스위치!
@@ -37,15 +38,20 @@ class SchemaLinkingPipeline:
         """단일 질의(Query) 처리 파이프라인"""
         logger.debug(f"[{db_id}] Processing Query: '{query}'")
 
+        execution_times = {}
+
         # Stage 1: Build / Load Graph
         logger.debug(f"Building Graph")
+        t_start = time.perf_counter()
         graph_data, metadata = self.builder.build(db_id=db_id, db_dir=self.db_dir)
         logger.debug(f"Graph Build Completed.")
         logger.debug(f"graph_data: {graph_data}")
         logger.debug(f"metadata: {metadata}")
+        execution_times["graph_build"] = time.perf_counter() - t_start
 
         # Stage 2: Encode NLQ
         logger.debug("Encoding NLQ")
+        t_start = time.perf_counter()
         encoded_output = self.encoder.encode([query]) 
 
         if isinstance(encoded_output, tuple):
@@ -54,8 +60,10 @@ class SchemaLinkingPipeline:
             q_embs = encoded_output
         logger.debug("Encoding NLQ Completed.")
         logger.debug(f"q_embs: {q_embs.shape}")
+        execution_times["encoding_nlq"] = time.perf_counter() - t_start
 
         # Stage 3: Projection & Similarity 계산
+        t_start = time.perf_counter()
         if self.use_projection:
             logger.debug("Using Projection")
             # 💡 [신규] Projector가 GAT처럼 Graph 구조를 요구하는 경우 (is_graph_aware 플래그 활용)
@@ -100,9 +108,11 @@ class SchemaLinkingPipeline:
             logger.debug(f"🚨 강제 확인용 - node_scores 길이: {len(node_scores)}")
 
         logger.debug(f"node_scores: {node_scores}")
+        execution_times["projection"] = time.perf_counter() - t_start
             
         # Stage 4: Seed Selection
         logger.debug("Selecting Seed Nodes")
+        t_start = time.perf_counter()
         candidates_idx = list(range(len(node_scores)))
         
         # 💡 [수정됨] db_id와 metadata를 Selector로 전달하여 DB 접근 및 Index-Text 변환 허용
@@ -116,9 +126,11 @@ class SchemaLinkingPipeline:
 
         logger.debug("Seed Nodes Selected")
         logger.debug(f"seeds: {seeds}")
+        execution_times["seed_selection"] = time.perf_counter() - t_start
         
         # Stage 5: Subgraph Extraction
         logger.debug("Subgraph Extracting")
+        t_start = time.perf_counter()
         scores_list = node_scores.squeeze().tolist() 
         selected_nodes_idx, selected_edges = self.extractor.extract(
             graph_data=metadata, 
@@ -141,9 +153,11 @@ class SchemaLinkingPipeline:
 
         logger.debug("Subgraph Extracted")
         logger.debug(f"subgraph_dict: {subgraph_dict}")
+        execution_times["subgraph_extraction"] = time.perf_counter() - t_start
 
         # Stage 6: Agent Filtering
         logger.debug("Agent Filtering")
+        t_start = time.perf_counter()
         # 💡 [수정됨] db_id를 Filter로 전달하여 Value Retrieval 및 Example 조회를 허용
         final_result = self.filter.refine(
             query=query, 
@@ -152,17 +166,22 @@ class SchemaLinkingPipeline:
         )
 
         logger.debug("Agent Filtered")
+        execution_times["agent_filtering"] = time.perf_counter() - t_start
 
         logger.debug(f"✅ Final Decision: {final_result.get('status', 'Unknown')} | Nodes: {len(final_result.get('final_nodes', []))}")
+        logger.debug(f"Final Nodes: {final_result.get('final_nodes')}")
 
         generated_sql = ""
+        t_start = time.perf_counter()
         if self.generator is not None:
             logger.debug("SQL Generation")
             # Stage 7: SQL Generation
             generated_sql = self.generator.generate(query=query, subgraph=subgraph_dict)
             logger.debug(f"Generated SQL: {generated_sql}")
-        
+        execution_times["sql_generation"] = time.perf_counter() - t_start
+
         final_result["generated_sql"] = generated_sql
+        final_result["execution_time"] = execution_times
 
         scores_list = node_scores.squeeze().tolist()
         node_names = [metadata['node_metadata'].get(i, str(i)) for i in range(len(scores_list))]
