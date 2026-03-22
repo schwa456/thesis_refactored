@@ -20,7 +20,7 @@ def main():
     log_dir = config['paths']['log_dir']
     output_dir = config['paths']['output_dir']
     
-    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'], sub_dir="eval")
+    setup_logger(log_dir=log_dir, exp_name=config['experiment_name'])
     logger = get_logger(__name__)
     
     logger.info("=" * 60)
@@ -43,6 +43,7 @@ def main():
     # 4. 추론 루프 실행
     predictions = []
     csv_records = []
+    score_analysis_data = []
     start_time = time.time()
 
     total_ex_score = 0
@@ -54,6 +55,8 @@ def main():
         question_id = item.get("question_id", len(predictions))
         gold_sql = item.get("SQL", item.get("query", ""))
         db_path = os.path.join("data/raw/BIRD_dev/dev_databases", db_id, f"{db_id}.sqlite")
+
+        logger.debug(f"Question {question_id}: {question}")
         
         try:
             result = pipeline.run(db_id=db_id, query=question)
@@ -69,6 +72,28 @@ def main():
 
             gold_tables, gold_cols = parse_sql_elements(gold_sql)
             pred_tables, pred_cols = parse_sql_elements(pred_sql)
+
+            node_names = result.get("node_names", [])
+            raw_scores = result.get("raw_scores", [])
+
+            for name, score in zip(node_names, raw_scores):
+                name_lower = name.lower()
+                is_gold = False
+
+                if '.' in name_lower:
+                    tbl, col = name_lower.split('.', 1)
+                    if tbl in gold_tables and col in gold_cols:
+                        is_gold = True
+                else:
+                    if name_lower in gold_tables:
+                        is_gold = True
+            
+            score_analysis_data.append({
+                "query_id": question_id,
+                "node_name": name,
+                "score": float(score),
+                "is_gold": is_gold
+            })
 
             recall, precision, missing_cols, extra_cols = calculate_schema_metrics(pred_cols, gold_cols)
             _, _, missing_tables, extra_tables = calculate_schema_metrics(pred_tables, gold_tables)
@@ -155,6 +180,11 @@ def main():
     else:
         summary_record.to_csv(summary_path, index=False, encoding='utf-8-sig')
     logger.info(f"📈 Summary appended to: {summary_path}")
+
+    score_analysis_path = os.path.join(output_dir, f"score_analysis_{config['experiment_name']}.json")
+    with open(score_analysis_path, 'w', encoding='utf-8') as f:
+        json.jump(score_analysis_data, f, indent=4, ensure_ascii=False)
+    logger.info(f"💾 Score analysis data saved to: {score_analysis_path}")
 
     # 6. 최종 메트릭 로깅
     logger.info("=" * 60)

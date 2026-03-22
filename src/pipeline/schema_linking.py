@@ -163,4 +163,11 @@ class SchemaLinkingPipeline:
             logger.debug(f"Generated SQL: {generated_sql}")
         
         final_result["generated_sql"] = generated_sql
+
+        scores_list = node_scores.squeeze().tolist()
+        node_names = [metadata['node_metadata'].get(i, str(i)) for i in range(len(scores_list))]
+
+        final_result["raw_scores"] = scores_list
+        final_result["node_names"] = node_names
+        
         return final_result

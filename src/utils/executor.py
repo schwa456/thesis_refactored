@@ -36,6 +36,7 @@ def evaluate_ex(pred_sql: str, gold_sql: str, db_path: str) -> int:
     # (주의: ORDER BY가 포함된 쿼리라면 리스트 자체로 비교해야 엄밀하지만, 일반적인 EX는 Set 단위 비교를 허용합니다)
     try:
         if set(pred_res) == set(gold_res):
+            logger.debug("[EX Succeded] EX Evaluation Success")
             return 1
     except TypeError:
         # 결과에 unhashable type이 있는 경우 (예: dict) 문자열 처리 후 비교
