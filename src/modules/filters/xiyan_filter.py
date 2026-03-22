@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import sqlite3
 from typing import Dict, List, Any
@@ -83,18 +84,26 @@ class XiYanFilter(BaseFilter):
             example_json_str = json.dumps(example_json_obj)
 
             # 3. LLM 프롬프트 텍스트 구성
-            prompt = f"""Given the database schema below:
----
+            prompt = f"""[System]
+You are a strictly formatted Database Schema Filtering Agent. 
+Your sole task is to filter the provided schema to include ONLY the tables and columns absolutely necessary to answer the user's question.
+
+[Constraint]
+1. OUTPUT MUST BE A SINGLE VALID JSON OBJECT.
+2. DO NOT output any explanations, conversational text, SQL queries, or Python code. Start directly with '{{' and end with '}}'.
+3. Use ONLY the table and column names provided in the schema below. Do not invent or hallucinate new columns.
+4. If a table or column is irrelevant, exclude it entirely from the JSON.
+
+[Schema with Example Values]
 {schema_str}
----
-Select the most relevant tables and columns to answer the question: '{query}'.
 
-IMPORTANT: 
-1. Your output MUST be a single valid JSON object.
-2. ONLY use the table and column names provided in the schema above. Do not invent new names.
+[Question]
+{query}
 
-For example, your output should look like this:
+[Output Format Example]
 {example_json_str}
+
+[Final Decision]
 """
             
             response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
@@ -102,12 +111,37 @@ For example, your output should look like this:
             
             # 4. JSON 파싱 및 정제
             try:
-                json_part = response[response.find('{'):response.rfind('}')+1]
-                selected_columns = json.loads(json_part)
-                # 다음 Iteration을 위해 스키마 업데이트
-                current_schema = selected_columns 
-            except (json.JSONDecodeError, IndexError, ValueError):
-                logger.warning("[XiYanFilter] LLM Response parsing failed. Using current schema as fallback.")
+                # [단계 A] 마크다운 포맷팅 강제 제거
+                # LLM이 습관적으로 붙이는 코드 블록 마커를 텍스트에서 완전히 지웁니다.
+                clean_response = response.replace("```json", "").replace("```", "").strip()
+                
+                # [단계 B] 첫 번째 '{' 와 마지막 '}' 위치 추적
+                # 정규식의 탐욕적 매칭 오류를 방지하고 최상위 JSON 객체를 정확히 도출합니다.
+                start_idx = clean_response.find('{')
+                end_idx = clean_response.rfind('}')
+                
+                if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                    # 인덱스를 기반으로 JSON 문자열만 슬라이싱
+                    json_str = clean_response[start_idx : end_idx + 1]
+                    
+                    # [단계 C] JSON 로드 및 타입 검증
+                    selected_columns = json.loads(json_str)
+                    
+                    if isinstance(selected_columns, dict):
+                        current_schema = selected_columns 
+                        logger.debug(f"[XiYanFilter] 파싱 성공. 추출된 테이블 수: {len(current_schema)}")
+                    else:
+                        logger.warning(f"[XiYanFilter] 파싱된 JSON이 Dict 형식이 아닙니다 (타입: {type(selected_columns)}).")
+                        break  # 포맷 위반 시 Iteration 중단 후 이전 스키마(Fallback) 사용
+                else:
+                    raise ValueError("응답 텍스트 내에 유효한 중괄호 '{ ... }' 쌍이 존재하지 않습니다.")
+                    
+            except json.JSONDecodeError as e:
+                # LLM이 따옴표를 빼먹거나 후행 쉼표(Trailing comma)를 넣는 등의 문법 오류를 낸 경우
+                logger.warning(f"[XiYanFilter] JSON 디코딩 에러 발생: {e}. 추출 시도된 텍스트: {json_str[:100]}...")
+                break
+            except Exception as e:
+                logger.warning(f"[XiYanFilter] 파싱 중 예기치 않은 예외 발생: {e}")
                 break
 
         # 5. 파이프라인 규격(Flat list)으로 노드 변환

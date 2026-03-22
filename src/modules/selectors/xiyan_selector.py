@@ -53,7 +53,8 @@ class XiYanSelector(BaseSelector):
         # 1차 스코어링 (Semantic Similarity)
         column_scores = {}
         for col in columns:
-            tbl_name, col_name = col.split(".")
+            tbl_name = col.split(".")[0]
+            col_name = col.split(".")[1]
             t_emb = table_embs.get(tbl_name, self.embedder.encode(tbl_name, convert_to_tensor=True))
             score_qe_table = util.cos_sim(q_emb, t_emb).item()
             c_emb = col_embs[col]

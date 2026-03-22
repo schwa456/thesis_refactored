@@ -2,6 +2,7 @@ import os
 import json
 import time
 import datetime
+import traceback
 import pandas as pd
 from tqdm import tqdm
 from typing import List, Dict, Any
@@ -107,6 +108,7 @@ def main():
         except Exception as e:
             logger.error(f"🚨 Pipeline failed on Question ID {question_id}: {e}")
             # 에러 발생 시에도 CSV 행 수가 틀어지지 않도록 빈 값 삽입
+            logger.debug(f"[Traceback] Question ID {question_id}:\n{traceback.format_exc()}")
             predictions.append({"question_id": question_id, "status": "Error"})
             csv_records.append({
                 "question_id": question_id, "db_id": db_id, "question": question,
