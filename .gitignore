@@ -17,6 +17,7 @@ __pycache__
 *.index
 *.faiss
 predictions.json
+*.json
 *.sqlite
 dev_tables.json
 dev.json

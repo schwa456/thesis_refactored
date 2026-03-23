@@ -27,7 +27,8 @@ def run_benchmarks():
         "baselines/baseline_xiyansql.yaml",
         "baselines/baseline_g_retriever.yaml",
         "baselines/baseline_linkalign.yaml",
-        "experiments/proposed_gat_multi_agent.yaml"
+        "experiments/experiment_gat_classifier.yaml",
+        "experiments/proposed_gat_multi_agent.yaml",
     ]
 
     logger.info(f"📚 Starting total {len(experiments)} experiments...")

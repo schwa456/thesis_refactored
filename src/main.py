@@ -1,6 +1,6 @@
 import os
+import gc
 import json
-import time
 import datetime
 import traceback
 import pandas as pd
@@ -19,6 +19,7 @@ def main():
 
     log_dir = config['paths']['log_dir']
     output_dir = config['paths']['output_dir']
+    exp_name = config['experiment_name']
     
     setup_logger(log_dir=log_dir, exp_name=config['experiment_name'])
     logger = get_logger(__name__)
@@ -41,10 +42,18 @@ def main():
         return
 
     # 4. 추론 루프 실행
-    predictions = []
-    csv_records = []
-    score_analysis_data = []
-    profiling_data = []
+    pred_save_path = os.path.join(output_dir, "predictions.jsonl")
+    score_save_path = os.path.join(output_dir, f"score_analysis_{exp_name}.jsonl")
+    profiling_path = os.path.join(output_dir, f"profiling_{exp_name}.jsonl")
+    output_csv_path = os.path.join(output_dir, f"output_{exp_name}.csv")
+
+    for path in [pred_save_path, score_save_path, profiling_path, output_csv_path]:
+        if os.path.exists(path):
+            os.remove(path)
+    
+    csv_headers = "question_id,db_id,question,gold_sql,pred_sql,gold_tables,gold_cols,pred_tables,pred_cols,missing_tables,missing_cols,extra_tables,extra_cols,recall,precision,ex\n"
+    with open(output_csv_path, 'w', encoding='utf-8-sig') as f:
+        f.write(csv_headers)
 
     total_ex_score = 0
     valid_ex_count = 0
@@ -52,7 +61,7 @@ def main():
     for item in tqdm(dataset, desc="Running Pipeline"):
         db_id = item.get("db_id")
         question = item.get("question")
-        question_id = item.get("question_id", len(predictions))
+        question_id = item.get("question_id")
         gold_sql = item.get("SQL", item.get("query", ""))
         db_path = os.path.join("data/raw/BIRD_dev/dev_databases", db_id, f"{db_id}.sqlite")
 
@@ -64,8 +73,10 @@ def main():
 
             if "execution_time" in result:
                 profiling_record = {"query_id": question_id}
-                profiling_record.update(result.get("execution_time"), {})
-                profiling_data.append(profiling_record)
+                profiling_record.update(result.get("execution_time", {}))
+                with open(profiling_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(profiling_record, ensure_ascii=False) + '\n')
+                logger.debug(f"[Execution Time]: \n{profiling_record}")
 
             ex_score = 0
             if pred_sql and gold_sql and os.path.exists(db_path):
@@ -81,30 +92,31 @@ def main():
             node_names = result.get("node_names", [])
             raw_scores = result.get("raw_scores", [])
 
-            for name, score in zip(node_names, raw_scores):
-                name_lower = name.lower()
-                is_gold = False
+            with open(score_save_path, 'a', encoding='utf-8') as f:
+                for name, score in zip(node_names, raw_scores):
+                    name_lower = name.lower()
+                    is_gold = False
 
-                if '.' in name_lower:
-                    tbl, col = name_lower.split('.', 1)
-                    if tbl in gold_tables and col in gold_cols:
-                        is_gold = True
-                else:
-                    if name_lower in gold_tables:
-                        is_gold = True
-            
-            score_analysis_data.append({
-                "query_id": question_id,
-                "node_name": name,
-                "score": float(score),
-                "is_gold": is_gold
-            })
+                    if '.' in name_lower:
+                        tbl, col = name_lower.split('.', 1)
+                        if tbl in gold_tables and col in gold_cols:
+                            is_gold = True
+                    else:
+                        if name_lower in gold_tables:
+                            is_gold = True
+                
+                    score_record = {
+                        "query_id": question_id,
+                        "node_name": name,
+                        "score": float(score),
+                        "is_gold": is_gold
+                    }
+                    f.write(json.dumps(score_record, ensure_ascii=False) + '\n')
 
             recall, precision, missing_cols, extra_cols = calculate_schema_metrics(pred_cols, gold_cols)
             _, _, missing_tables, extra_tables = calculate_schema_metrics(pred_tables, gold_tables)
             
-            # 결과를 저장용 리스트에 보관
-            predictions.append({
+            pred_record = {
                 "question_id": question_id,
                 "db_id": db_id,
                 "question": question,
@@ -114,61 +126,53 @@ def main():
                 "reasoning": result.get("reasoning", ""),
                 "generated_sql": pred_sql,
                 "ex_score": ex_score
-            })
+            }
+            with open(pred_save_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(pred_record, ensure_ascii=False) + '\n')
             
-            csv_records.append({
-                "question_id": question_id,
-                "db_id": db_id,
-                "question": question,
-                "gold_sql": gold_sql,
-                "pred_sql": pred_sql,
-                "gold_tables": list(gold_tables),
-                "gold_cols": list(gold_cols),
-                "pred_tables": list(pred_tables),
-                "pred_cols": list(pred_cols),
-                "missing_tables": missing_tables,
-                "missing_cols": missing_cols,
-                "extra_tables": extra_tables,
-                "extra_cols": extra_cols,
-                "recall": round(recall, 4),
-                "precision": round(precision, 4),
-                "ex": ex_score
-            })
+            csv_record = [
+                str(question_id), db_id, f'"{question.replace('"', '""')}"', 
+                f'"{gold_sql.replace('"', '""')}"', f'"{pred_sql.replace('"', '""')}"',
+                str(list(gold_tables)), str(list(gold_cols)), str(list(pred_tables)), str(list(pred_cols)),
+                str(missing_tables), str(missing_cols), str(extra_tables), str(extra_cols),
+                str(round(recall, 4)), str(round(precision, 4)), str(ex_score)
+            ]
+            with open(output_csv_path, 'a', encoding='utf-8-sig') as f:
+                f.write(','.join(csv_record) + '\n')
             
         except Exception as e:
             logger.error(f"🚨 Pipeline failed on Question ID {question_id}: {e}")
-            # 에러 발생 시에도 CSV 행 수가 틀어지지 않도록 빈 값 삽입
             logger.debug(f"[Traceback] Question ID {question_id}:\n{traceback.format_exc()}")
-            predictions.append({"question_id": question_id, "status": "Error"})
-            csv_records.append({
-                "question_id": question_id, "db_id": db_id, "question": question,
-                "gold_sql": gold_sql, "pred_sql": "", "gold_tables": [], "gold_cols": [],
-                "pred_tables": [], "pred_cols": [], "missing_tables": [], "missing_cols": [],
-                "extra_tables": [], "extra_cols": [], "recall": 0.0, "precision": 0.0, "ex": 0
-            })
+            
+            # 에러 발생 시 빈 값으로 파일에 기록
+            with open(pred_save_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"question_id": question_id, "status": "Error"}, ensure_ascii=False) + '\n')
+            
+            err_csv_record = [
+                str(question_id), db_id, f'"{question.replace('"', '""')}"', 
+                f'"{gold_sql.replace('"', '""')}"', '""', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', "0.0", "0.0", "0"
+            ]
+            with open(output_csv_path, 'a', encoding='utf-8-sig') as f:
+                f.write(','.join(err_csv_record) + '\n')
 
-    # 5. Output 저장 로직
-    # 5-1. predictions.json 저장
-    pred_save_path = os.path.join(output_dir, "predictions.json")
-    with open(pred_save_path, 'w', encoding='utf-8') as f:
-        json.dump(predictions, f, indent=4, ensure_ascii=False)
+        finally:
+            if 'result' in locals():
+                del result
+            gc.collect()
 
-    # 5-2. 상세 Output CSV 저장
-    df_output = pd.DataFrame(csv_records)
-    output_csv_path = os.path.join(output_dir, f"output_{config['experiment_name']}.csv")
-    df_output.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
-    logger.info(f"💾 Detailed output saved to: {output_csv_path}")
-
-    # 5-3. 글로벌 Summary CSV 로직 (Append)
+    logger.info("🎉 Inference loop finished. Calculating final metrics...")
+    
+    # 디스크에 기록해둔 CSV를 다시 읽어와서 평균을 냅니다.
+    df_output = pd.read_csv(output_csv_path, encoding='utf-8-sig')
+    
     overall_recall = df_output['recall'].mean()
     overall_precision = df_output['precision'].mean()
     overall_ex = df_output['ex'].mean()
     
-    # 설정된 Hyperparameters 문자열로 압축 저장
     hparams_str = f"Filter: {config.get('filter', {})} | Extractor: {config.get('connectivity_extractor', {})}"
     
     summary_record = pd.DataFrame([{
-        "method": config['experiment_name'],
+        "method": exp_name,
         "recall": overall_recall,
         "precision": overall_precision,
         "ex": overall_ex,
@@ -176,7 +180,6 @@ def main():
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }])
     
-    # 모든 실험 결과가 모이는 최상위 outputs 폴더에 summary 저장
     base_outputs_dir = os.path.abspath(os.path.join(output_dir, ".."))
     summary_path = os.path.join(base_outputs_dir, "summary_all.csv")
     
@@ -186,17 +189,9 @@ def main():
         summary_record.to_csv(summary_path, index=False, encoding='utf-8-sig')
     logger.info(f"📈 Summary appended to: {summary_path}")
 
-    score_analysis_path = os.path.join(output_dir, f"score_analysis_{config['experiment_name']}.json")
-    with open(score_analysis_path, 'w', encoding='utf-8') as f:
-        json.dump(score_analysis_data, f, indent=4, ensure_ascii=False)
-    logger.info(f"💾 Score analysis data saved to: {score_analysis_path}")
-
-    profiling_path = os.path.join(output_dir, f"profiling_{config['experiment_name']}.json")
-    with open(profiling_path, 'w', encoding='utf-8') as f:
-        json.dump(profiling_data, f, indent=4, ensure_ascii=False)
-    logger.info(f"💾 Profiling data saved to: {profiling_path}")
-
-    # 6. 최종 메트릭 로깅
+    # ==========================================
+    # 💡 4. 최종 메트릭 로깅 및 종료
+    # ==========================================
     logger.info("=" * 60)
     logger.info("📊 Final Evaluation Metrics (Parsed from SQL)")
     logger.info("=" * 60)
@@ -204,6 +199,33 @@ def main():
     logger.info(f"🎯 Average Recall:     {overall_recall:.4f}")
     logger.info(f"🎯 Execution Accuracy: {overall_ex:.4f} ({total_ex_score}/{valid_ex_count})")
     logger.info("=" * 60)
+
+    metrics = {
+        'precision': overall_precision,
+        'recall': overall_recall,
+        'ex': overall_ex
+    }
+    metric_save_path = os.path.join(output_dir, "metrics.txt")
+    with open(metric_save_path, 'w', encoding='utf-8') as f:
+        for k, v in metrics.items():
+            f.write(f"{k}: {v:.4f}\n")
+
+    logger.info("✅ All tasks completed. Forcing process termination.")
+    os._exit(0)
+
+    metrics = {
+        'precision': overall_precision,
+        'recall': overall_recall,
+        'ex': overall_ex
+    }
+    metric_save_path = os.path.join(output_dir, "metrics.txt")
+    with open(metric_save_path, 'w', encoding='utf-8') as f:
+        for k, v in metrics.items():
+            f.write(f"{k}: {v:.4f}\n")
+
+    logger.info("✅ All tasks completed. Exiting process.")
+    
+    os._exit(0)
 
 if __name__ == "__main__":
     main()

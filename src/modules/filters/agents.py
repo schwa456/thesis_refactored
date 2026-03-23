@@ -59,6 +59,8 @@ class SingleAgentFilter(BaseFilter):
         
         response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
         parsed = AgentUtils.extract_json(response)
+
+        logger.debug(f"Reasoning: {parsed.get("step_by_step_reasoning", "")}")
         
         return {
             "status": "Answerable" if parsed.get("selected_nodes") else "Unanswerable",

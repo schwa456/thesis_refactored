@@ -121,7 +121,8 @@ class SchemaLinkingPipeline:
             candidates=candidates_idx, 
             question=query,
             db_id=db_id,             # <-- 신규 추가: Value Retrieval을 위한 DB 경로 탐색용
-            metadata=metadata        # <-- 신규 추가: 정수 Index를 실제 Schema Text로 변환하기 위함
+            metadata=metadata,        # <-- 신규 추가: 정수 Index를 실제 Schema Text로 변환하기 위함
+            graph_data=graph_data
         )
 
         logger.debug("Seed Nodes Selected")
