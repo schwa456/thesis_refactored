@@ -1,0 +1,470 @@
+{"query_id": 0, "node_name": "frpm", "score": 0.0, "is_gold": true}
+{"query_id": 0, "node_name": "satscores", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools", "score": 0.38282352685928345, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Academic Year", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.County Code", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.District Code", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.School Code", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.County Name", "score": 0.0, "is_gold": true}
+{"query_id": 0, "node_name": "frpm.District Name", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.School Name", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.District Type", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.School Type", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Educational Option Type", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.NSLP Provision Status", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Charter School (Y/N)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Charter School Number", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Charter Funding Type", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.IRC", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Low Grade", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.High Grade", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Enrollment (K-12)", "score": 0.0, "is_gold": true}
+{"query_id": 0, "node_name": "frpm.Free Meal Count (K-12)", "score": 0.0, "is_gold": true}
+{"query_id": 0, "node_name": "frpm.Percent (%) Eligible Free (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.FRPM Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Percent (%) Eligible FRPM (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Enrollment (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Free Meal Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Percent (%) Eligible Free (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.FRPM Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.Percent (%) Eligible FRPM (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.2013-14 CALPADS Fall 1 Certification Status", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.cds", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.rtype", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.sname", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.dname", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.cname", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.enroll12", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.NumTstTakr", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.AvgScrRead", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.AvgScrMath", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.AvgScrWrite", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.NumGE1500", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.NCESDist", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.NCESSchool", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.StatusType", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.County", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.District", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.School", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Street", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.StreetAbr", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.City", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Zip", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.State", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.MailStreet", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.MailStrAbr", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.MailCity", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.MailZip", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.MailState", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Phone", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Ext", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Website", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.OpenDate", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.ClosedDate", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Charter", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.CharterNum", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.FundingType", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.DOC", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.DOCType", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.SOC", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.SOCType", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.EdOpsCode", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.EdOpsName", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.EILCode", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.EILName", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.GSoffered", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.GSserved", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Virtual", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Magnet", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Latitude", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.Longitude", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmFName1", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmLName1", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmEmail1", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmFName2", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmLName2", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmEmail2", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmFName3", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmLName3", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.AdmEmail3", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "schools.LastUpdate", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "frpm.CDSCode->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 0, "node_name": "satscores.cds->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm", "score": 0.0, "is_gold": true}
+{"query_id": 1, "node_name": "satscores", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools", "score": 0.3796597719192505, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Academic Year", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.County Code", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.District Code", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.School Code", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.County Name", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.District Name", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.School Name", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.District Type", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.School Type", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Educational Option Type", "score": 0.0, "is_gold": true}
+{"query_id": 1, "node_name": "frpm.NSLP Provision Status", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Charter School (Y/N)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Charter School Number", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Charter Funding Type", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.IRC", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Low Grade", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.High Grade", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Enrollment (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Free Meal Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Percent (%) Eligible Free (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.FRPM Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Percent (%) Eligible FRPM (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Enrollment (Ages 5-17)", "score": 0.0, "is_gold": true}
+{"query_id": 1, "node_name": "frpm.Free Meal Count (Ages 5-17)", "score": 0.0, "is_gold": true}
+{"query_id": 1, "node_name": "frpm.Percent (%) Eligible Free (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.FRPM Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.Percent (%) Eligible FRPM (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.2013-14 CALPADS Fall 1 Certification Status", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.cds", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.rtype", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.sname", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.dname", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.cname", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.enroll12", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.NumTstTakr", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.AvgScrRead", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.AvgScrMath", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.AvgScrWrite", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.NumGE1500", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.NCESDist", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.NCESSchool", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.StatusType", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.County", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.District", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.School", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Street", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.StreetAbr", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.City", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Zip", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.State", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.MailStreet", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.MailStrAbr", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.MailCity", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.MailZip", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.MailState", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Phone", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Ext", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Website", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.OpenDate", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.ClosedDate", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Charter", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.CharterNum", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.FundingType", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.DOC", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.DOCType", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.SOC", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.SOCType", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.EdOpsCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.EdOpsName", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.EILCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.EILName", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.GSoffered", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.GSserved", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Virtual", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Magnet", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Latitude", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.Longitude", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmFName1", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmLName1", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmEmail1", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmFName2", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmLName2", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmEmail2", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmFName3", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmLName3", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.AdmEmail3", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "schools.LastUpdate", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "frpm.CDSCode->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 1, "node_name": "satscores.cds->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "satscores", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools", "score": 0.38759058713912964, "is_gold": true}
+{"query_id": 2, "node_name": "frpm.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "frpm.Academic Year", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.County Code", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.District Code", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.School Code", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.County Name", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.District Name", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "frpm.School Name", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.District Type", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.School Type", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Educational Option Type", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.NSLP Provision Status", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Charter School (Y/N)", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "frpm.Charter School Number", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Charter Funding Type", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.IRC", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Low Grade", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.High Grade", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Enrollment (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Free Meal Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Percent (%) Eligible Free (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.FRPM Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Percent (%) Eligible FRPM (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Enrollment (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Free Meal Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Percent (%) Eligible Free (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.FRPM Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.Percent (%) Eligible FRPM (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.2013-14 CALPADS Fall 1 Certification Status", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.cds", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.rtype", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.sname", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.dname", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.cname", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.enroll12", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.NumTstTakr", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.AvgScrRead", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.AvgScrMath", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.AvgScrWrite", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.NumGE1500", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "schools.NCESDist", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.NCESSchool", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.StatusType", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.County", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.District", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.School", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Street", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.StreetAbr", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.City", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Zip", "score": 0.0, "is_gold": true}
+{"query_id": 2, "node_name": "schools.State", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.MailStreet", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.MailStrAbr", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.MailCity", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.MailZip", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.MailState", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Phone", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Ext", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Website", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.OpenDate", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.ClosedDate", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Charter", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.CharterNum", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.FundingType", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.DOC", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.DOCType", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.SOC", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.SOCType", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.EdOpsCode", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.EdOpsName", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.EILCode", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.EILName", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.GSoffered", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.GSserved", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Virtual", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Magnet", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Latitude", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.Longitude", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmFName1", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmLName1", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmEmail1", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmFName2", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmLName2", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmEmail2", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmFName3", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmLName3", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.AdmEmail3", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "schools.LastUpdate", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "frpm.CDSCode->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 2, "node_name": "satscores.cds->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm", "score": 0.0, "is_gold": true}
+{"query_id": 3, "node_name": "satscores", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools", "score": 0.3816169500350952, "is_gold": true}
+{"query_id": 3, "node_name": "frpm.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 3, "node_name": "frpm.Academic Year", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.County Code", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.District Code", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.School Code", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.County Name", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.District Name", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.School Name", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.District Type", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.School Type", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Educational Option Type", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.NSLP Provision Status", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Charter School (Y/N)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Charter School Number", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Charter Funding Type", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.IRC", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Low Grade", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.High Grade", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Enrollment (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Free Meal Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Percent (%) Eligible Free (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.FRPM Count (K-12)", "score": 0.0, "is_gold": true}
+{"query_id": 3, "node_name": "frpm.Percent (%) Eligible FRPM (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Enrollment (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Free Meal Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Percent (%) Eligible Free (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.FRPM Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.Percent (%) Eligible FRPM (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.2013-14 CALPADS Fall 1 Certification Status", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.cds", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.rtype", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.sname", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.dname", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.cname", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.enroll12", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.NumTstTakr", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.AvgScrRead", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.AvgScrMath", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.AvgScrWrite", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.NumGE1500", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 3, "node_name": "schools.NCESDist", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.NCESSchool", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.StatusType", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.County", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.District", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.School", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Street", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.StreetAbr", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.City", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Zip", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.State", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.MailStreet", "score": 0.0, "is_gold": true}
+{"query_id": 3, "node_name": "schools.MailStrAbr", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.MailCity", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.MailZip", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.MailState", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Phone", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Ext", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Website", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.OpenDate", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.ClosedDate", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Charter", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.CharterNum", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.FundingType", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.DOC", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.DOCType", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.SOC", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.SOCType", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.EdOpsCode", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.EdOpsName", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.EILCode", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.EILName", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.GSoffered", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.GSserved", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Virtual", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Magnet", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Latitude", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.Longitude", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmFName1", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmLName1", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmEmail1", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmFName2", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmLName2", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmEmail2", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmFName3", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmLName3", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.AdmEmail3", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "schools.LastUpdate", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "frpm.CDSCode->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 3, "node_name": "satscores.cds->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "satscores", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools", "score": 0.3853619396686554, "is_gold": true}
+{"query_id": 4, "node_name": "frpm.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "frpm.Academic Year", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.County Code", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.District Code", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.School Code", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.County Name", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.District Name", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.School Name", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.District Type", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.School Type", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Educational Option Type", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.NSLP Provision Status", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Charter School (Y/N)", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "frpm.Charter School Number", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Charter Funding Type", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "frpm.IRC", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Low Grade", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.High Grade", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Enrollment (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Free Meal Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Percent (%) Eligible Free (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.FRPM Count (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Percent (%) Eligible FRPM (K-12)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Enrollment (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Free Meal Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Percent (%) Eligible Free (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.FRPM Count (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.Percent (%) Eligible FRPM (Ages 5-17)", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.2013-14 CALPADS Fall 1 Certification Status", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.cds", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.rtype", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.sname", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.dname", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.cname", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.enroll12", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.NumTstTakr", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.AvgScrRead", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.AvgScrMath", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.AvgScrWrite", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.NumGE1500", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.CDSCode", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "schools.NCESDist", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.NCESSchool", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.StatusType", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.County", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.District", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.School", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Street", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.StreetAbr", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.City", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Zip", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.State", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.MailStreet", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.MailStrAbr", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.MailCity", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.MailZip", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.MailState", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Phone", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "schools.Ext", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Website", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.OpenDate", "score": 0.0, "is_gold": true}
+{"query_id": 4, "node_name": "schools.ClosedDate", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Charter", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.CharterNum", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.FundingType", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.DOC", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.DOCType", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.SOC", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.SOCType", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.EdOpsCode", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.EdOpsName", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.EILCode", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.EILName", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.GSoffered", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.GSserved", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Virtual", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Magnet", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Latitude", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.Longitude", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmFName1", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmLName1", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmEmail1", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmFName2", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmLName2", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmEmail2", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmFName3", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmLName3", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.AdmEmail3", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "schools.LastUpdate", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "frpm.CDSCode->schools.CDSCode", "score": 0.0, "is_gold": false}
+{"query_id": 4, "node_name": "satscores.cds->schools.CDSCode", "score": 0.0, "is_gold": false}

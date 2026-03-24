@@ -10,7 +10,7 @@ class SchemaHeteroGAT(nn.Module):
     Table, Column, FK_Node가 서로 Attention 기반의 메시지 패싱을 수행하여,
     텍스트 의미(Semantic)와 구조적 위치(Structure)가 융합된 임베딩을 출력합니다.
     """
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 2, heads: int = 4):
+    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, num_layers: int = 3, heads: int = 4):
         super(SchemaHeteroGAT, self).__init__()
         self.num_layers = num_layers
         

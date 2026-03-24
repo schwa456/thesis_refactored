@@ -21,14 +21,14 @@ def run_benchmarks():
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     experiments = [
-        "baselines/preliminary_vector_only.yaml",
-        "baselines/preliminary_graph_expansion.yaml",
-        "baselines/preliminary_graph_and_agent.yaml",
-        "baselines/baseline_xiyansql.yaml",
-        "baselines/baseline_g_retriever.yaml",
-        "baselines/baseline_linkalign.yaml",
+        # "baselines/preliminary_vector_only.yaml",
+        # "baselines/preliminary_graph_expansion.yaml",
+        # "baselines/preliminary_graph_and_agent.yaml",
+        # "baselines/baseline_xiyansql.yaml",
+        # "baselines/baseline_g_retriever.yaml",
+        # "baselines/baseline_linkalign.yaml",
         "experiments/experiment_gat_classifier.yaml",
-        "experiments/proposed_gat_multi_agent.yaml",
+        # "experiments/proposed_gat_multi_agent.yaml",
     ]
 
     logger.info(f"📚 Starting total {len(experiments)} experiments...")

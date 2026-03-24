@@ -115,14 +115,12 @@ class SchemaLinkingPipeline:
         t_start = time.perf_counter()
         candidates_idx = list(range(len(node_scores)))
         
-        # 💡 [수정됨] db_id와 metadata를 Selector로 전달하여 DB 접근 및 Index-Text 변환 허용
         seeds = self.selector.select(
-            scores=node_scores, 
+            scores=node_scores if 'node_scores' in locals() else None, 
             candidates=candidates_idx, 
             question=query,
-            db_id=db_id,             # <-- 신규 추가: Value Retrieval을 위한 DB 경로 탐색용
-            metadata=metadata,        # <-- 신규 추가: 정수 Index를 실제 Schema Text로 변환하기 위함
-            graph_data=graph_data
+            graph_data=graph_data,
+            metadata=metadata
         )
 
         logger.debug("Seed Nodes Selected")
@@ -132,7 +130,11 @@ class SchemaLinkingPipeline:
         # Stage 5: Subgraph Extraction
         logger.debug("Subgraph Extracting")
         t_start = time.perf_counter()
-        scores_list = node_scores.squeeze().tolist() 
+        if 'node_scores' in locals() and node_scores is not None:
+            scores_list = node_scores.squeeze().tolist()
+        else:
+            scores_list = [1.0] * len(candidates_idx)
+            
         selected_nodes_idx, selected_edges = self.extractor.extract(
             graph_data=metadata, 
             node_scores=scores_list, 

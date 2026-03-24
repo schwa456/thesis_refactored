@@ -1,5 +1,6 @@
 import os
 import gc
+import csv
 import json
 import datetime
 import traceback
@@ -36,6 +37,8 @@ def main():
     try:
         with open(data_path, 'r', encoding='utf-8') as f:
             dataset = json.load(f)
+        # For Testing
+        dataset = dataset[:5]
         logger.info(f"Loaded {len(dataset)} queries from {data_path}")
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
@@ -45,15 +48,11 @@ def main():
     pred_save_path = os.path.join(output_dir, "predictions.jsonl")
     score_save_path = os.path.join(output_dir, f"score_analysis_{exp_name}.jsonl")
     profiling_path = os.path.join(output_dir, f"profiling_{exp_name}.jsonl")
-    output_csv_path = os.path.join(output_dir, f"output_{exp_name}.csv")
+    output_path = os.path.join(output_dir, f"output_{exp_name}.jsonl")
 
-    for path in [pred_save_path, score_save_path, profiling_path, output_csv_path]:
+    for path in [pred_save_path, score_save_path, profiling_path, output_path]:
         if os.path.exists(path):
             os.remove(path)
-    
-    csv_headers = "question_id,db_id,question,gold_sql,pred_sql,gold_tables,gold_cols,pred_tables,pred_cols,missing_tables,missing_cols,extra_tables,extra_cols,recall,precision,ex\n"
-    with open(output_csv_path, 'w', encoding='utf-8-sig') as f:
-        f.write(csv_headers)
 
     total_ex_score = 0
     valid_ex_count = 0
@@ -130,15 +129,27 @@ def main():
             with open(pred_save_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(pred_record, ensure_ascii=False) + '\n')
             
-            csv_record = [
-                str(question_id), db_id, f'"{question.replace('"', '""')}"', 
-                f'"{gold_sql.replace('"', '""')}"', f'"{pred_sql.replace('"', '""')}"',
-                str(list(gold_tables)), str(list(gold_cols)), str(list(pred_tables)), str(list(pred_cols)),
-                str(missing_tables), str(missing_cols), str(extra_tables), str(extra_cols),
-                str(round(recall, 4)), str(round(precision, 4)), str(ex_score)
-            ]
-            with open(output_csv_path, 'a', encoding='utf-8-sig') as f:
-                f.write(','.join(csv_record) + '\n')
+            output_record = {
+                "question_id": question_id,
+                "db_id": db_id,
+                "question": question,
+                "gold_sql": gold_sql,
+                "gold_tables": list(gold_tables),
+                "gold_cols": list(gold_cols),
+                "pred_tables": list(pred_tables),
+                "pred_cols": list(pred_cols),
+                "missing_tables": missing_tables,
+                "missing_cols": missing_cols,
+                "extra_tables": extra_tables,
+                "extra_cols": extra_cols,
+                "recall": round(recall, 4),
+                "precision": round(precision, 4),
+                "ex": ex_score
+            }
+
+            
+            with open(output_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(output_record, ensure_ascii=False) + '\n')
             
         except Exception as e:
             logger.error(f"🚨 Pipeline failed on Question ID {question_id}: {e}")
@@ -148,12 +159,8 @@ def main():
             with open(pred_save_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps({"question_id": question_id, "status": "Error"}, ensure_ascii=False) + '\n')
             
-            err_csv_record = [
-                str(question_id), db_id, f'"{question.replace('"', '""')}"', 
-                f'"{gold_sql.replace('"', '""')}"', '""', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]', "0.0", "0.0", "0"
-            ]
-            with open(output_csv_path, 'a', encoding='utf-8-sig') as f:
-                f.write(','.join(err_csv_record) + '\n')
+            with open(output_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"question_id": question_id, "status": "Error"}, ensure_ascii=False) + '\n')
 
         finally:
             if 'result' in locals():
@@ -163,8 +170,26 @@ def main():
     logger.info("🎉 Inference loop finished. Calculating final metrics...")
     
     # 디스크에 기록해둔 CSV를 다시 읽어와서 평균을 냅니다.
-    df_output = pd.read_csv(output_csv_path, encoding='utf-8-sig')
     
+    try:
+        df_output = pd.read_json(
+            output_path, 
+            lines=True,
+            orient='records'
+        )
+
+        if 'recall' in df_output.columns:
+            overall_recall = df_output['recall'].mean()
+            overall_precision = df_output['precision'].mean()
+            overall_ex = df_output['ex'].mean()
+        else:
+            logger.warning("No valid predictions found. Setting metrics to 0.0")
+            overall_recall = overall_precision = overall_ex = 0.0
+
+    except Exception as e:
+        logger.error(f"Output JSONL Parsing Failed: {e}")
+        overall_recall = overall_precision = overall_ex = 0.0
+
     overall_recall = df_output['recall'].mean()
     overall_precision = df_output['precision'].mean()
     overall_ex = df_output['ex'].mean()
@@ -184,9 +209,9 @@ def main():
     summary_path = os.path.join(base_outputs_dir, "summary_all.csv")
     
     if os.path.exists(summary_path):
-        summary_record.to_csv(summary_path, mode='a', header=False, index=False, encoding='utf-8-sig')
+        summary_record.to_csv(summary_path, mode='a', header=False, index=False, encoding='utf-8')
     else:
-        summary_record.to_csv(summary_path, index=False, encoding='utf-8-sig')
+        summary_record.to_csv(summary_path, index=False, encoding='utf-8')
     logger.info(f"📈 Summary appended to: {summary_path}")
 
     # ==========================================

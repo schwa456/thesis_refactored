@@ -37,6 +37,8 @@ class LLMSQLGenerator(BaseGenerator):
         - Do not wrap the query in markdown ```sql ... ```.
         - Do not add any explanations.
         """
+
+        logger.debug(f"[Generation Prompt]: \n{prompt}")
         
         response = self.client.generate_text(prompt=prompt, model=self.llm_model, temperature=self.temperature)
         

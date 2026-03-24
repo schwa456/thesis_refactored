@@ -27,3 +27,6 @@ dev.json
 ./checkpoints/*
 ./outputs/
 ./notebooks/*
+*.txt
+./related_works/*
+*.yaml
