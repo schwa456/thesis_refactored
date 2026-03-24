@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 
 from modules.registry import register
 from modules.base import BaseSelector
+from prompts.prompt_manager import PromptManager
 from llm_client.api_handler import APIClient
 from utils.logger import get_logger
 
@@ -16,7 +17,7 @@ class AgentNodeSelector(BaseSelector):
     def __init__(self, model_name: str = "Qwen/Qwen2.5-Coder-32B-Instruct", temperature: float = 0.0, **kwargs):
         self.model_name = model_name
         self.temperature = temperature
-        # 💡 외부에서 주입받지 않고 APIClient를 내부에서 초기화하여 사용합니다!
+        self.prompt_manager = PromptManager()
         self.client = APIClient() 
         logger.info(f"Initialized AgentNodeSelector with model: [{self.model_name}]")
 
@@ -62,30 +63,12 @@ class AgentNodeSelector(BaseSelector):
         return final_seeds
     
     def _construct_prompt(self, question: str, candidates: List[str]) -> str:
-        return f"""
-        You are a database expert focusing on selecting relevant tables AND columns for a SQL query.
-        Given the user's question and the list of available schema elements, select the elements that are **strictly necessary** to answer the question.
-
-        * Note: Column names are provided in the format 'table_name.column_name'.
-
-        Current Task:
-        1. Analyze the question: "{question}"
-        2. Review available tables and columns: {candidates}
-        3. Select relevant tables AND their specific columns. 
-        4. Assign a **confidence score (0.0 to 1.0)** for each selected item.
-        
-        * STRICT CONSTRAINT ON REASONING: Keep your reasoning VERY concise (maximum 3 sentences). Do not overthink.
-
-        Output Format (JSON Only):
-        {{
-            "is_answerable": true,
-            "reasoning": "Brief explanation here...",
-            "selected_items": {{
-                "table_name_A": 0.95,
-                "table_name_A.column_name_1": 0.90
-            }}
-        }}
-        """
+        return self.prompt_manager.load_prompt(
+            file_name='selector',
+            section='single_agent_selector',
+            question=question,
+            candidates=candidates
+        )
     
     def _parse_json_response(self, response: str) -> dict:
         """

@@ -8,13 +8,7 @@ nlq_encoder:
 
 # 2. Projection
 projection:
-  enabled: true
-  name: "GATProjector"
-  params:
-    hidden_channels: 256
-    num_layers: 3
-    heads: 4
-    checkpoint_path: "./outputs/checkpoints/best_gat_model.pt"
+  enabled: false
 
 # 3. Selection
 seed_selector:
@@ -22,7 +16,7 @@ seed_selector:
   params:
     hidden_dim: 256
     threshold: 0.5
-    weight_path: "./outputs/checkpoints/mlp_classifier_with_gat_best_recall.pt"
+    weight_path: "outputs/checkpoints/mlp_classifier_with_gat_train_best_recall.pt"
 
 # 4. Extraction
 connectivity_extractor:

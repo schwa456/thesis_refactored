@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer, util
 
 from modules.registry import register
 from modules.base import BaseSelector
+from prompts.prompt_manager import PromptManager
 from llm_client.api_handler import APIClient
 from utils.logger import get_logger
 
@@ -19,6 +20,7 @@ class LinkAlignSelector(BaseSelector):
     def __init__(self, model_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct", top_k: int = 20, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2", **kwargs):
         self.top_k = top_k
         self.model_name = model_name
+        self.prompt_manager = PromptManager()
         self.client = APIClient()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.embedder = SentenceTransformer(embedding_model, device=self.device)
@@ -42,15 +44,14 @@ class LinkAlignSelector(BaseSelector):
         initial_schema = [text_candidates[i] for i in top_k_initial_idx]
         
         # 3. Schema Auditor & Query Rewriter (LLM 개입)
-        prompt = f"""You are a database Schema Auditor for Text-to-SQL.
-Original Question: "{question}"
-Initially Retrieved Schema (Top-{self.top_k}): {initial_schema}
-
-Task:
-1. Identify if any essential tables/columns (e.g., implicit bridge tables for JOINs) are missing from the Initial Schema to fully answer the question.
-2. Rewrite the Original Question to explicitly include the inferred missing schema keywords.
-3. Return ONLY the rewritten question string, without any other text.
-"""
+        prompt = self.prompt_manager.load_prompt(
+            file_name='selector',
+            section='link_align_selector',
+            question=question,
+            top_k=self.top_k,
+            candidates=candidates,
+            initial_schema=initial_schema
+        )
         rewritten_question = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=0.0).strip()
         logger.debug(f"[LinkAlign] Original Q: {question}")
         logger.debug(f"[LinkAlign] Rewritten Q: {rewritten_question}")

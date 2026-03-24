@@ -103,9 +103,16 @@ class SchemaLinkingPipeline:
 
             node_embs = torch.cat(embs_list, dim=0).to('cpu')
             
-            node_scores = torch.nn.functional.cosine_similarity(q_embs.to('cpu'), node_embs)
+            try:
+                node_scores = torch.nn.functional.cosine_similarity(q_embs.to('cpu'), node_embs)
+            except RuntimeError as e:
+                logger.debug(f"Cosine similarity skipped due to dimension mismatch (likely End-to-End Selector in use).")
+                node_scores = None
 
-            logger.debug(f"🚨 강제 확인용 - node_scores 길이: {len(node_scores)}")
+            if node_scores is not None:
+                logger.debug(f"🚨 강제 확인용 - node_scores 길이: {len(node_scores)}")
+            else:
+                logger.debug(f"🚨 강제 확인용 - node_scores is None")
 
         logger.debug(f"node_scores: {node_scores}")
         execution_times["projection"] = time.perf_counter() - t_start
@@ -113,7 +120,11 @@ class SchemaLinkingPipeline:
         # Stage 4: Seed Selection
         logger.debug("Selecting Seed Nodes")
         t_start = time.perf_counter()
-        candidates_idx = list(range(len(node_scores)))
+        
+        if node_scores is not None:
+            candidates_idx = list(range(len(node_scores)))
+        else:
+            candidates_idx = list(range(len(metadata.get('node_metadata', {}))))
         
         seeds = self.selector.select(
             scores=node_scores if 'node_scores' in locals() else None, 
@@ -186,10 +197,14 @@ class SchemaLinkingPipeline:
         final_result["generated_sql"] = generated_sql
         final_result["execution_time"] = execution_times
 
-        scores_list = node_scores.squeeze().tolist()
-        node_names = [metadata['node_metadata'].get(i, str(i)) for i in range(len(scores_list))]
+        if node_scores is not None:
+            raw_scores_list = node_scores.squeeze().tolist()
+            node_names = [metadata['node_metadata'].get(i, str(i)) for i in range(len(raw_scores_list))]
+        else:
+            raw_scores_list = []
+            node_names = []
 
-        final_result["raw_scores"] = scores_list
+        final_result["raw_scores"] = raw_scores_list
         final_result["node_names"] = node_names
         
         return final_result

@@ -189,10 +189,6 @@ def main():
     except Exception as e:
         logger.error(f"Output JSONL Parsing Failed: {e}")
         overall_recall = overall_precision = overall_ex = 0.0
-
-    overall_recall = df_output['recall'].mean()
-    overall_precision = df_output['precision'].mean()
-    overall_ex = df_output['ex'].mean()
     
     hparams_str = f"Filter: {config.get('filter', {})} | Extractor: {config.get('connectivity_extractor', {})}"
     
@@ -236,20 +232,6 @@ def main():
             f.write(f"{k}: {v:.4f}\n")
 
     logger.info("✅ All tasks completed. Forcing process termination.")
-    os._exit(0)
-
-    metrics = {
-        'precision': overall_precision,
-        'recall': overall_recall,
-        'ex': overall_ex
-    }
-    metric_save_path = os.path.join(output_dir, "metrics.txt")
-    with open(metric_save_path, 'w', encoding='utf-8') as f:
-        for k, v in metrics.items():
-            f.write(f"{k}: {v:.4f}\n")
-
-    logger.info("✅ All tasks completed. Exiting process.")
-    
     os._exit(0)
 
 if __name__ == "__main__":

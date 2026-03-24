@@ -1,0 +1,2 @@
+export CUDA_VISIBLE_DEVICES=0,1
+nohup python -m vllm.entrypoints.openai.api_server --model meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000 --max-model-len 8192 --tensor-parallel-size 2 --gpu-memory-utilization 0.8 > logs/vllm_server_log.log &1>& 2

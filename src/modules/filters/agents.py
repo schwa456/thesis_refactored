@@ -5,6 +5,7 @@ from typing import Dict, List, Any
 
 from modules.registry import register
 from modules.base import BaseFilter
+from prompts.prompt_manager import PromptManager
 from llm_client.api_handler import APIClient
 from utils.logger import get_logger
 
@@ -42,20 +43,19 @@ class SingleAgentFilter(BaseFilter):
     def __init__(self, model_name: str = "Qwen/Qwen2.5-Coder-32B-Instruct", temperature: float = 0.0, **kwargs):
         self.model_name = model_name
         self.temperature = temperature
+        self.prompt_manager = PromptManager()
         self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
         logger.info(f"Initialized SingleAgentFilter (Model: {model_name})")
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> Dict[str, Any]:
         ddl_schema = AgentUtils.generate_ddl(subgraph)
         
-        prompt = f"""
-        You are a database expert. Review the following schema and select ONLY the strictly necessary tables and columns to answer the query.
-        Query: "{query}"
-        Schema:
-        {ddl_schema}
-        
-        Return strictly a JSON object: {{"step_by_step_reasoning": "...", "selected_nodes": ["table.col1", ...]}}
-        """
+        prompt = self.prompt_manager.load_prompt(
+            file_name='filter',
+            section='single_agent_filter',
+            query=query,
+            schema_str=ddl_schema
+        )
         
         response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
         parsed = AgentUtils.extract_json(response)
@@ -76,28 +76,34 @@ class AdaptiveMultiAgentFilter(BaseFilter):
     def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct", uncertainty_threshold: float = 0.6, **kwargs):
         self.model_name = model_name
         self.threshold = uncertainty_threshold
+        self.prompt_manager = PromptManager()
         self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
         logger.info(f"Initialized AdaptiveMultiAgentFilter (Threshold: {self.threshold})")
 
-    def _call_agent(self, role: str, prompt: str) -> dict:
-        enhanced_role = role + " You MUST return ONLY a valid JSON object. Start directly with { and end with }."
-        # APIClient를 통해 동기적으로 호출 (병렬 처리가 필요하다면 추후 ThreadPool 등을 적용 가능)
-        full_prompt = f"System: {enhanced_role}\nUser: {prompt}"
-        response = self.client.generate_text(prompt=full_prompt, model=self.model_name, temperature=0.1)
+    def _call_agent(self, prompt: str) -> dict:
+        response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=0.1)
         return AgentUtils.extract_json(response)
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> Dict[str, Any]:
         ddl_schema = AgentUtils.generate_ddl(subgraph)
         
         # Phase 1: Semantic & Structural 평가
-        semantic_role = 'You are a Semantic Data Analyst. Return JSON: {"step_by_step_reasoning": "...", "selected_nodes": ["table.col1"]}'
-        semantic_prompt = f"Query: {query}\nSchema:\n{ddl_schema}"
-        
-        structural_role = 'You are a Structural DBA. Return JSON: {"step_by_step_reasoning": "...", "selected_nodes": ["table.col1"]}'
-        structural_prompt = f"Query: {query}\nSchema:\n{ddl_schema}"
+        semantic_prompt = self.prompt_manager.load_prompt(
+            file_name='filter',
+            section='semantic_agent',
+            query=query,
+            schema_str=ddl_schema
+        )
 
-        semantic_res = self._call_agent(semantic_role, semantic_prompt)
-        structural_res = self._call_agent(structural_role, structural_prompt)
+        structural_prompt = self.prompt_manager.load_prompt(
+            file_name='filter',
+            section='structural_agent',
+            query=query,
+            schema_str=ddl_schema
+        )
+
+        semantic_res = self._call_agent(semantic_prompt)
+        structural_res = self._call_agent(structural_prompt)
 
         set_a = set(semantic_res.get("selected_nodes", []))
         set_b = set(structural_res.get("selected_nodes", []))
@@ -119,10 +125,16 @@ class AdaptiveMultiAgentFilter(BaseFilter):
 
         # Phase 3: Skeptic Agent
         logger.debug(f"[MultiAgent] High Uncertainty (> {self.threshold}). Triggering Skeptic Agent.")
-        skeptic_role = 'You are a Conservative Skeptic. Output JSON: {"step_by_step_reasoning": "...", "final_decision": ["table.col"] or "Unanswerable"}'
-        skeptic_prompt = f"Query: '{query}'\nSchema:\n{ddl_schema}\nAgent A: {list(set_a)}\nAgent B: {list(set_b)}\nResolve conflict."
+        skeptic_prompt = self.prompt_manager.load_prompt(
+            file_name='filter',
+            section='skeptic_agent',
+            query=query,
+            schema_str=ddl_schema,
+            agent_a=list(set_a),
+            agent_b=list(set_b)
+        )
         
-        skeptic_res = self._call_agent(skeptic_role, skeptic_prompt)
+        skeptic_res = self._call_agent(skeptic_prompt)
         decision = skeptic_res.get("final_decision", "Unanswerable")
 
         status = "Unanswerable" if decision == "Unanswerable" else "Answerable"

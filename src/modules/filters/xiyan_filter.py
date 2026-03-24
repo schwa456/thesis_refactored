@@ -7,6 +7,7 @@ from typing import Dict, List, Any
 from modules.registry import register
 from modules.base import BaseFilter
 from llm_client.api_handler import APIClient
+from prompts.prompt_manager import PromptManager
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ class XiYanFilter(BaseFilter):
         self.max_iteration = max_iteration
         self.temperature = temperature
         self.db_dir = db_dir
+        self.prompt_manager = PromptManager()
         self.client = APIClient()
         logger.info(f"Initialized XiYanFilter with DB Value Example Injection (Iterations: {self.max_iteration})")
 
@@ -84,27 +86,13 @@ class XiYanFilter(BaseFilter):
             example_json_str = json.dumps(example_json_obj)
 
             # 3. LLM 프롬프트 텍스트 구성
-            prompt = f"""[System]
-You are a strictly formatted Database Schema Filtering Agent. 
-Your sole task is to filter the provided schema to include ONLY the tables and columns absolutely necessary to answer the user's question.
-
-[Constraint]
-1. OUTPUT MUST BE A SINGLE VALID JSON OBJECT.
-2. DO NOT output any explanations, conversational text, SQL queries, or Python code. Start directly with '{{' and end with '}}'.
-3. Use ONLY the table and column names provided in the schema below. Do not invent or hallucinate new columns.
-4. If a table or column is irrelevant, exclude it entirely from the JSON.
-
-[Schema with Example Values]
-{schema_str}
-
-[Question]
-{query}
-
-[Output Format Example]
-{example_json_str}
-
-[Final Decision]
-"""
+            prompt = self.prompt_manager.load_prompt(
+                file_name='filter',
+                section='xiyan_filter',
+                schema_str=schema_str,
+                query=query,
+                example_json_str=example_json_str
+            )
             
             response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
             logger.debug(f"[XiYanFilter] LLM Response: {response}")
