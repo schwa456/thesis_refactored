@@ -1,10 +1,13 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import gc
 import csv
 import json
 import datetime
 import traceback
 import pandas as pd
+import concurrent.futures
 from tqdm import tqdm
 from typing import List, Dict, Any
 
@@ -38,7 +41,7 @@ def main():
         with open(data_path, 'r', encoding='utf-8') as f:
             dataset = json.load(f)
         # For Testing
-        dataset = dataset[:5]
+        # dataset = dataset[:5]
         logger.info(f"Loaded {len(dataset)} queries from {data_path}")
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
@@ -79,7 +82,21 @@ def main():
 
             ex_score = 0
             if pred_sql and gold_sql and os.path.exists(db_path):
-                ex_score = evaluate_ex(pred_sql=pred_sql, gold_sql=gold_sql, db_path=db_path)
+                try:
+                    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(evaluate_ex, pred_sql=pred_sql, gold_sql=gold_sql, db_path=db_path)
+                        ex_score = future.result(timeout=15.0)
+                
+                except concurrent.futures.TimeoutError:
+                    logger.warning(f"🚨 SQL Execution Timeout (15s). Cartesian Product detected. Setting EX = 0")
+                    ex_score = 0
+                except concurrent.futures.process.BrokenProcessPool:
+                    logger.warning(f"🚨 SQL Execution caused OOM (SIGKILL). Main process protected. Setting EX = 0")
+                    ex_score = 0
+                except Exception as e:
+                    logger.warning(f"🚨 SQL Execution Error: {e}")
+                    ex_score = 0
+
                 total_ex_score += ex_score
                 valid_ex_count += 1
             elif not os.path.exists(db_path):

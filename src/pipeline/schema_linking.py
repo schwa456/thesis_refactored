@@ -134,6 +134,13 @@ class SchemaLinkingPipeline:
             metadata=metadata
         )
 
+        if hasattr(self.selector, 'latest_scores') and self.selector.latest_scores:
+            scores_list = self.selector.latest_scores
+        elif node_scores is not None:
+            scores_list = node_scores.squeeze().tolist()
+        else:
+            scores_list = [1.0] * len(candidates_idx)
+
         logger.debug("Seed Nodes Selected")
         logger.debug(f"seeds: {seeds}")
         execution_times["seed_selection"] = time.perf_counter() - t_start
@@ -141,10 +148,6 @@ class SchemaLinkingPipeline:
         # Stage 5: Subgraph Extraction
         logger.debug("Subgraph Extracting")
         t_start = time.perf_counter()
-        if 'node_scores' in locals() and node_scores is not None:
-            scores_list = node_scores.squeeze().tolist()
-        else:
-            scores_list = [1.0] * len(candidates_idx)
             
         selected_nodes_idx, selected_edges = self.extractor.extract(
             graph_data=metadata, 
@@ -204,7 +207,7 @@ class SchemaLinkingPipeline:
             raw_scores_list = []
             node_names = []
 
-        final_result["raw_scores"] = raw_scores_list
+        final_result["raw_scores"] = scores_list
         final_result["node_names"] = node_names
         
         return final_result

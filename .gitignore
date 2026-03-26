@@ -30,3 +30,7 @@ dev.json
 *.txt
 ./related_works/*
 *.yaml
+*.jsonl
+*.sqlite-shm
+*.sqlite-wal
+data/*

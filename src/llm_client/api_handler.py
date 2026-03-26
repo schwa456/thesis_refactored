@@ -61,9 +61,11 @@ class APIClient:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=temperature,
+                timeout=60.0,
+                max_tokens=300
             )
             return response.choices[0].message.content
             
         except Exception as e:
-            logger.error(f"🚨 LLM API 호출 실패: {e}")
-            raise
+            logger.error(f"🚨 LLM API 호출 실패 (OOM, Timeout, or Connection Error): {e}")
+            return "SELECT 'API ERROR'"

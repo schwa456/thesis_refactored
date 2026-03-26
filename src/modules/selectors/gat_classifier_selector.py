@@ -18,6 +18,8 @@ class GATClassifierSelector(BaseSelector):
         self.model.load_state_dict(torch.load(weight_path, map_location=device))
         self.model.to(device)
         self.model.eval()
+
+        self.latest_scores = []
         
         logger.info(f"Loaded GATClassifierSelector (Threshold: {threshold}) from {weight_path}")
 
@@ -27,23 +29,29 @@ class GATClassifierSelector(BaseSelector):
         with torch.no_grad():
             graph_data = graph_data.to(next(self.model.parameters()).device)
             out_logits = self.model(graph_data, [question])
-            
-        # [핵심] 딕셔너리를 순회하며 확률이 threshold를 넘는 글로벌 Node ID를 수집
-        # metadata['table_to_id']와 metadata['col_to_id']는 로컬 ID를 글로벌 ID로 
-        # 매핑하는 정보를 포함하고 있어야 합니다. (만약 분리되어 있다면 맞춰주어야 함)
         
         global_offset = len(metadata['table_to_id']) # 컬럼 ID가 테이블 ID 뒤에 이어지는 경우 오프셋
+        total_nodes = len(metadata.get('node_metadata', {}))
+
+        all_scores = [0.0] * total_nodes
         
         if 'table' in out_logits:
             t_probs = torch.sigmoid(out_logits['table']).cpu().tolist()
             for i, prob in enumerate(t_probs):
+                if i < total_nodes:
+                    all_scores[i] = prob
                 if prob >= self.threshold:
                     selected_node_ids.append(i) # 테이블 글로벌 ID
                     
         if 'column' in out_logits:
             c_probs = torch.sigmoid(out_logits['column']).cpu().tolist()
             for i, prob in enumerate(c_probs):
+                idx = i + global_offset
+                if idx < total_nodes:
+                    all_scores[idx] = prob
                 if prob >= self.threshold:
-                    selected_node_ids.append(i + global_offset) # 컬럼 글로벌 ID
+                    selected_node_ids.append(idx)
+
+        self.latest_scores = all_scores
                     
         return selected_node_ids
