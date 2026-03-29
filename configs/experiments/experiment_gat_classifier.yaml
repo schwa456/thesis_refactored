@@ -25,9 +25,3 @@ connectivity_extractor:
 # 5. Filtering
 filter:
   name: "None"
-
-# 6. Generation
-sql_generator:
-  name: "LLMSQLGenerator"
-  params:
-    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"

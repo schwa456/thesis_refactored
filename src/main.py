@@ -41,7 +41,7 @@ def main():
         with open(data_path, 'r', encoding='utf-8') as f:
             dataset = json.load(f)
         # For Testing
-        # dataset = dataset[:5]
+        #dataset = dataset[:5]
         logger.info(f"Loaded {len(dataset)} queries from {data_path}")
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")

@@ -10,7 +10,9 @@ seed_selector:
   name: "XiYanSelector"  # 우리가 만든 XiYan 기반 Retrieval
   params:
     top_k: 20
-    model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    model_name: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+    db_dir: "data/raw/BIRD_dev/dev_databases"
 
 connectivity_extractor:
   name: "None" # 논문 비교를 위해 Graph Extractor 끄기
@@ -18,5 +20,6 @@ connectivity_extractor:
 filter:
   name: "XiYanFilter"
   params:
+    model_name: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
     max_iteration: 1 # 논문에 기재된 ps=1 세팅 반영
     temperature: 0.0

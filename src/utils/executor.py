@@ -20,7 +20,7 @@ def execute_sql(db_path: str, sql: str, timeout: float = 3.0) -> Tuple[bool, Any
         except Exception as e:
             exception[0] = str(e)
 
-    thread = threading.Thread(target=target)
+    thread = threading.Thread(target=target, daemon=True)
     thread.start()
     thread.join(timeout)
 

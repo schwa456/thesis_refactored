@@ -34,7 +34,28 @@ class TokenAwareSelector(BaseSelector):
         # 3. 각 토큰별로 가장 유사한 노드 추출
         # 각 행(토큰)에서 최대값의 인덱스를 찾음
         _, top_node_indices = torch.topk(sim_matrix, k=self.top_k_per_token, dim=-1)
+
+        max_scores_per_node = torch.max(sim_matrix, dim=0).values.cpu().tolist() # (Total_Nodes,)
         
+        metadata = kwargs.get('metadata', None)
+        if metadata and 'node_metadata' in metadata:
+            total_nodes = len(metadata['node_metadata'])
+            all_scores = [0.0] * total_nodes
+            
+            # candidates 리스트의 순서와 max_scores_per_node의 순서가 일치함
+            for i, cand_idx in enumerate(candidates):
+                if isinstance(cand_idx, int) and cand_idx < total_nodes:
+                    all_scores[cand_idx] = max_scores_per_node[i]
+                elif isinstance(cand_idx, str):
+                    for idx, name in metadata['node_metadata'].items():
+                        if name == cand_idx:
+                            all_scores[int(idx)] = max_scores_per_node[i]
+                            break
+                            
+            self.latest_scores = all_scores
+        else:
+            self.latest_scores = max_scores_per_node
+
         # 4. 중복 제거 및 최종 Seed 리스트 구성
         unique_indices = torch.unique(top_node_indices).tolist()
         selected_seeds = [candidates[idx] for idx in unique_indices]

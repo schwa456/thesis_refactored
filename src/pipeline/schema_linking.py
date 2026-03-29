@@ -173,7 +173,7 @@ class SchemaLinkingPipeline:
         execution_times["subgraph_extraction"] = time.perf_counter() - t_start
 
         # Stage 6: Agent Filtering
-        logger.debug("Agent Filtering")
+        logger.debug("Filtering")
         t_start = time.perf_counter()
         # 💡 [수정됨] db_id를 Filter로 전달하여 Value Retrieval 및 Example 조회를 허용
         final_result = self.filter.refine(
@@ -182,8 +182,8 @@ class SchemaLinkingPipeline:
             db_id=db_id              # <-- 신규 추가: 필터링 프롬프트에 DB Value를 포함시키기 위함
         )
 
-        logger.debug("Agent Filtered")
-        execution_times["agent_filtering"] = time.perf_counter() - t_start
+        logger.debug("Filtered")
+        execution_times["filtering"] = time.perf_counter() - t_start
 
         logger.debug(f"✅ Final Decision: {final_result.get('status', 'Unknown')} | Nodes: {len(final_result.get('final_nodes', []))}")
         logger.debug(f"Final Nodes: {final_result.get('final_nodes')}")
@@ -200,14 +200,7 @@ class SchemaLinkingPipeline:
         final_result["generated_sql"] = generated_sql
         final_result["execution_time"] = execution_times
 
-        if node_scores is not None:
-            raw_scores_list = node_scores.squeeze().tolist()
-            node_names = [metadata['node_metadata'].get(i, str(i)) for i in range(len(raw_scores_list))]
-        else:
-            raw_scores_list = []
-            node_names = []
-
         final_result["raw_scores"] = scores_list
-        final_result["node_names"] = node_names
+        final_result["node_names"] = [metadata['node_metadata'].get(i, str(i)) for i in range(len(scores_list))]
         
         return final_result

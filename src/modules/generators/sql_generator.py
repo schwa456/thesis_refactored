@@ -3,13 +3,15 @@ from modules.registry import register
 from modules.base import BaseGenerator
 from prompts.prompt_manager import PromptManager
 from llm_client.api_handler import APIClient
+from modules.filters.agents import AgentUtils
+from utils.mschema.schema_engine import MSchema
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 @register("generator", "LLMSQLGenerator")
 class LLMSQLGenerator(BaseGenerator):
-    def __init__(self, llm_model: str = "meta-llama/Meta-Llama-3.1-8B-Instruct", temperature: float = 0.0, **kwargs):
+    def __init__(self, llm_model: str, temperature: float, **kwargs):
         self.llm_model = llm_model
         self.temperature = temperature
         self.prompt_manager = PromptManager()
@@ -17,17 +19,23 @@ class LLMSQLGenerator(BaseGenerator):
         logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model})")
 
     def generate(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> str:
-        # 필터링이 끝난 아주 깨끗한 스키마만 DDL로 변환 (AgentUtils 재활용 또는 직접 구현)
-        ddl_lines = []
-        for table, columns in subgraph.items():
-            cols_str = ",\n  ".join([f"{col}" for col in columns])
-            ddl_lines.append(f"CREATE TABLE {table} (\n  {cols_str}\n);")
-        schema_ddl = "\n\n".join(ddl_lines)
+        schema_ddl = AgentUtils.generate_ddl(subgraph=subgraph)
+
+        selected_tables = list(subgraph.keys())
+        selected_columns = []
+        for tbl in selected_tables:
+            for col in subgraph[tbl]:
+                col_name = '.'.join([tbl, col])
+                selected_columns.append(col_name)
+
+        #mschema = MSchema()
+        #mschema_str = MSchema.to_mschema(selected_tables=selected_tables, selected_columns=selected_columns, example_num=3, show_type_detail=True)
 
         prompt = self.prompt_manager.load_prompt(
             file_name="sql_generator",
             section="sql_generator",
             schema_str=schema_ddl,
+            # schema_str=mschema_str,
             query=query
         )
 

@@ -17,7 +17,7 @@ class LinkAlignSelector(BaseSelector):
     초기 검색 결과를 바탕으로 LLM이 누락된 스키마를 추론하여 질의를 재작성(Query Rewriting)한 뒤,
     2차 검색(Multi-round Semantic Enhanced Retrieval)을 수행하는 Selector입니다.
     """
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct", top_k: int = 20, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2", **kwargs):
+    def __init__(self, model_name: str, top_k: int, embedding_model: str, **kwargs):
         self.top_k = top_k
         self.model_name = model_name
         self.prompt_manager = PromptManager()
@@ -62,6 +62,26 @@ class LinkAlignSelector(BaseSelector):
         # 앙상블: 원본 질의와 재작성된 질의의 벡터를 평균내어 최종 질의 벡터 생성
         q_emb_final = (q_emb_initial + q_emb_rewritten) / 2.0
         final_scores = util.cos_sim(q_emb_final, cand_embs)[0]
+
+        if metadata and 'node_metadata' in metadata:
+            total_nodes = len(metadata['node_metadata'])
+            all_scores = [0.0] * total_nodes
+            
+            # final_scores는 candidates 리스트와 순서가 1:1로 매칭됨
+            for i, cand_idx in enumerate(candidates):
+                # 인덱스(정수) 형태인 경우 바로 매핑
+                if isinstance(cand_idx, int) and cand_idx < total_nodes:
+                    all_scores[cand_idx] = final_scores[i].item()
+                # 텍스트 형태인 경우 역탐색하여 인덱스 매핑
+                elif isinstance(cand_idx, str):
+                    for idx, name in metadata['node_metadata'].items():
+                        if name == cand_idx:
+                            all_scores[int(idx)] = final_scores[i].item()
+                            break
+                            
+            self.latest_scores = all_scores
+        else:
+            self.latest_scores = final_scores.tolist()
         
         # 5. 최종 상위 K개 정렬 및 반환
         top_k_final_idx = torch.topk(final_scores, k=min(self.top_k, len(text_candidates))).indices.tolist()

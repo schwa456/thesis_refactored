@@ -9,6 +9,7 @@ projection:
 seed_selector:
   name: "LinkAlignSelector"
   params:
+    model_name: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
     top_k: 20
     embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
 

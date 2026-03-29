@@ -47,7 +47,7 @@ class APIClient:
             logger.error(f"🚨 Local Embedding 추출 실패: {e}")
             raise
 
-    def generate_text(self, prompt: str, model: str = "Meta/Llama-3.1-8B-Instruct", temperature: float = 0.0) -> str:
+    def generate_text(self, prompt: str, model: str, temperature: float) -> str:
         """
         LLM 서버를 호출하여 텍스트(또는 JSON/SQL)를 생성합니다. (에이전트 필터링용)
         """

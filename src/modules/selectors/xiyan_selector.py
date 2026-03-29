@@ -17,7 +17,7 @@ class XiYanSelector(BaseSelector):
     """
     XiYanSQL의 Multi-path Retrieval 로직 + Value Retrieval (DB 직접 조회)를 모사한 Selector.
     """
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct", top_k: int = 20, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2", db_dir: str = "./data/raw/BIRD_dev/dev_databases", **kwargs):
+    def __init__(self, model_name: str, top_k: int, embedding_model: str, db_dir: str, **kwargs):
         self.top_k = top_k
         self.db_dir = db_dir
         self.client = APIClient()
@@ -94,6 +94,24 @@ class XiYanSelector(BaseSelector):
                     conn.close()
                 except Exception as e:
                     logger.warning(f"Failed to access DB {db_id} for Value Retrieval: {e}")
+
+        if metadata and 'node_metadata' in metadata:
+            total_nodes = len(metadata['node_metadata'])
+            all_scores = [0.0] * total_nodes
+
+            name_to_idx = {name: int(idx) for idx, name in metadata['node_metadata'].items()}
+
+            for col_name, score in column_scores.items():
+                if col_name in name_to_idx:
+                    all_scores[name_to_idx[col_name]] = score
+            
+            for col_name, score in top_candidates.items():
+                if col_name in name_to_idx:
+                    all_scores[name_to_idx[col_name]] = score
+            
+            self.latest_scores = all_scores
+        else:
+            self.latest_scores = []
 
         # 최종 상위 K개 정렬 및 반환
         final_top_k = sorted(top_candidates.items(), key=lambda x: x[1], reverse=True)[:self.top_k]

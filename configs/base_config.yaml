@@ -67,9 +67,8 @@ connectivity_extractor:
 filter:
   name: "SingleAgent"
   params:
-    llm_model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    llm_model: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
     temperature: 0.0
-    prompt_template: "schema_refinement_v1"
 
 # ==========================================
 # 7. SQL Generation (SQL 쿼리 생성)
@@ -77,5 +76,6 @@ filter:
 sql_generator:
   enabled: true
   name: "LLMSQLGenerator"
-  llm_model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
-  temperature: 0.0
+  params:
+    llm_model: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+    temperature: 0.0

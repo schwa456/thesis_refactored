@@ -40,7 +40,7 @@ class AgentUtils:
 # ==========================================
 @register("filter", "SingleAgentFilter")
 class SingleAgentFilter(BaseFilter):
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-Coder-32B-Instruct", temperature: float = 0.0, **kwargs):
+    def __init__(self, model_name: str, temperature: float, **kwargs):
         self.model_name = model_name
         self.temperature = temperature
         self.prompt_manager = PromptManager()
@@ -73,7 +73,7 @@ class SingleAgentFilter(BaseFilter):
 # ==========================================
 @register("filter", "AdaptiveMultiAgentFilter")
 class AdaptiveMultiAgentFilter(BaseFilter):
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct", uncertainty_threshold: float = 0.6, **kwargs):
+    def __init__(self, model_name: str, uncertainty_threshold: float = 0.6, **kwargs):
         self.model_name = model_name
         self.threshold = uncertainty_threshold
         self.prompt_manager = PromptManager()
