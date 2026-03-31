@@ -22,15 +22,19 @@ def run_benchmarks():
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     experiments = [
-        "baselines/preliminary_vector_only.yaml",
-        "baselines/preliminary_graph_expansion.yaml",
-        "baselines/preliminary_graph_and_agent.yaml",
-        "baselines/baseline_xiyansql.yaml",
-        "baselines/baseline_g_retriever.yaml",
-        "baselines/baseline_linkalign.yaml",
-        "experiments/experiment_gat_classifier.yaml",
-        "experiments/experiment_gat_multi_agent.yaml",
-        "experiments/experiment_gat_classifier_multi_agent.yaml",
+        # "baselines/preliminary_vector_only.yaml",
+        # "baselines/preliminary_graph_expansion.yaml",
+        # "baselines/preliminary_graph_and_agent.yaml",
+        # "baselines/baseline_xiyansql.yaml",
+        # "baselines/baseline_g_retriever.yaml",
+        # "baselines/baseline_linkalign.yaml",
+        # "experiments/experiment_gat_classifier.yaml",
+        # "experiments/experiment_gat_multi_agent.yaml",
+        # "experiments/experiment_gat_classifier_multi_agent.yaml",
+        "experiments/experiment_base_pcst.yaml",
+        "experiments/experiment_dynamic_pcst.yaml",
+        "experiments/experiment_uncertainty_pcst.yaml",
+        "experiments/experiment_dynamic_uncertainty_pcst.yaml",
     ]
 
     logger.info(f"📚 Starting total {len(experiments)} experiments...")

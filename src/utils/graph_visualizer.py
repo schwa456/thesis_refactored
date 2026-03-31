@@ -52,12 +52,12 @@ class GraphVisualizer:
             elif safe_node_id in final_set:
                 color = "#EF4444"  # 빨간색 (FP: 틀린 노드)
                 size = 15          # 작게
-            elif safe_node_id in seeds_set:
-                color = "#F59E0B"  # 노란색 (TN: 필터가 잘 걸러냄)
             elif safe_node_id in gold_set:
                 color = "#3B82F6"  # 파란색 (FN: 놓친 정답)
                 shape = "diamond"  # 다이아몬드 강조!
                 size = 40
+            elif safe_node_id in seeds_set:
+                color = "#F59E0B"  # 노란색 (TN: 필터가 잘 걸러냄)
             else:
                 color = "#4B5563"  # 짙은 회색 (선택 안 됨)
 

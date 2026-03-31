@@ -12,7 +12,7 @@ paths:
 # 1. Graph Builder (스키마 -> 그래프 구축)
 # ==========================================
 graph_builder:
-  name: "HeteroGraphBuilder"   # Factory에 등록된 빌더 이름
+  name: "HeteroGraphBuilder"
   params:
     include_views: false
     run_leiden_clustering: true # 오프라인 커뮤니티 탐지 여부
@@ -30,31 +30,21 @@ nlq_encoder:
 # 3. Latent Space Projection (임베딩 공간 통일)
 # ==========================================
 projection:
-  enabled: true                # 투영을 할지 말지 토글!
-  name: "DualTowerProjector"
-  params:
-    in_dim: 384
-    hidden_dim: 256
-    out_dim: 256
-    dropout: 0.2
+  enabled: false
 
 # ==========================================
 # 4. Seed Node Selector (초기 후보 노드 선별)
 # ==========================================
-# 옵션: "BinaryClassifier", "KNN", "Reranker", "LLMAgent"
 seed_selector:
-  name: "FixedTopKSelector"
+  name: "VectorOnlySelector"
   params:
-    threshold: 0.5
-    use_pos_weight: true
-    weights_path: "./checkpoints/pretrained/classifier_best.pt"
+    top_k: 20
 
 # ==========================================
 # 5. Connectivity Extractor (구조적 연결성 확보)
 # ==========================================
-# 옵션: "DynamicPCST", "MST", "TopK", "None"
 connectivity_extractor:
-  name: "PCST"          
+  name: "MSTExtractor"          
   params:
     base_cost: 0.2
     inter_comm_penalty: 0.5
@@ -63,12 +53,8 @@ connectivity_extractor:
 # ==========================================
 # 6. Schema Filtering (최종 정제)
 # ==========================================
-# 옵션: "SingleAgent", "MultiAgent", "None"
 filter:
-  name: "SingleAgent"
-  params:
-    llm_model: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
-    temperature: 0.0
+  name: "None"
 
 # ==========================================
 # 7. SQL Generation (SQL 쿼리 생성)
