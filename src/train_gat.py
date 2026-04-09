@@ -32,6 +32,57 @@ PATHS = {
 }
 
 # ----------------------------------------------------------------
+# 2. InfoNCE Loss with Hard Negative Mining
+# ----------------------------------------------------------------
+def compute_batched_infonce_loss(z_q: torch.Tensor, z_n: torch.Tensor, labels: torch.Tensor, 
+                                 batch_idx: torch.Tensor, temperature: float = 0.07, num_hard_negatives: int = 15) -> torch.Tensor:
+    """
+    미니 배치 내의 각 그래프별로 정답(Positive)과 헷갈리는 오답(Hard Negative)을 추출하여 InfoNCE를 계산합니다.
+    """
+    # 1. 투영된 조인트 임베딩 공간에서의 코사인 유사도 계산
+    sim = F.cosine_similarity(z_q, z_n) # [N_nodes]
+    
+    total_loss = 0.0
+    num_graphs = batch_idx.max().item() + 1
+    valid_graphs = 0
+
+    for i in range(num_graphs):
+        mask = (batch_idx == i)
+        if not mask.any(): continue
+
+        g_sim = sim[mask]
+        g_labels = labels[mask]
+
+        pos_mask = (g_labels == 1)
+        neg_mask = (g_labels == 0)
+
+        # 정답이나 오답 노드가 아예 없는 그래프는 건너뜀 (Zero Division 방지)
+        if pos_mask.sum() == 0 or neg_mask.sum() == 0:
+            continue
+
+        pos_sim = g_sim[pos_mask]
+        neg_sim = g_sim[neg_mask]
+
+        # [Hard Negative Mining] 유사도가 높은 오답 노드들만 K개 추출
+        if neg_sim.size(0) > num_hard_negatives:
+            hard_neg_sim, _ = torch.topk(neg_sim, num_hard_negatives)
+        else:
+            hard_neg_sim = neg_sim
+
+        # Log-Sum-Exp를 통한 InfoNCE Loss 계산
+        pos_sim_exp = torch.exp(pos_sim / temperature)
+        neg_sim_exp_sum = torch.exp(hard_neg_sim / temperature).sum()
+
+        loss = -torch.log(pos_sim_exp / (pos_sim_exp + neg_sim_exp_sum))
+        total_loss += loss.mean()
+        valid_graphs += 1
+
+    if valid_graphs == 0:
+        return torch.tensor(0.0, device=z_q.device, requires_grad=True)
+        
+    return total_loss / valid_graphs
+
+# ----------------------------------------------------------------
 # 2. Validation Recall 계산 함수
 # ----------------------------------------------------------------
 def calculate_recall_at_k(logits: torch.Tensor, labels: torch.Tensor, k: int = 15) -> float:
@@ -150,7 +201,11 @@ def run_train(config_path: str):
     # 정답 노드(Gold)가 적으므로 가중치 부여 (BCEWithLogitsLoss)
     criterion = nn.BCEWithLogitsLoss(
         pos_weight=torch.tensor([cfg['training']['pos_weight']]).to(device)
-        )
+    )
+
+    infonce_lambda = cfg['training'].get('infonce_lambda', 0.5)
+    temperature = cfg['training'].get('temperature', 0.07)
+    num_hard_negatives = cfg['training'].get('num_hard_negatives', 15)
 
     best_recall = 0.0
     epochs = cfg['training']['epochs']
@@ -159,6 +214,8 @@ def run_train(config_path: str):
         gat_model.train()
         projector.train()
         epoch_loss = 0
+        epoch_bce_loss = 0
+        epoch_infonce_loss = 0
         
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for step, batch in enumerate(pbar):
@@ -168,38 +225,58 @@ def run_train(config_path: str):
             # GAT -> Node Embeddings
             node_embs = gat_model(batch.x_dict, batch.edge_index_dict)
             q_emb = batch['query']
+
+            step_bce_loss = 0
+            step_infonce_loss = 0
             
-            loss = 0
-            # Table, Column 뿐만 아니라 FK_Node(Bridge)도 학습 대상에 포함 (Contribution 1)
             for n_type in ['table', 'column', 'fk_node']:
                 if n_type not in node_embs or not hasattr(batch[n_type], 'y'): continue
                 if batch[n_type].num_nodes == 0: continue
                 
-                # Projector를 통한 Alignment
+                # 1. 조인트 임베딩 투영
                 z_q, z_n = projector(q_emb, node_embs[n_type], batch_index=batch[n_type].batch)
+                
+                # 2. BCE Loss 계산 (절대적 존재 여부)
                 logits = projector.compute_similarity(z_q, z_n)
-                loss += criterion(logits, batch[n_type].y)
+                bce_loss = criterion(logits, batch[n_type].y)
+                step_bce_loss += bce_loss
 
-            loss.backward()
+                # 3. [신규] InfoNCE Loss 계산 (상대적 유사도 최적화 및 하드 네거티브 마이닝)
+                infonce_loss = compute_batched_infonce_loss(
+                    z_q, z_n, batch[n_type].y, batch[n_type].batch,
+                    temperature=temperature, num_hard_negatives=num_hard_negatives
+                )
+                step_infonce_loss += infonce_loss
+
+            # 4. Joint Loss 백프로파게이션
+            total_loss = step_bce_loss + (infonce_lambda * step_infonce_loss)
+            total_loss.backward()
             optimizer.step()
-            epoch_loss += loss.item()
+            
+            epoch_loss += total_loss.item()
+            epoch_bce_loss += step_bce_loss.item()
+            epoch_infonce_loss += step_infonce_loss.item()
 
             if step % 10 == 0:
-                wandb.log({"train/loss_step": loss.item(), "epoch": epoch + 1})
-            pbar.set_postfix({"loss": f"{loss.item():.4f}"})
+                wandb.log({
+                    "train/loss_total": total_loss.item(),
+                    "train/loss_bce": step_bce_loss.item(),
+                    "train/loss_infonce": step_infonce_loss.item(),
+                    "epoch": epoch + 1
+                })
+            pbar.set_postfix({"loss": f"{total_loss.item():.4f}", "infoNCE": f"{step_infonce_loss.item():.4f}"})
 
         # 검증 (Recall@15)
         val_recall = validate(gat_model, projector, val_loader, device, k=15)
         
         wandb.log({
-            "train/loss_epoch": epoch_loss / len(train_loader),
+            "train/epoch_loss": epoch_loss / len(train_loader),
             "val/recall_at_15": val_recall,
             "epoch": epoch + 1
         })
 
-        logger.info(f"Epoch {epoch+1} | Loss: {epoch_loss/len(train_loader):.4f} | Val Recall@15: {val_recall:.4f}")
+        logger.info(f"Epoch {epoch+1} | Loss: {epoch_loss/len(train_loader):.4f} | BCE: {epoch_bce_loss/len(train_loader):.4f} | InfoNCE: {epoch_infonce_loss/len(train_loader):.4f} | Val Recall@15: {val_recall:.4f}")
 
-        # 최고 성능 모델 저장
         if val_recall > best_recall:
             best_recall = val_recall
             save_path = os.path.join(PATHS["checkpoint_dir"], "best_gat_model.pt")
@@ -216,7 +293,7 @@ def run_train(config_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="../configs/training/train_config.yaml")
+    parser.add_argument("--config", type=str, default="configs/training/train_gat_config.yaml")
     args = parser.parse_args()
     
     run_train(args.config)

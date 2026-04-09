@@ -18,6 +18,7 @@ class GraphVisualizer:
                     graph: nx.Graph,
                     question: str="",
                     seeds: List[Any] = None,
+                    extracted_nodes: List[Any] = None,
                     final_nodes: List[Any]= None,
                     gold_nodes: List[Any] = None,
                     file_name: str = "schema_graph.html"
@@ -25,6 +26,7 @@ class GraphVisualizer:
         """
         graph: DB 스키마가 담긴 NetworkX 그래프 객체
         seeds: Selector가 선택한 1차 후보 노드 리스트
+        extracted_nodes: PCST(Extractor)가 선택한 Subgraph 노드 리스트
         final_nodes: Filter까지 통과한 최종 노드 리스트
         gold_nodes: 실제 정답(Gold) 노드 리스트 (비교용, 옵션)
         """
@@ -33,6 +35,7 @@ class GraphVisualizer:
 
         # 노드 집합 초기화
         seeds_set = {str(x).strip() for x in seeds} if seeds else set()
+        extracted_set = {str(x).strip() for x in extracted_nodes} if extracted_nodes else set()
         final_set = {str(x).strip() for x in final_nodes} if final_nodes else set()
         gold_set = {str(x).strip() for x in gold_nodes} if gold_nodes else set()
 
@@ -46,25 +49,41 @@ class GraphVisualizer:
             size = 30 if node_type == 'table' else 15
 
             if safe_node_id in final_set and safe_node_id in gold_set:
-                color = "#10B981"  # 초록색 (TP: 정답)
-                shape = "star"     # 별 모양 강조!
-                size = 50          # 크기 폭발
+                bg_color = "#10B981"  # 초록색 (TP: 정답)
+                shape = "star"        # 별 모양 강조!
+                size = 50             # 크기 폭발
             elif safe_node_id in final_set:
-                color = "#EF4444"  # 빨간색 (FP: 틀린 노드)
-                size = 15          # 작게
+                bg_color = "#EF4444"  # 빨간색 (FP: 틀린 노드)
+                size = 15             # 작게
             elif safe_node_id in gold_set:
-                color = "#3B82F6"  # 파란색 (FN: 놓친 정답)
-                shape = "diamond"  # 다이아몬드 강조!
+                bg_color = "#3B82F6"  # 파란색 (FN: 놓친 정답)
+                shape = "diamond"     # 다이아몬드 강조!
                 size = 40
             elif safe_node_id in seeds_set:
-                color = "#F59E0B"  # 노란색 (TN: 필터가 잘 걸러냄)
+                bg_color = "#F59E0B"  # 노란색 (TN: 필터가 잘 걸러냄)
             else:
-                color = "#4B5563"  # 짙은 회색 (선택 안 됨)
+                bg_color = "#4B5563"  # 짙은 회색 (선택 안 됨)
+
+            # PCST(Extractor)가 선택한 노드는 시안색 테두리로 강조
+            in_extracted = safe_node_id in extracted_set
+            if in_extracted:
+                color = {
+                    "background": bg_color,
+                    "border": "#22D3EE",   # 시안색 (Extracted Subgraph)
+                    "highlight": {"background": bg_color, "border": "#67E8F9"},
+                }
+                border_width = 5
+                if size < 20:
+                    size = 22  # 너무 작아 테두리가 묻히지 않도록 살짝 키움
+            else:
+                color = bg_color
+                border_width = 1
 
             title_text = f"Name: {node_name}\n"
             title_text += f"Type: {node_type.upper()}\n"
+            title_text += f"In PCST Subgraph: {in_extracted}\n"
             title_text += "-" * 30 + "\n" # 구분선 역할
-            
+
             for k, v in node_data.items():
                 if k not in ['name', 'type', 'label', 'shape', 'color', 'size', 'title']:
                     # 텍스트가 너무 긴 경우를 대비해 문자열 처리
@@ -77,7 +96,9 @@ class GraphVisualizer:
                 title=title_text,
                 color=color,
                 shape=shape,
-                size=size
+                size=size,
+                borderWidth=border_width,
+                borderWidthSelected=border_width + 2,
             )
 
         # 2. 엣지 관계 추가
@@ -94,13 +115,19 @@ class GraphVisualizer:
 
             # 엣지 색상: 두 노드가 모두 선택된 경우 하이라이트
             if safe_u in final_set and safe_v in final_set:
-                edge_color = "#10B981" # 초록색 연결선
+                edge_color = "#10B981" # 초록색 연결선 (Final)
+                edge_width = 3
+            elif safe_u in extracted_set and safe_v in extracted_set:
+                edge_color = "#22D3EE" # 시안색 연결선 (PCST Subgraph)
+                edge_width = 2
             elif safe_u in seeds_set and safe_v in seeds_set:
-                edge_color = "#F59E0B" # 노란색 연결선
+                edge_color = "#F59E0B" # 노란색 연결선 (Seeds)
+                edge_width = 1
             else:
                 edge_color = "#374151" # 어두운 회색 (기본)
+                edge_width = 1
 
-            net.add_edge(u, v, title=title_text, color=edge_color)
+            net.add_edge(u, v, title=title_text, color=edge_color, width=edge_width)
 
         # 물리 엔진 설정 추가 (그래프가 예쁘게 퍼지도록)
         net.set_options("""

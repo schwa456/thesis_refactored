@@ -41,7 +41,7 @@ def main():
         with open(data_path, 'r', encoding='utf-8') as f:
             dataset = json.load(f)
         # For Testing
-        #dataset = dataset[:5]
+        # dataset = dataset[:5]
         logger.info(f"Loaded {len(dataset)} queries from {data_path}")
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
@@ -71,7 +71,36 @@ def main():
         
         try:
             result = pipeline.run(db_id=db_id, query=question)
+            
+            gold_tables, gold_cols = parse_sql_elements(gold_sql)
+            gold_tables = set(t.lower() for t in gold_tables)
+            gold_cols = set(c.lower() for c in gold_cols)
+
+            pred_tables = set()
+            pred_cols = set()
             pred_sql = result.get("generated_sql", "")
+
+            final_nodes = result.get("final_nodes", [])
+            for node in final_nodes:
+                if '->' in node:
+                    continue  # 매크로 엣지 제외
+                
+                if '.' in node:
+                    tbl, col = node.split('.', 1)
+                    pred_tables.add(tbl.lower())
+                    
+                    col_lower = col.lower()
+                    tbl_col_lower = f"{tbl.lower()}.{col_lower}"
+                    
+                    if tbl_col_lower in gold_cols:
+                        pred_cols.add(tbl_col_lower)
+                    else:
+                        pred_cols.add(col_lower)
+                else:
+                    pred_tables.add(node.lower())
+
+            pred_tables = list(pred_tables)
+            pred_cols = list(pred_cols)
 
             if "execution_time" in result:
                 profiling_record = {"query_id": question_id}
@@ -102,8 +131,8 @@ def main():
             elif not os.path.exists(db_path):
                 logger.warning(f"DB file not found for EX evaluation: {db_path}")
 
-            gold_tables, gold_cols = parse_sql_elements(gold_sql)
-            pred_tables, pred_cols = parse_sql_elements(pred_sql)
+            #gold_tables, gold_cols = parse_sql_elements(gold_sql)
+            #pred_tables, pred_cols = parse_sql_elements(pred_sql)
 
             node_names = result.get("node_names", [])
             raw_scores = result.get("raw_scores", [])
@@ -129,8 +158,8 @@ def main():
                     }
                     f.write(json.dumps(score_record, ensure_ascii=False) + '\n')
 
-            recall, precision, missing_cols, extra_cols = calculate_schema_metrics(pred_cols, gold_cols)
-            _, _, missing_tables, extra_tables = calculate_schema_metrics(pred_tables, gold_tables)
+            recall, precision, missing_cols, extra_cols = calculate_schema_metrics(set(pred_cols), set(gold_cols))
+            _, _, missing_tables, extra_tables = calculate_schema_metrics(set(pred_tables), set(gold_tables))
             
             pred_record = {
                 "question_id": question_id,

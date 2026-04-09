@@ -32,7 +32,10 @@ class SchemaHeteroGAT(nn.Module):
                 
                 # B. Column <-> FK_Node 상호작용 (논문의 핵심 기여 포인트)
                 ('column', 'is_source_of', 'fk_node'): GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False),
-                ('fk_node', 'points_to', 'column'): GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
+                ('fk_node', 'points_to', 'column'): GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False),
+
+                # C. Table <-> Table 거시적 상호작용
+                ('table', 'table_to_table', 'table'): GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
             }, aggr='mean') # 여러 엣지에서 들어오는 정보는 평균(mean)으로 병합
             
             self.convs.append(conv)

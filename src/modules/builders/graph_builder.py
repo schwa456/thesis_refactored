@@ -39,8 +39,8 @@ class HeteroGraphBuilder(BaseGraphBuilder):
             columns_data = cursor.fetchall()
 
             col_list = []
-            for raw in columns_data:
-                col_name = raw[1]
+            for row in columns_data:
+                col_name = row[1]
                 col_type = row[2]
 
                 samples = []
@@ -54,7 +54,7 @@ class HeteroGraphBuilder(BaseGraphBuilder):
                 col_list.append({
                     "name": col_name,
                     "type": col_type,
-                    "samaples": samples
+                    "samples": samples
                 })
             columns_dict[table] = col_list
             
@@ -189,5 +189,5 @@ class HeteroGraphBuilder(BaseGraphBuilder):
             'edges': pcst_edges,
             'edge_types': pcst_edge_types
         }
-        
+
         return data, metadata

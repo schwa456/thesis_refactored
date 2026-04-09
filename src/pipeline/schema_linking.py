@@ -15,7 +15,8 @@ class SchemaLinkingPipeline:
         logger.info("🚀 Assembling the Schema Linking Pipeline from Config...")
 
         self.db_dir = config['paths']['data_dir']
-        
+        self.auto_join_keys = config.get('post_processing', {}).get('auto_join_keys', False)
+
         self.builder = build("builder", config['graph_builder'])
         self.encoder = build("encoder", config['nlq_encoder'])
         
@@ -167,6 +168,33 @@ class SchemaLinkingPipeline:
                 subgraph_dict.setdefault(tbl, []).append(col)
             else:
                 subgraph_dict.setdefault(name, [])
+
+        # [Phase B-3] JOIN key 자동 포함: 2개 이상 테이블이 선택된 경우 FK 컬럼 보강
+        if self.auto_join_keys and len(subgraph_dict) >= 2:
+            fk_descriptions = metadata.get('fk_descriptions', [])
+            node_meta = metadata.get('node_metadata', {})
+            added_keys = []
+            for idx, name in node_meta.items():
+                if '->' in str(name):
+                    # FK node format: "table1.col1->table2.col2"
+                    parts = str(name).split('->')
+                    if len(parts) == 2:
+                        src = parts[0].strip()
+                        dst = parts[1].strip()
+                        src_tbl = src.split('.')[0] if '.' in src else src
+                        dst_tbl = dst.split('.')[0] if '.' in dst else dst
+                        src_col = src.split('.', 1)[1] if '.' in src else None
+                        dst_col = dst.split('.', 1)[1] if '.' in dst else None
+                        # 두 테이블 모두 선택된 경우에만 FK 컬럼 추가
+                        if src_tbl in subgraph_dict and dst_tbl in subgraph_dict:
+                            if src_col and src_col not in subgraph_dict.get(src_tbl, []):
+                                subgraph_dict[src_tbl].append(src_col)
+                                added_keys.append(src)
+                            if dst_col and dst_col not in subgraph_dict.get(dst_tbl, []):
+                                subgraph_dict[dst_tbl].append(dst_col)
+                                added_keys.append(dst)
+            if added_keys:
+                logger.debug(f"[AutoJoinKeys] Added {len(added_keys)} FK columns: {added_keys}")
 
         logger.debug("Subgraph Extracted")
         logger.debug(f"subgraph_dict: {subgraph_dict}")

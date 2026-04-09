@@ -253,9 +253,63 @@ class DynamicUncertaintyPCSTExtractor(DynamicPCSTExtractor):
 @register("extractor", "GATAwarePCSTExtractor")
 class GATAwarePCSTExtractor(PCSTExtractor):
     """
-    본 논문의 제안 모델: 
-    PPR과 같은 정적 확산 대신, 학습된 GAT가 뱉어낸 '구조-문맥 융합 점수'를 
+    본 논문의 제안 모델:
+    PPR과 같은 정적 확산 대신, 학습된 GAT가 뱉어낸 '구조-문맥 융합 점수'를
     PCST의 Prize로 직접 사용하여 Implicit Bridge Table을 확정적으로 포착합니다.
     """
     def extract(self, graph_data: Dict[str, Any], node_scores: List[float], **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
         return super().extract(graph_data, node_scores, **kwargs)
+
+
+@register("extractor", "AdaptivePCSTExtractor")
+class AdaptivePCSTExtractor(PCSTExtractor):
+    """
+    [Phase B-1] Per-query adaptive threshold를 사용하는 PCST.
+    고정 node_threshold 대신 각 query의 score 분포 상위 percentile을 기준으로
+    threshold를 동적으로 설정하여 subgraph 크기를 일정하게 유지한다.
+    """
+    def __init__(self,
+                 percentile: float = 80.0,
+                 min_prize_nodes: int = 3,
+                 max_prize_nodes: int = 25,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.percentile = percentile
+        self.min_prize_nodes = min_prize_nodes
+        self.max_prize_nodes = max_prize_nodes
+        logger.info(f"Initialized AdaptivePCSTExtractor (percentile={percentile}, "
+                     f"min_nodes={min_prize_nodes}, max_nodes={max_prize_nodes})")
+
+    def extract(self, graph_data: Dict[str, Any], node_scores: List[float],
+                seed_nodes: Optional[List[int]] = None, **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
+        if pcst_fast is None:
+            raise ImportError("pcst_fast library is not installed.")
+
+        edges = graph_data.get('edges', [])
+        edge_types = graph_data.get('edge_types', [])
+        scores_arr = np.array(node_scores, dtype=np.float64)
+
+        # Adaptive threshold: score 분포의 상위 percentile 기준
+        adaptive_threshold = np.percentile(scores_arr, self.percentile)
+
+        # Fallback: threshold가 너무 높거나 낮으면 조정
+        prize_count = np.sum(scores_arr > adaptive_threshold)
+        if prize_count < self.min_prize_nodes:
+            # prize 노드가 너무 적으면 threshold 하향
+            sorted_scores = np.sort(scores_arr)[::-1]
+            adaptive_threshold = sorted_scores[min(self.min_prize_nodes - 1, len(sorted_scores) - 1)]
+        elif prize_count > self.max_prize_nodes:
+            # prize 노드가 너무 많으면 threshold 상향
+            sorted_scores = np.sort(scores_arr)[::-1]
+            adaptive_threshold = sorted_scores[min(self.max_prize_nodes - 1, len(sorted_scores) - 1)]
+
+        prizes = np.maximum(scores_arr - adaptive_threshold, 0.0)
+        costs = np.array([self._compute_cost(et) for et in edge_types], dtype=np.float64)
+        edges_arr = np.array(edges, dtype=np.int64)
+
+        selected_nodes, selected_edges_idx = pcst_fast.pcst_fast(edges_arr, prizes, costs, -1, 1, 'gw', 0)
+        selected_edges = [edges[i] for i in selected_edges_idx]
+
+        logger.debug(f"[AdaptivePCST] threshold={adaptive_threshold:.4f}, "
+                     f"prize_nodes={int(np.sum(prizes > 0))}, selected={len(selected_nodes)} nodes")
+        return selected_nodes.tolist(), selected_edges

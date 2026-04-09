@@ -1,4 +1,4 @@
-from .pcst import PCSTExtractor, DynamicPCSTExtractor, GATAwarePCSTExtractor, UncertaintyPCSTExtractor, DynamicUncertaintyPCSTExtractor
+from .pcst import PCSTExtractor, DynamicPCSTExtractor, GATAwarePCSTExtractor, UncertaintyPCSTExtractor, DynamicUncertaintyPCSTExtractor, AdaptivePCSTExtractor
 from .mst import MSTExtractor
 from .baseline import TopKExtractor, NoneExtractor
 
@@ -10,5 +10,6 @@ __all__ = [
     "DynamicUncertaintyPCSTExtractor",
     "MSTExtractor",
     "TopKExtractor",
-    "NoneExtractor"
+    "NoneExtractor",
+    "AdaptivePCSTExtractor"
 ]

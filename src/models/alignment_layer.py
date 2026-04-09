@@ -82,3 +82,44 @@ class DualTowerAlignment(nn.Module):
         max_sim_scores, _ = sim_matrix.max(dim=0)
         
         return max_sim_scores
+    
+    def compute_infonce_loss(self, q_emb: torch.Tensor, node_embs: torch.Tensor, labels: torch.Tensor, 
+                             temperature: float = 0.07, num_hard_negatives: int = 10) -> torch.Tensor:
+        """
+        Hard Negative Mining이 적용된 InfoNCE Loss를 계산합니다.
+        
+        Args:
+            q_emb: [1, D] 형태의 자연어 질의 임베딩
+            node_embs: [N, D] 형태의 그래프 노드 임베딩
+            labels: [N] 형태의 이진 라벨 (1: Gold Schema, 0: Negative)
+        """
+
+        pos_mask = (labels == 1)
+        neg_mask = (labels == 0)
+
+        if pos_mask.sum() == 0 or neg_mask.sum() == 0:
+            return torch.tensor(0.0, device=q_emb.device, requires_grad=True)
+        
+        pos_embs = node_embs[pos_mask]
+        neg_embs = node_embs[neg_mask]
+
+        # 1. 질의와 모든 노드 간의 코사인 유사도 계산
+        # q_emb: [1, D] -> pos_embs: [num_pos, D]
+        pos_sim = F.cosine_similarity(q_emb, pos_embs) # [num_pos]
+        neg_sim = F.cosine_similarity(q_emb, neg_embs) # [num_neg]
+
+        # 2. Hard Negative Mining
+        # 의미적으로는 질의와 가장 유사하지만(유사도 상위권), 실제로는 오답인 노드 추출
+        if neg_sim.size(0) > num_hard_negatives:
+            hard_neg_sim, _ = torch.topk(neg_sim, num_hard_negatives)
+        else:
+            hard_neg_sim = neg_sim
+
+        # 3. InfoNCE Loss 계산 (Log-Sum-Exp Trick 활용을 위해 exp 적용)
+        pos_sim_exp = torch.exp(pos_sim / temperature) # [num_pos]
+        neg_sim_exp_sum = torch.exp(hard_neg_sim / temperature).sum() # Scalar
+
+        # 각각의 Positive 샘플에 대해 Loss를 구하고 평균
+        loss = -torch.log(pos_sim_exp / (pos_sim_exp + neg_sim_exp_sum))
+        
+        return loss.mean()
