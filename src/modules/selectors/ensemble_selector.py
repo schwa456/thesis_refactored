@@ -8,6 +8,7 @@ from modules.base import BaseSelector
 from models.gat_network import SchemaHeteroGAT
 from modules.projectors.dual_tower import DualTowerProjector
 from modules.encoders.token_encoder import TokenEncoder
+from modules.encoders.local_encoder import LocalPLMEncoder
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,17 +31,25 @@ class EnsembleSelector(BaseSelector):
                  in_channels: int = 384,
                  hidden_channels: int = 256,
                  out_channels: int = 256,
+                 query_conditioned: bool = False,
+                 query_supernode: bool = False,
+                 encoder_type: str = "token",
                  **kwargs):
         super().__init__()
         self.alpha = alpha
         self.top_k = top_k
+        self.query_conditioned = query_conditioned
+        self.query_supernode = query_supernode
+        self.encoder_type = encoder_type
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # GAT + Projector 로드 (GATClassifierSelector와 동일)
         self.gat_model = SchemaHeteroGAT(
             in_channels=in_channels,
             hidden_channels=hidden_channels,
-            out_channels=out_channels
+            out_channels=out_channels,
+            query_conditioned=query_conditioned,
+            query_supernode=query_supernode
         ).to(self.device)
 
         self.projector = DualTowerProjector(
@@ -49,7 +58,12 @@ class EnsembleSelector(BaseSelector):
             joint_dim=hidden_channels
         ).to(self.device)
 
-        self.encoder = TokenEncoder()
+        if encoder_type == "plm":
+            self.encoder = LocalPLMEncoder()
+            logger.info("EnsembleSelector: using LocalPLMEncoder (sentence-level)")
+        else:
+            self.encoder = TokenEncoder()
+            logger.info("EnsembleSelector: using TokenEncoder (token-level)")
 
         logger.info(f"Loading GAT weights for ensemble from {weight_path}")
         checkpoint = torch.load(weight_path, map_location=self.device)
@@ -79,7 +93,29 @@ class EnsembleSelector(BaseSelector):
             elif q_emb.dim() == 1:
                 q_emb = q_emb.unsqueeze(0)
 
-            node_embs_dict = self.gat_model(graph_data.x_dict, graph_data.edge_index_dict)
+            if self.query_supernode:
+                # Super Node 모드: query_node를 그래프에 동적 주입
+                graph_data['query_node'].x = q_emb  # [1, 384]
+                for schema_nt in ['table', 'column', 'fk_node']:
+                    num_nodes = graph_data[schema_nt].num_nodes
+                    if num_nodes == 0:
+                        graph_data['query_node', f'attends_to_{schema_nt}', schema_nt].edge_index = \
+                            torch.zeros((2, 0), dtype=torch.long, device=self.device)
+                        graph_data[schema_nt, f'attended_by_{schema_nt}', 'query_node'].edge_index = \
+                            torch.zeros((2, 0), dtype=torch.long, device=self.device)
+                        continue
+                    src = torch.zeros(num_nodes, dtype=torch.long, device=self.device)
+                    dst = torch.arange(num_nodes, dtype=torch.long, device=self.device)
+                    graph_data['query_node', f'attends_to_{schema_nt}', schema_nt].edge_index = \
+                        torch.stack([src, dst], dim=0)
+                    graph_data[schema_nt, f'attended_by_{schema_nt}', 'query_node'].edge_index = \
+                        torch.stack([dst, src], dim=0)
+                node_embs_dict = self.gat_model(graph_data.x_dict, graph_data.edge_index_dict)
+            elif self.query_conditioned:
+                node_embs_dict = self.gat_model(
+                    graph_data.x_dict, graph_data.edge_index_dict, query_emb=q_emb)
+            else:
+                node_embs_dict = self.gat_model(graph_data.x_dict, graph_data.edge_index_dict)
 
             num_nodes = len(metadata.get('node_metadata', {}))
             gat_scores = torch.zeros(num_nodes, device=self.device)

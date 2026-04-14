@@ -1,9 +1,11 @@
 import os
+import csv
+import json
 import sqlite3
 import torch
 from torch_geometric.data import HeteroData
 from sentence_transformers import SentenceTransformer
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 
 from modules.registry import register
 from modules.base import BaseGraphBuilder
@@ -190,4 +192,279 @@ class HeteroGraphBuilder(BaseGraphBuilder):
             'edge_types': pcst_edge_types
         }
 
+        return data, metadata
+
+
+@register("builder", "EnrichedHeteroGraphBuilder")
+class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
+    """
+    HeteroGraphBuilder를 확장하여 노드 텍스트에 추가 메타정보를 주입합니다.
+    - Table 노드: tables.json의 자연어 테이블명
+    - Column 노드: database_description/*.csv의 column_description, value_description
+    """
+    def __init__(self, plm_model_name: str = 'sentence-transformers/all-MiniLM-L6-v2',
+                 tables_json_path: Optional[str] = None, **kwargs):
+        super().__init__(plm_model_name=plm_model_name, **kwargs)
+        self.table_nl_names: Dict[str, Dict[str, str]] = {}  # db_id -> {original_name: nl_name}
+        self.column_nl_names: Dict[str, Dict[str, str]] = {}  # db_id -> {table.col: nl_name}
+        if tables_json_path and os.path.exists(tables_json_path):
+            self._load_tables_json(tables_json_path)
+            logger.info(f"Loaded NL names for {len(self.table_nl_names)} databases from {tables_json_path}")
+
+    def _load_tables_json(self, path: str):
+        with open(path, 'r', encoding='utf-8') as f:
+            tables_data = json.load(f)
+        for db in tables_data:
+            db_id = db['db_id']
+            # Table NL names
+            originals = db.get('table_names_original', [])
+            nl_names = db.get('table_names', [])
+            self.table_nl_names[db_id] = {}
+            for orig, nl in zip(originals, nl_names):
+                if orig.lower() != nl.lower():
+                    self.table_nl_names[db_id][orig] = nl
+            # Column NL names
+            col_originals = db.get('column_names_original', [])
+            col_nl = db.get('column_names', [])
+            self.column_nl_names[db_id] = {}
+            for (tid, orig_col), (_, nl_col) in zip(col_originals, col_nl):
+                if tid < 0:
+                    continue
+                table_name = originals[tid] if tid < len(originals) else ""
+                if orig_col.lower() != nl_col.lower():
+                    self.column_nl_names[db_id][f"{table_name}.{orig_col}"] = nl_col
+
+    def _load_column_descriptions(self, db_path: str, db_id: str) -> Dict[str, Dict[str, str]]:
+        """database_description/*.csv에서 컬럼 설명을 로드합니다."""
+        desc_dir = os.path.join(os.path.dirname(db_path), "database_description")
+        if not os.path.isdir(desc_dir):
+            return {}
+
+        result = {}  # "table.column" -> {"description": ..., "value_description": ...}
+        for csv_file in os.listdir(desc_dir):
+            if not csv_file.endswith('.csv'):
+                continue
+            table_name = csv_file[:-4]  # strip .csv
+            csv_path = os.path.join(desc_dir, csv_file)
+            try:
+                with open(csv_path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        orig_col = row.get('original_column_name', '').strip()
+                        if not orig_col:
+                            continue
+                        key = f"{table_name}.{orig_col}"
+                        col_desc = row.get('column_description', '').strip()
+                        val_desc = row.get('value_description', '').strip()
+                        if col_desc or val_desc:
+                            result[key] = {
+                                "description": col_desc,
+                                "value_description": val_desc
+                            }
+            except Exception as e:
+                logger.debug(f"Failed to read {csv_path}: {e}")
+        return result
+
+    def build(self, db_id: str, db_dir: str) -> Tuple[HeteroData, Dict]:
+        db_path = os.path.join(db_dir, db_id, f"{db_id}.sqlite")
+        if not os.path.exists(db_path):
+            db_path = os.path.join(db_dir, "dev_databases", db_id, f"{db_id}.sqlite")
+
+        schema_info = self._get_schema_info(db_path)
+        fk_descriptions = self._generate_fk_descriptions(schema_info["foreign_keys"])
+
+        # Enrichment sources
+        col_descriptions = self._load_column_descriptions(db_path, db_id)
+        table_nl = self.table_nl_names.get(db_id, {})
+        col_nl = self.column_nl_names.get(db_id, {})
+
+        data = HeteroData()
+        table_to_id, col_to_id, fk_to_id = {}, {}, {}
+        table_texts, col_texts, fk_texts = [], [], []
+
+        # --- Table Nodes (enriched) ---
+        for idx, t in enumerate(schema_info["tables"]):
+            table_to_id[t] = idx
+            nl_name = table_nl.get(t, "")
+            if nl_name:
+                table_texts.append(f"Table: {t} ({nl_name})")
+            else:
+                table_texts.append(f"Table: {t}")
+
+        # --- Column Nodes (enriched) ---
+        c_idx = 0
+        for table, cols in schema_info["columns"].items():
+            for col in cols:
+                full_name = f"{table}.{col['name']}"
+                col_to_id[full_name] = c_idx
+
+                # Base text
+                parts = [f"Column: {col['name']} in table {table}, type {col['type']}."]
+
+                # NL column name from tables.json
+                nl_col_name = col_nl.get(full_name, "")
+                if nl_col_name:
+                    parts.append(f"Meaning: {nl_col_name}.")
+
+                # Column description from CSV
+                desc_info = col_descriptions.get(full_name, {})
+                col_desc = desc_info.get("description", "")
+                if col_desc and col_desc.lower() != col['name'].lower():
+                    parts.append(f"Description: {col_desc}.")
+
+                # Value description from CSV
+                val_desc = desc_info.get("value_description", "")
+                if val_desc:
+                    # Truncate very long value descriptions
+                    if len(val_desc) > 200:
+                        val_desc = val_desc[:200] + "..."
+                    parts.append(f"Values info: {val_desc}.")
+
+                # Example values from DB
+                if col['samples']:
+                    parts.append(f"Example values: {', '.join(col['samples'])}.")
+
+                col_texts.append(" ".join(parts))
+                c_idx += 1
+
+        # --- FK Nodes (unchanged) ---
+        for idx, (edge_id, desc) in enumerate(fk_descriptions.items()):
+            fk_to_id[edge_id] = idx
+            fk_texts.append(desc)
+
+        # --- Encoding ---
+        data['table'].x = self.encoder.encode(table_texts, convert_to_tensor=True).cpu()
+        data['column'].x = self.encoder.encode(col_texts, convert_to_tensor=True).cpu()
+        if fk_texts:
+            data['fk_node'].x = self.encoder.encode(fk_texts, convert_to_tensor=True).cpu()
+        else:
+            data['fk_node'].x = torch.empty((0, self.encoder.get_sentence_embedding_dimension())).cpu()
+
+        # --- Edges (동일 로직) ---
+        h_src, h_dst = [], []
+        f_src, f_dst = [], []
+        r_src, r_dst = [], []
+        t_fk_src, t_fk_dst = [], []
+
+        for table, cols in schema_info["columns"].items():
+            t_id = table_to_id[table]
+            for col in cols:
+                c_id = col_to_id[f"{table}.{col['name']}"]
+                h_src.append(t_id); h_dst.append(c_id)
+
+        for fk in schema_info["foreign_keys"]:
+            f_col = f"{fk['from_table']}.{fk['from_column']}"
+            t_col = f"{fk['to_table']}.{fk['to_column']}"
+            edge_id = f"{f_col}->{t_col}"
+            if edge_id in fk_to_id and f_col in col_to_id and t_col in col_to_id:
+                fid, cid1, cid2 = fk_to_id[edge_id], col_to_id[f_col], col_to_id[t_col]
+                f_src.append(cid1); f_dst.append(fid)
+                r_src.append(fid); r_dst.append(cid2)
+            f_t = fk['from_table']
+            t_t = fk['to_table']
+            if f_t in table_to_id and t_t in table_to_id:
+                t_fk_src.extend([table_to_id[f_t], table_to_id[t_t]])
+                t_fk_dst.extend([table_to_id[t_t], table_to_id[f_t]])
+
+        data['table', 'has_column', 'column'].edge_index = torch.tensor([h_src, h_dst], dtype=torch.long)
+        data['column', 'belongs_to', 'table'].edge_index = torch.tensor([h_dst, h_src], dtype=torch.long)
+        if f_src:
+            data['column', 'is_source_of', 'fk_node'].edge_index = torch.tensor([f_src, f_dst], dtype=torch.long)
+            data['fk_node', 'points_to', 'column'].edge_index = torch.tensor([r_src, r_dst], dtype=torch.long)
+        if t_fk_src:
+            data['table', 'table_to_table', 'table'].edge_index = torch.tensor([t_fk_src, t_fk_dst], dtype=torch.long)
+
+        # --- Metadata ---
+        num_t, num_c = len(table_to_id), len(col_to_id)
+        node_meta = {}
+        for k, v in table_to_id.items(): node_meta[v] = k
+        for k, v in col_to_id.items(): node_meta[v + num_t] = k
+        for k, v in fk_to_id.items(): node_meta[v + num_t + num_c] = k
+
+        pcst_edges = (
+            [(s, d + num_t) for s, d in zip(h_src, h_dst)] +
+            [(s + num_t, d + num_t + num_c) for s, d in zip(f_src, f_dst)] +
+            [(s + num_t + num_c, d + num_t) for s, d in zip(r_src, r_dst)] +
+            [(s, d) for s, d in zip(t_fk_src, t_fk_dst)]
+        )
+        pcst_edge_types = (
+            ['belongs_to'] * len(h_src) +
+            ['is_source_of'] * len(f_src) +
+            ['points_to'] * len(r_src) +
+            ['table_to_table'] * len(t_fk_src)
+        )
+
+        metadata = {
+            'table_to_id': table_to_id, 'col_to_id': col_to_id, 'fk_to_id': fk_to_id,
+            'node_metadata': node_meta,
+            'edges': pcst_edges,
+            'edge_types': pcst_edge_types
+        }
+
+        return data, metadata
+
+
+@register("builder", "TripletGraphBuilder")
+class TripletGraphBuilder(EnrichedHeteroGraphBuilder):
+    """Extends EnrichedHeteroGraphBuilder with triplet relation edge embeddings."""
+
+    def __init__(self, triplet_path='data/processed/triplet_relations.json', **kwargs):
+        super().__init__(**kwargs)
+        self.triplet_data = {}
+        if os.path.exists(triplet_path):
+            with open(triplet_path, 'r', encoding='utf-8') as f:
+                self.triplet_data = json.load(f)
+            logger.info(f"Loaded triplet relations for {len(self.triplet_data)} databases")
+
+    def _build_triplet_lookup(self, db_id):
+        db_data = self.triplet_data.get(db_id, {})
+        lookup = {}
+        for edge in db_data.get('edges', []):
+            key = (edge['subject'], edge['object'])
+            lookup[key] = edge['relation']
+            rev_key = (edge['object'], edge['subject'])
+            if rev_key not in lookup:
+                lookup[rev_key] = edge['relation']
+        return lookup
+
+    def build(self, db_id, db_dir):
+        data, metadata = super().build(db_id, db_dir)
+        triplet_lookup = self._build_triplet_lookup(db_id)
+
+        node_meta = metadata['node_metadata']
+        edges = metadata['edges']
+        edge_types = metadata['edge_types']
+
+        triplet_texts = []
+        for (src_id, dst_id), et in zip(edges, edge_types):
+            src_name = node_meta.get(src_id, str(src_id))
+            dst_name = node_meta.get(dst_id, str(dst_id))
+
+            relation = triplet_lookup.get((src_name, dst_name))
+            if relation is None:
+                # Try FK node format: "table.col->table.col"
+                if '->' in src_name:
+                    parts = src_name.split('->')
+                    relation = triplet_lookup.get(
+                        (parts[0].strip(), parts[1].strip()), et)
+                elif '->' in dst_name:
+                    parts = dst_name.split('->')
+                    relation = triplet_lookup.get(
+                        (parts[0].strip(), parts[1].strip()), et)
+                else:
+                    relation = et
+
+            src_short = src_name.split('.')[-1] if '.' in src_name and '->' not in src_name else src_name
+            dst_short = dst_name.split('.')[-1] if '.' in dst_name and '->' not in dst_name else dst_name
+            triplet_texts.append(f"{src_short} {relation} {dst_short}")
+
+        if triplet_texts:
+            edge_embeddings = self.encoder.encode(
+                triplet_texts, convert_to_tensor=True).cpu()
+        else:
+            edge_embeddings = torch.empty(
+                (0, self.encoder.get_sentence_embedding_dimension()))
+
+        metadata['edge_embeddings'] = edge_embeddings
+        metadata['triplet_texts'] = triplet_texts
         return data, metadata

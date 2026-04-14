@@ -34,3 +34,4 @@ dev.json
 *.sqlite-shm
 *.sqlite-wal
 data/*
+.env

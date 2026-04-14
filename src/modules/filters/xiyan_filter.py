@@ -18,13 +18,13 @@ class XiYanFilter(BaseFilter):
     XiYanSQL의 Iterative Column Selection을 모사한 Filter 모듈.
     LLM 프롬프트 생성 시, 실제 DB에 쿼리를 날려 컬럼별 최대 3개의 예시 데이터(Example Values)를 삽입합니다.
     """
-    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", **kwargs):
+    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: str = "vllm", base_url: str = "http://localhost:8000/v1", **kwargs):
         self.model_name = model_name
         self.max_iteration = max_iteration
         self.temperature = temperature
         self.db_dir = db_dir
         self.prompt_manager = PromptManager()
-        self.client = APIClient()
+        self.client = APIClient(api_key=api_key, base_url=base_url)
         logger.info(f"Initialized XiYanFilter with DB Value Example Injection (Iterations: {self.max_iteration})")
 
     def _build_mschema_with_values(self, schema_dict: Dict[str, List[str]], db_id: str) -> str:

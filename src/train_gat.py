@@ -12,9 +12,9 @@ import wandb
 import argparse
 
 # 프로젝트 내부 모듈 임포트
-from data.bird_dataset import BIRDGraphDataset  # 아래에 Dataset 코드도 포함해 두었습니다.
-from modules.builders.graph_builder import HeteroGraphBuilder
-from modules.encoders.token_encoder import TokenEncoder
+from data.bird_dataset import BIRDGraphDataset, BIRDSuperNodeDataset
+from modules.builders.graph_builder import HeteroGraphBuilder, EnrichedHeteroGraphBuilder
+from modules.encoders.local_encoder import LocalPLMEncoder
 from models.gat_network import SchemaHeteroGAT
 from modules.projectors.dual_tower import DualTowerProjector
 from utils.logger import setup_logger, get_logger
@@ -92,17 +92,33 @@ def calculate_recall_at_k(logits: torch.Tensor, labels: torch.Tensor, k: int = 1
     hits = labels[top_k_indices].sum().item()
     return hits / labels.sum().item()
 
-def validate(gat_model, projector, loader, device, k=15):
+def validate(gat_model, projector, loader, device, k=15, query_conditioned=False):
     gat_model.eval()
     projector.eval()
     total_recall = 0.0
     count = 0
-    
+
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(device)
-            node_embs_dict = gat_model(batch.x_dict, batch.edge_index_dict)
             q_emb = batch['query']
+            if query_conditioned:
+                # query pooling (token-level → sentence-level)
+                if q_emb.dim() == 3:
+                    q_pooled = q_emb.mean(dim=1)
+                elif q_emb.dim() == 2:
+                    q_pooled = q_emb
+                else:
+                    q_pooled = q_emb.unsqueeze(0)
+
+                augmented_x = {}
+                for n_type, x in batch.x_dict.items():
+                    node_batch_idx = batch[n_type].batch
+                    q_per_node_val = q_pooled[node_batch_idx]
+                    augmented_x[n_type] = torch.cat([x, q_per_node_val], dim=-1)
+                node_embs_dict = gat_model(augmented_x, batch.edge_index_dict)
+            else:
+                node_embs_dict = gat_model(batch.x_dict, batch.edge_index_dict)
             
             # 그래프 별로 순회하며 Recall 계산
             for i in range(batch.num_graphs):
@@ -144,8 +160,14 @@ def run_train(config_path: str):
     os.makedirs(PATHS["cache_dir"], exist_ok=True)
 
     # 컴포넌트 초기화
-    builder = HeteroGraphBuilder()
-    encoder = TokenEncoder() 
+    builder_type = cfg.get('builder', {}).get('type', 'HeteroGraphBuilder')
+    if builder_type == 'EnrichedHeteroGraphBuilder':
+        tables_json = cfg['builder'].get('tables_json_path', '')
+        builder = EnrichedHeteroGraphBuilder(tables_json_path=tables_json)
+        logger.info(f"Using EnrichedHeteroGraphBuilder (tables_json={tables_json})")
+    else:
+        builder = HeteroGraphBuilder()
+    encoder = LocalPLMEncoder()
 
     # 데이터셋 로드 (학습용)
     logger.info("🚀 Loading Training Dataset from NAS...")
@@ -165,13 +187,27 @@ def run_train(config_path: str):
     val_loader = DataLoader(val_ds, batch_size=8, shuffle=False)
 
     # 모델 준비
+    query_conditioned = cfg['model'].get('query_conditioned', False)
+    query_supernode = cfg['model'].get('query_supernode', False)
+
+    # Super Node 모드: base dataset을 BIRDSuperNodeDataset으로 래핑
+    if query_supernode:
+        logger.info("Query Super Node mode: injecting query nodes into graphs...")
+        full_train_dataset = BIRDSuperNodeDataset(full_train_dataset)
+
     gat_model = SchemaHeteroGAT(
-        in_channels=cfg['model']['in_channels'], 
-        hidden_channels=cfg['model']['hidden_channels'], 
+        in_channels=cfg['model']['in_channels'],
+        hidden_channels=cfg['model']['hidden_channels'],
         out_channels=cfg['model']['out_channels'],
         num_layers=cfg['model']['num_layers'],
-        heads=cfg['model']['heads']
+        heads=cfg['model']['heads'],
+        query_conditioned=query_conditioned,
+        query_supernode=query_supernode
         ).to(device)
+    if query_conditioned:
+        logger.info("Query-Conditioned GAT enabled (Concatenation mode)")
+    if query_supernode:
+        logger.info("Query-Conditioned GAT enabled (Super Node mode)")
     
     projector = DualTowerProjector(
         text_dim=cfg['model']['in_channels'], 
@@ -181,13 +217,25 @@ def run_train(config_path: str):
 
     logger.info("Initializing model parameters with a dummy batch...")
     gat_model.train()
-    
+
     # 데이터셋에서 첫 번째 샘플 하나를 가져옵니다.
     dummy_batch = full_train_dataset[0].clone().to(device)
-    
+
     # 모델에 한 번 통과시켜 가중치를 생성합니다.
     with torch.no_grad():
-        _ = gat_model(dummy_batch.x_dict, dummy_batch.edge_index_dict)
+        if query_conditioned:
+            # query가 token-level [seq_len, dim]일 수 있으므로 mean pooling → [1, dim]
+            dummy_q = dummy_batch['query']
+            if dummy_q.dim() >= 2:
+                dummy_q = dummy_q.mean(dim=0, keepdim=True)  # [1, 384]
+            else:
+                dummy_q = dummy_q.unsqueeze(0)  # [384] → [1, 384]
+            _ = gat_model(dummy_batch.x_dict, dummy_batch.edge_index_dict, query_emb=dummy_q)
+        elif query_supernode:
+            # Super Node 모드: graph에 이미 query_node가 포함됨
+            _ = gat_model(dummy_batch.x_dict, dummy_batch.edge_index_dict)
+        else:
+            _ = gat_model(dummy_batch.x_dict, dummy_batch.edge_index_dict)
     
     # 이제 가중치가 생성되었으므로 wandb.watch가 작동합니다.
     wandb.watch(gat_model, log="all")
@@ -223,8 +271,25 @@ def run_train(config_path: str):
             optimizer.zero_grad()
 
             # GAT -> Node Embeddings
-            node_embs = gat_model(batch.x_dict, batch.edge_index_dict)
             q_emb = batch['query']
+            if query_conditioned:
+                # query가 token-level [B, seq_len, dim]일 수 있으므로 sentence-level로 pooling
+                if q_emb.dim() == 3:
+                    q_emb_pooled = q_emb.mean(dim=1)  # [B, dim]
+                elif q_emb.dim() == 2:
+                    q_emb_pooled = q_emb  # 이미 [B, dim]
+                else:
+                    q_emb_pooled = q_emb.unsqueeze(0)
+
+                # batch 내 각 graph의 query를 node별로 대응하여 concat
+                augmented_x = {}
+                for n_type, x in batch.x_dict.items():
+                    node_batch_idx = batch[n_type].batch  # [num_nodes_in_batch]
+                    q_per_node = q_emb_pooled[node_batch_idx]  # [num_nodes, dim]
+                    augmented_x[n_type] = torch.cat([x, q_per_node], dim=-1)
+                node_embs = gat_model(augmented_x, batch.edge_index_dict)
+            else:
+                node_embs = gat_model(batch.x_dict, batch.edge_index_dict)
 
             step_bce_loss = 0
             step_infonce_loss = 0
@@ -267,7 +332,8 @@ def run_train(config_path: str):
             pbar.set_postfix({"loss": f"{total_loss.item():.4f}", "infoNCE": f"{step_infonce_loss.item():.4f}"})
 
         # 검증 (Recall@15)
-        val_recall = validate(gat_model, projector, val_loader, device, k=15)
+        val_recall = validate(gat_model, projector, val_loader, device, k=15,
+                              query_conditioned=query_conditioned)
         
         wandb.log({
             "train/epoch_loss": epoch_loss / len(train_loader),
@@ -279,7 +345,8 @@ def run_train(config_path: str):
 
         if val_recall > best_recall:
             best_recall = val_recall
-            save_path = os.path.join(PATHS["checkpoint_dir"], "best_gat_model.pt")
+            ckpt_name = cfg.get('checkpoint_name', 'best_gat_model.pt')
+            save_path = os.path.join(PATHS["checkpoint_dir"], ckpt_name)
             torch.save({
                 'epoch': epoch + 1,
                 'gat_state_dict': gat_model.state_dict(),

@@ -28,12 +28,44 @@ class SchemaLinkingPipeline:
         self.extractor = build("extractor", config['connectivity_extractor'])
         self.filter = build("filter", config['filter'])
 
+        # [F5] Extraction retry — re-run Extractor with relaxed params when
+        # the Filter returns "Unanswerable" (or too few nodes). Max K retries.
+        retry_cfg = config.get('extraction_retry', {}) or {}
+        self.retry_enabled = bool(retry_cfg.get('enabled', False))
+        self.retry_max = int(retry_cfg.get('max_retries', 2))
+        self.retry_min_nodes = int(retry_cfg.get('min_nodes', 2))
+        self.retry_strategies = retry_cfg.get(
+            'strategies', ['widen', 'steiner']
+        )
+
         if config['sql_generator']['enabled']:
             self.generator = build("generator", config['sql_generator'])
         else:
             self.generator = None
         
         logger.info("✅ Pipeline assembly completed successfully.")
+
+    def _apply_retry_strategy(self, strategy: str) -> Dict[str, Any]:
+        """Relax Extractor parameters in-place. Returns snapshot for restore."""
+        ext = self.extractor
+        snapshot = {}
+        if strategy == "widen":
+            for attr in ("base_cost", "belongs_to_cost", "fk_cost"):
+                if hasattr(ext, attr):
+                    snapshot[attr] = getattr(ext, attr)
+                    setattr(ext, attr, max(0.0, getattr(ext, attr) * 0.5))
+        elif strategy == "steiner":
+            if hasattr(ext, "backbone_bonus"):
+                snapshot["backbone_bonus"] = getattr(ext, "backbone_bonus")
+                setattr(ext, "backbone_bonus", getattr(ext, "backbone_bonus") + 0.2)
+            if hasattr(ext, "base_cost"):
+                snapshot["base_cost"] = getattr(ext, "base_cost")
+                setattr(ext, "base_cost", max(0.0, getattr(ext, "base_cost") * 0.7))
+        return snapshot
+
+    def _restore_extractor_params(self, snapshot: Dict[str, Any]) -> None:
+        for k, v in snapshot.items():
+            setattr(self.extractor, k, v)
 
     def run(self, db_id: str, query: str) -> Dict[str, Any]:
         """단일 질의(Query) 처리 파이프라인"""
@@ -150,9 +182,13 @@ class SchemaLinkingPipeline:
         logger.debug("Subgraph Extracting")
         t_start = time.perf_counter()
             
+        # Pass query embedding for edge-prize extractors
+        if 'edge_embeddings' in metadata and q_embs is not None:
+            metadata['query_embedding'] = q_embs.squeeze(0).cpu()
+
         selected_nodes_idx, selected_edges = self.extractor.extract(
-            graph_data=metadata, 
-            node_scores=scores_list, 
+            graph_data=metadata,
+            node_scores=scores_list,
             seed_nodes=seeds
         )
         
@@ -203,15 +239,103 @@ class SchemaLinkingPipeline:
         # Stage 6: Agent Filtering
         logger.debug("Filtering")
         t_start = time.perf_counter()
-        # 💡 [수정됨] db_id를 Filter로 전달하여 Value Retrieval 및 Example 조회를 허용
+
+        # [F3] Tier-2 pool: Selector-positive but PCST-rejected nodes.
+        # A node is "Selector-positive" when its score passes a threshold
+        # (default 0.5). Filters that don't consume these kwargs simply ignore
+        # them (BaseFilter.refine accepts **kwargs).
+        node_meta = metadata.get('node_metadata', {}) or {}
+        tier1_indices = set()
+        for n_id in selected_nodes_idx:
+            n_id_key = int(n_id) if isinstance(n_id, (int, float)) or (
+                isinstance(n_id, str) and str(n_id).isdigit()) else n_id
+            tier1_indices.add(n_id_key)
+
+        tier2_threshold = 0.5
+        tier2_pool: List[str] = []
+        gat_scores: Dict[str, float] = {}
+        for idx, score in enumerate(scores_list):
+            name = node_meta.get(idx, str(idx))
+            name_str = str(name)
+            if "." not in name_str:
+                continue
+            if score is None:
+                continue
+            try:
+                s = float(score)
+            except (TypeError, ValueError):
+                continue
+            gat_scores[name_str] = s
+            if s >= tier2_threshold and idx not in tier1_indices:
+                tier2_pool.append(name_str)
+
         final_result = self.filter.refine(
-            query=query, 
+            query=query,
             subgraph=subgraph_dict,
-            db_id=db_id              # <-- 신규 추가: 필터링 프롬프트에 DB Value를 포함시키기 위함
+            db_id=db_id,
+            tier2_pool=tier2_pool,
+            gat_scores=gat_scores,
+            metadata=metadata,
         )
 
         logger.debug("Filtered")
         execution_times["filtering"] = time.perf_counter() - t_start
+
+        # [F5] Extraction retry loop — triggered when filter verdict is
+        # Unanswerable or selection is too sparse.
+        retry_trace: List[str] = []
+        if self.retry_enabled:
+            attempts = 0
+            while attempts < self.retry_max:
+                status = final_result.get("status", "")
+                n_final = len(final_result.get("final_nodes", []))
+                needs_retry = (status == "Unanswerable") or (n_final < self.retry_min_nodes)
+                if not needs_retry:
+                    break
+                strategy = self.retry_strategies[min(attempts, len(self.retry_strategies) - 1)]
+                logger.info(f"[F5 retry {attempts+1}/{self.retry_max}] strategy={strategy}")
+                snapshot = self._apply_retry_strategy(strategy)
+                try:
+                    selected_nodes_idx, selected_edges = self.extractor.extract(
+                        graph_data=metadata, node_scores=scores_list, seed_nodes=seeds
+                    )
+                    subgraph_dict = {}
+                    for n_id in selected_nodes_idx:
+                        n_id_key = int(n_id) if isinstance(n_id, (int, float)) or (
+                            isinstance(n_id, str) and str(n_id).isdigit()) else n_id
+                        name = metadata['node_metadata'].get(n_id_key, str(n_id_key))
+                        if "." in name:
+                            tbl, col = name.split(".", 1)
+                            subgraph_dict.setdefault(tbl, []).append(col)
+                        else:
+                            subgraph_dict.setdefault(name, [])
+                    tier1_indices = {
+                        (int(x) if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).isdigit()) else x)
+                        for x in selected_nodes_idx
+                    }
+                    tier2_pool = [
+                        str(node_meta.get(idx, idx))
+                        for idx, sc in enumerate(scores_list)
+                        if sc is not None
+                        and "." in str(node_meta.get(idx, ""))
+                        and float(sc) >= tier2_threshold
+                        and idx not in tier1_indices
+                    ]
+                    final_result = self.filter.refine(
+                        query=query, subgraph=subgraph_dict, db_id=db_id,
+                        tier2_pool=tier2_pool, gat_scores=gat_scores, metadata=metadata,
+                    )
+                    retry_trace.append(
+                        f"retry{attempts+1}:{strategy}->{len(final_result.get('final_nodes', []))}nodes"
+                    )
+                finally:
+                    self._restore_extractor_params(snapshot)
+                attempts += 1
+            if retry_trace:
+                final_result["reasoning"] = (
+                    final_result.get("reasoning", "") + f" | F5[{'; '.join(retry_trace)}]"
+                )
+                final_result["retry_attempts"] = attempts
 
         logger.debug(f"✅ Final Decision: {final_result.get('status', 'Unknown')} | Nodes: {len(final_result.get('final_nodes', []))}")
         logger.debug(f"Final Nodes: {final_result.get('final_nodes')}")
