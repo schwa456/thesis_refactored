@@ -11,6 +11,13 @@ DualTowerProjector 기반 train_gat.py와 달리, query를 loss 계산에서 제
   (직접) GAT forward 1회만
 """
 import os
+from pathlib import Path
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+os.environ.setdefault("WANDB_DIR", str(Path(__file__).resolve().parents[1]))
 import yaml
 import torch
 import torch.nn as nn
@@ -99,7 +106,7 @@ def run_train(config_path: str):
         cfg = yaml.safe_load(f)
 
     wandb.init(
-        project=cfg['project_name'],
+        project=cfg.get('project_name', os.getenv("WANDB_PROJECT", "Text-to-SQL-Alignment")),
         name=cfg['experiment_name'],
         config=cfg,
     )

@@ -44,7 +44,7 @@ class SingleAgentFilter(BaseFilter):
         self.model_name = model_name
         self.temperature = temperature
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
+        self.client = APIClient()
         logger.info(f"Initialized SingleAgentFilter (Model: {model_name})")
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> Dict[str, Any]:
@@ -77,7 +77,7 @@ class AdaptiveMultiAgentFilter(BaseFilter):
         self.model_name = model_name
         self.threshold = uncertainty_threshold
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
+        self.client = APIClient()
         logger.info(f"Initialized AdaptiveMultiAgentFilter (Threshold: {self.threshold})")
 
     def _call_agent(self, prompt: str) -> dict:

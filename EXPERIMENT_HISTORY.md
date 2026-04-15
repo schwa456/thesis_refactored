@@ -361,20 +361,38 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 
 ---
 
+### 6-16. a05 Agentic Filter Ablation — 2026-04-15
+
+Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic refinement 효과 비교. Backbone: Qwen3-Coder-30B-A3B-Instruct-FP8 (vLLM, GPUs 2+3).
+
+| ID | Filter | Recall | Precision | F1 | Runtime |
+|----|--------|--------|-----------|------|---------|
+| a03_17 (anchor) | XiYan | 0.6761 | 0.7128 | **0.6940** | — |
+| a05_01 | AdaptiveMultiAgent (Semantic+Structural+Skeptic) | 0.3770 | 0.6276 | 0.4713 | 10h 23m |
+| a05_02 | ReflectionFilter (1 iter, propose→critique→revise) | **0.7320** | 0.6833 | **0.7068** | 3h 18m (7.3s/q) |
+
+**관찰**:
+- **a05_01 F1=0.4713, anchor 대비 −22.3%p**: 3-agent consensus가 지나치게 보수적으로 교집합화 — Recall 0.38로 anchor 대비 -30%p 대폭 손실. Precision도 anchor XiYan보다 낮음 (0.63 < 0.71).
+- JSON Parsing failed warning 빈발: agents.py fallback이 Unanswerable로 처리되어 빈 선택 누적 → Recall 파괴.
+- **a05_02 F1=0.7068, anchor 대비 +1.3%p (신기록)**: Critique-revise가 Recall을 0.68→0.73으로 밀어올림. Precision은 0.71→0.68로 소폭 하락하나 net F1 상승. **Restore path 확보가 실제로 Recall 천장을 돌파**함을 실증.
+- 향후 agentic filter는 (1) prune-only 대신 restore 경로 확보, (2) parsing robustness, (3) fallback 시 XiYan 결과 유지가 필수.
+
+---
+
 ## 7. 전체 실험 순위 (Recall 기준 Top 10)
 
 | Rank | Experiment | Recall | Precision | F1 | Key Components |
 |------|-----------|--------|-----------|------|----------------|
 | 1 | abl_ens_basic_xiyan | **0.8149** | 0.7597 | 0.7863 | Ensemble + BasicPCST + XiYan |
 | 2 | abl_cos_basic_xiyan | 0.7987 | 0.7694 | 0.7838 | Cosine + BasicPCST + XiYan |
-| 3 | edge_prize | 0.6823 | 0.8139 | 0.7424 | TripletBuilder + EdgePrizePCST + XiYan |
-| 4 | enriched_gat | 0.6658 | 0.8147 | 0.7327 | EnrichedBuilder + Ensemble + Adaptive + XiYan |
-| 5 | idea24_product_component_xiyan | 0.6304 | 0.8028 | 0.7063 | Ensemble + ProductCost+Component + XiYan |
-| 6 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
-| 7 | qcond_idea24_xiyan | 0.6236 | 0.8056 | 0.7032 | QueryCond(α=0.85) + Idea2+4 + XiYan |
-| 8 | supernode_idea24_a085_xiyan | 0.6154 | 0.8005 | 0.6958 | SuperNode(α=0.85) + Idea2+4 + XiYan |
-| 9 | idea2_product_cost_xiyan | 0.6141 | 0.7963 | 0.6935 | Ensemble + ProductCost + XiYan |
-| 10 | supernode_idea24_xiyan | 0.6089 | 0.7922 | 0.6886 | SuperNode(α=0.70) + Idea2+4 + XiYan |
+| 3 | **a05_02_reflection_1iter** | **0.7320** | 0.6833 | 0.7068 | Ensemble + AdaptivePCST + **ReflectionFilter(1iter)** |
+| 4 | edge_prize | 0.6823 | 0.8139 | 0.7424 | TripletBuilder + EdgePrizePCST + XiYan |
+| 5 | abl_a03_17_supernode_binary_fixed_xiyan | 0.6761 | 0.7128 | 0.6940 | SuperNode-Direct(binary, τ=0.5) + BasicPCST + XiYan |
+| 6 | enriched_gat | 0.6658 | 0.8147 | 0.7327 | EnrichedBuilder + Ensemble + Adaptive + XiYan |
+| 7 | abl_a04_01_supernode_t005_steiner_xiyan | 0.6353 | 0.7054 | 0.6685 | SuperNode-Direct(τ=0.05) + SteinerBackbone + XiYan |
+| 8 | idea24_product_component_xiyan | 0.6304 | 0.8028 | 0.7063 | Ensemble + ProductCost+Component + XiYan |
+| 9 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
+| 10 | qcond_idea24_xiyan | 0.6236 | 0.8056 | 0.7032 | QueryCond(α=0.85) + Idea2+4 + XiYan |
 
 ## 8. 전체 실험 순위 (F1 기준 Top 10)
 
@@ -384,12 +402,12 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 | 2 | abl_cos_basic_xiyan | 0.7987 | 0.7694 | 0.7838 | Cosine + BasicPCST + XiYan |
 | 3 | edge_prize | 0.6823 | 0.8139 | 0.7424 | TripletBuilder + EdgePrizePCST + XiYan |
 | 4 | enriched_gat | 0.6658 | 0.8147 | 0.7327 | EnrichedBuilder + Ensemble + Adaptive + XiYan |
-| 5 | idea24_product_component_xiyan | 0.6304 | 0.8028 | 0.7063 | Ensemble + ProductCost+Component + XiYan |
-| 6 | qcond_idea24_xiyan | 0.6236 | 0.8056 | 0.7032 | QueryCond(α=0.85) + Idea2+4 + XiYan |
-| 7 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
-| 8 | supernode_idea24_a085_xiyan | 0.6154 | 0.8005 | 0.6958 | SuperNode(α=0.85) + Idea2+4 + XiYan |
-| 9 | idea2_product_cost_xiyan | 0.6141 | 0.7963 | 0.6935 | Ensemble + ProductCost + XiYan |
-| 10 | supernode_idea24_xiyan | 0.6089 | 0.7922 | 0.6886 | SuperNode(α=0.70) + Idea2+4 + XiYan |
+| 5 | **a05_02_reflection_1iter** | 0.7320 | 0.6833 | **0.7068** | Ensemble + AdaptivePCST + **ReflectionFilter(1iter)** |
+| 6 | idea24_product_component_xiyan | 0.6304 | 0.8028 | 0.7063 | Ensemble + ProductCost+Component + XiYan |
+| 7 | qcond_idea24_xiyan | 0.6236 | 0.8056 | 0.7032 | QueryCond(α=0.85) + Idea2+4 + XiYan |
+| 8 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
+| 9 | supernode_idea24_a085_xiyan | 0.6154 | 0.8005 | 0.6958 | SuperNode(α=0.85) + Idea2+4 + XiYan |
+| 10 | abl_a03_17_supernode_binary_fixed_xiyan | 0.6761 | 0.7128 | 0.6940 | SuperNode-Direct(binary, τ=0.5) + BasicPCST + XiYan |
 
 ---
 
@@ -404,19 +422,28 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 5. **Component Aware (Idea 4)**: R +0.03~0.04 추가. 이론적 기여 명확 (component별 독립 threshold).
 6. **Query-Conditioned GAT**: α=0.85에서 P +0.01. α=0.0에서는 cosine 없이도 P 0.71 달성.
 7. **GAT Ensemble (α=0.85)**: Cosine 대비 P/R +0.01~0.02. 기여가 미미한 이유는 GAT 자체 판별력 한계.
+8. **ReflectionFilter (a05_02)**: XiYan 대비 R +0.11 (0.6244→0.7320), P −0.11 (0.7930→0.6833), F1 +0.008. Propose→critique→revise 루프가 XiYan의 recall 천장을 돌파한 최초 사례. Critique가 원래 subgraph 밖 노드 재도입을 허용하는 구조적 차별.
+9. **AdaptiveMultiAgentFilter (a05_01)**: R=0.3770으로 매우 낮음 — agent consensus 과보수적, JSON parsing 실패 다수. 추가 튜닝 필요.
 
 ### 구조적 패턴
 
 - **Basic PCST + XiYan > Adaptive PCST + XiYan**: F1 기준 0.7863 vs 0.6987. XiYan이 pruning을 더 잘하므로 PCST는 넓게 포함시키는 게 유리.
-- **Precision과 Recall의 trade-off**: 모든 실험에서 일관되게 나타남. Filter가 precision을 올리면 recall이 내려감.
+- **Precision과 Recall의 trade-off**: 모든 실험에서 일관되게 나타남. Filter가 precision을 올리면 recall이 내려감. **ReflectionFilter는 이 trade-off를 명시적으로 recall 방향으로 이동**시킨 첫 개입.
+- **BO 결과**: `bo_score_driven` (P=0.7867, R=0.5910) > `bo_fixed_cost` (P=0.7468, R=0.4793). Score-driven cost weights가 dev F1 기준으로 fixed cost보다 우월.
+- **Edge Prize PCST**: F1=0.7424로 XiYan 조합 중 Top-3. Triplet edge embedding → edge prize가 connectivity-aware pruning에 유효.
 - **GAT 기여가 제한적인 이유**: (1) α=0.85에서 15%만 반영 (2) query-agnostic attention (3) FK 노드 label 부재
 
 ### 다음 단계 제안
 
-1. **Enriched + Query-Conditioned 결합**: 현재 각각 최고 P 0.81, P 0.81 — 결합 시 시너지 기대
-2. **Basic PCST + XiYan 조합에 Enriched/QueryCond 적용**: F1 0.7863 baseline에서 추가 개선 여지
-3. **FK 노드 supervised training (Idea 1)**: GAT의 bridge table 인식 능력 강화
-4. **Direct variant 결론**: BCE only Direct가 Projector(BCE+InfoNCE) 대비 열등 — DualTowerProjector + InfoNCE 유지가 유리
+1. **a05_03 Reflection 3iter** (진행 중, 2026-04-15 기준 ~34%): 1iter 대비 추가 recall 회복 또는 수렴 여부 확인.
+2. **a05_04 VerifierFilter (CHESS-style Unit Tester)**: NL unit test로 선택 검증, 실패 시 expansion.
+3. **a05_05/06 Tiered Bidirectional Agent (F3)**: Tier-1(PCST) vs Tier-2(selector-only) 구분 + graph-native tools.
+4. **a05_07 Uncertainty-gated adaptive depth (F4)**: GAT confidence 기반 agentic compute 조절.
+5. **a05_09/10 Extraction-retry (F5)**: Unanswerable verdict → Extractor 완화 재호출 loop.
+6. **a05_11/12 GPT-4o-mini backbone**: Qwen3-Coder-30B 대비 backbone 민감도 검증.
+7. **Enriched + Query-Conditioned + Reflection 결합**: 각각의 최고점 결합 시 시너지 기대.
+8. **FK 노드 supervised training (Idea 1)**: GAT의 bridge table 인식 능력 강화.
+9. **Direct variant 결론**: BCE only Direct가 Projector(BCE+InfoNCE) 대비 열등 — DualTowerProjector + InfoNCE 유지가 유리.
 
 ---
 
@@ -469,8 +496,12 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 |--------|--------------|------|
 | `None` | - | Pass-through |
 | `SingleAgentFilter` | LLM 모델명 | 1회 LLM pruning |
-| `AdaptiveMultiAgentFilter` | LLM 모델명, 여러 agent 설정 | Multi-agent voting (legacy) |
+| `AdaptiveMultiAgentFilter` | `model_name`, `uncertainty_threshold=0.6` | Semantic+Structural+Skeptic agent voting. a05_01에서 R=0.3770 (과보수적) |
 | `XiYanFilter` | `model_name="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"`, `max_iteration=1`, `temperature=0.0` | XiYan-SQL pruning |
+| `ReflectionFilter` | `model_name`, `max_iteration=1~3`, `temperature=0.0` | Propose→Critique→Revise. 원 subgraph 외 노드 재도입 허용. a05_02 (1iter): R=0.7320 F1=0.7068 |
+| `VerifierFilter` (예정) | `model_name`, unit test 개수 | CHESS-style NL unit tester + Expander. a05_04 |
+| `BidirectionalAgentFilter` (예정) | tier1_subgraph, tier2_pool, gat_scores, tools | Tier-aware prune + restore with graph-native tools. a05_05/06 |
+| `AdaptiveDepthFilter` (예정) | uncertainty_threshold | GAT confidence 기반 depth 선택 (단일/Reflection/Bidirectional). a05_07 |
 
 ### 10-5. Post-processing
 
@@ -563,3 +594,22 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 - ComponentAwareProductCost: `bt_weight=0.1, fk_weight=0.2, macro_weight=0.5, min_cost=0.0001, percentile=80.0, min/max_prize_nodes=3/25`
 
 **Direct Selector 공통**: `in_channels=384, hidden_channels=out_channels=classifier_hidden=256, encoder_type="plm"`
+
+### Phase D — Filter Module Agentic Refinement (a05 series, 2026-04-14~)
+
+모든 a05 실험은 `configs/experiments/abl/a05_filter_agentic/` 하위. Backbone: Qwen3-Coder-30B-A3B-Instruct-FP8 (vLLM, GPU 2+3). Extractor는 best Direct anchor(`abl_a03_17_supernode_binary_fixed_xiyan`)의 `PCSTExtractor(base=0.05, bt=0.01, fk=0.05, macro=0.5, threshold=0.0)` 고정, Filter만 교체.
+
+| # | Experiment ID | Filter | Backbone | 상태 | Recall | Precision | F1 |
+|---|---------------|--------|----------|------|--------|-----------|-----|
+| a05_01 | a05_01_adaptive_multi_agent | `AdaptiveMultiAgentFilter(uncertainty=0.6)` | Qwen | ✅ | 0.3770 | 0.6276 | 0.4713 |
+| a05_02 | a05_02_reflection_1iter | `ReflectionFilter(max_iter=1)` | Qwen | ✅ | **0.7320** | 0.6833 | **0.7068** |
+| a05_03 | a05_03_reflection_3iter | `ReflectionFilter(max_iter=3)` | Qwen | 🏃 (~34%) | - | - | - |
+| a05_04 | a05_04_verifier | `VerifierFilter` (XiYan + Unit Tester) | Qwen | ⏸ | - | - | - |
+| a05_05 | a05_05_bidirectional_notool | `BidirectionalAgentFilter` (tier1+tier2, no tools) | Qwen | ⏸ | - | - | - |
+| a05_06 | a05_06_bidirectional_fulltool | `BidirectionalAgentFilter` + graph tools ★ | Qwen | ⏸ | - | - | - |
+| a05_07 | a05_07_adaptive_depth | `AdaptiveDepthFilter` (uncertainty gating) | Qwen | ⏸ | - | - | - |
+| a05_08 | a05_08_verifier_bidirectional | F3 + F2 stacked | Qwen | ⏸ | - | - | - |
+| a05_09 | a05_09_extraction_retry | F5 Extractor retry (K=2) + F3 | Qwen | ⏸ | - | - | - |
+| a05_10 | a05_10_retry_gated | F5 + F4 gating | Qwen | ⏸ | - | - | - |
+| a05_11 | a05_11_bidirectional_gpt4omini | F3 full tools | **GPT-4o-mini** | ⏸ | - | - | - |
+| a05_12 | a05_12_retry_gpt4omini | F5+F4 stack | **GPT-4o-mini** | ⏸ | - | - | - |

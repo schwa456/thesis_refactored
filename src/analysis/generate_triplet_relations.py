@@ -14,7 +14,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from openai import OpenAI
 
-CLIENT = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+CLIENT = OpenAI(
+    base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1"),
+    api_key=os.getenv("VLLM_API_KEY", "unused"),
+)
 MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
 DEV_DIR = "data/raw/BIRD_dev"
 TABLES_JSON = os.path.join(DEV_DIR, "dev_tables.json")

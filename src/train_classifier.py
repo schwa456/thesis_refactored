@@ -1,4 +1,11 @@
 import os
+from pathlib import Path
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+os.environ.setdefault("WANDB_DIR", str(Path(__file__).resolve().parents[1]))
 import yaml
 import torch
 import wandb
@@ -113,7 +120,7 @@ def main(config_path: str):
     # Config 구조에 맞게 매핑 (기존 train.py 참고)
     exp_name = cfg.get('experiment_name', 'mlp_classifier_train')
     
-    wandb.init(project=cfg.get('project_name', "Text-to-SQL-Alignment"), name=exp_name, config=cfg)
+    wandb.init(project=cfg.get('project_name', os.getenv("WANDB_PROJECT", "Text-to-SQL-Alignment")), name=exp_name, config=cfg)
     setup_logger(log_dir="./logs/", exp_name=exp_name, sub_dir="train")
     logger = get_logger(__name__)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

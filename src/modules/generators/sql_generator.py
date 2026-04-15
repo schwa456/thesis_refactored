@@ -15,7 +15,7 @@ class LLMSQLGenerator(BaseGenerator):
         self.llm_model = llm_model
         self.temperature = temperature
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key="vllm", base_url="http://localhost:8000/v1")
+        self.client = APIClient()
         logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model})")
 
     def generate(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> str:

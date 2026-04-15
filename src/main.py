@@ -1,4 +1,10 @@
 import os
+from pathlib import Path
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import gc
@@ -52,8 +58,9 @@ def main():
     score_save_path = os.path.join(output_dir, f"score_analysis_{exp_name}.jsonl")
     profiling_path = os.path.join(output_dir, f"profiling_{exp_name}.jsonl")
     output_path = os.path.join(output_dir, f"output_{exp_name}.jsonl")
+    reasoning_path = os.path.join(output_dir, f"reasoning_detail_{exp_name}.jsonl")
 
-    for path in [pred_save_path, score_save_path, profiling_path, output_path]:
+    for path in [pred_save_path, score_save_path, profiling_path, output_path, reasoning_path]:
         if os.path.exists(path):
             os.remove(path)
 
@@ -170,10 +177,29 @@ def main():
                 "final_nodes": result.get("final_nodes", []),
                 "reasoning": result.get("reasoning", ""),
                 "generated_sql": pred_sql,
-                "ex_score": ex_score
+                "ex_score": ex_score,
             }
+            for k in (
+                "adaptive_route", "adaptive_confidence",
+                "tier1_dropped_count", "tier2_pool_count",
+                "restored_count", "promoted_count",
+                "retry_attempts",
+            ):
+                if k in result:
+                    pred_record[k] = result[k]
             with open(pred_save_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(pred_record, ensure_ascii=False) + '\n')
+
+            if result.get("trace"):
+                reasoning_record = {
+                    "question_id": question_id,
+                    "db_id": db_id,
+                    "question": question,
+                    "reasoning_summary": result.get("reasoning", ""),
+                    "trace": result["trace"],
+                }
+                with open(reasoning_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(reasoning_record, ensure_ascii=False) + '\n')
             
             output_record = {
                 "question_id": question_id,
@@ -272,10 +298,49 @@ def main():
         'recall': overall_recall,
         'ex': overall_ex
     }
+
+    filter_timing = {}
+    try:
+        if os.path.exists(profiling_path):
+            times = []
+            with open(profiling_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                        t = rec.get("filtering")
+                        if isinstance(t, (int, float)):
+                            times.append(float(t))
+                    except Exception:
+                        continue
+            if times:
+                times_sorted = sorted(times)
+                n = len(times_sorted)
+                filter_timing = {
+                    'filter_time_mean_s': sum(times_sorted) / n,
+                    'filter_time_median_s': times_sorted[n // 2],
+                    'filter_time_p95_s': times_sorted[min(n - 1, int(0.95 * n))],
+                    'filter_time_max_s': times_sorted[-1],
+                    'filter_time_total_s': sum(times_sorted),
+                    'filter_samples': n,
+                }
+                logger.info(
+                    f"⏱️  Filter timing — mean={filter_timing['filter_time_mean_s']:.2f}s | "
+                    f"median={filter_timing['filter_time_median_s']:.2f}s | "
+                    f"p95={filter_timing['filter_time_p95_s']:.2f}s | "
+                    f"max={filter_timing['filter_time_max_s']:.2f}s | n={n}"
+                )
+    except Exception as e:
+        logger.warning(f"Filter timing aggregation failed: {e}")
+
     metric_save_path = os.path.join(output_dir, "metrics.txt")
     with open(metric_save_path, 'w', encoding='utf-8') as f:
         for k, v in metrics.items():
             f.write(f"{k}: {v:.4f}\n")
+        for k, v in filter_timing.items():
+            if k == 'filter_samples':
+                f.write(f"{k}: {int(v)}\n")
+            else:
+                f.write(f"{k}: {v:.4f}\n")
 
     logger.info("✅ All tasks completed. Forcing process termination.")
     os._exit(0)

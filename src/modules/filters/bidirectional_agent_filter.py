@@ -39,8 +39,8 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         temperature: float = 0.0,
         use_graph_context: bool = True,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = "vllm",
-        base_url: str = "http://localhost:8000/v1",
+        api_key: str = None,
+        base_url: str = None,
         **kwargs,
     ):
         self.model_name = model_name
@@ -155,7 +155,7 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         resp = self.client.generate_text(
             prompt=prompt, model=self.model_name, temperature=self.temperature
         )
-        return AgentUtils.extract_json(resp)
+        return AgentUtils.extract_json(resp), resp
 
     def _apply_additions(
         self,
@@ -203,6 +203,12 @@ class TieredBidirectionalAgentFilter(BaseFilter):
             f"Prune: {len(tier1_flat)}→{len(current_flat)} "
             f"(Tier-1 dropped={len(tier1_dropped)}, Tier-2 pool={len(tier2_set)})"
         ]
+        trace_detail: List[Dict[str, Any]] = [{
+            "step": "prune",
+            "kept": sorted(current_flat),
+            "dropped": tier1_dropped,
+            "tier2_pool": sorted(tier2_set),
+        }]
 
         if not tier1_dropped and not tier2_set:
             final_nodes = self._flatten(current)
@@ -210,9 +216,10 @@ class TieredBidirectionalAgentFilter(BaseFilter):
                 "status": "Answerable" if final_nodes else "Unanswerable",
                 "final_nodes": final_nodes,
                 "reasoning": " | ".join(trace),
+                "trace": trace_detail,
             }
 
-        restore_res = self._restore(
+        restore_res, restore_raw = self._restore(
             query=query,
             current=current,
             tier1_dropped=tier1_dropped,
@@ -233,12 +240,19 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         trace.append(
             f"Restore agent: restored={len(restored)} promoted={len(promoted)}"
         )
+        trace_detail.append({
+            "step": "restore_agent",
+            "restored": restored,
+            "promoted": promoted,
+            "raw": restore_raw,
+        })
 
         final_nodes = self._flatten(updated)
         return {
             "status": "Answerable" if final_nodes else "Unanswerable",
             "final_nodes": final_nodes,
             "reasoning": " | ".join(trace),
+            "trace": trace_detail,
             "tier1_dropped_count": len(tier1_dropped),
             "tier2_pool_count": len(tier2_set),
             "restored_count": len(restored),

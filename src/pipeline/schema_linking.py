@@ -278,8 +278,23 @@ class SchemaLinkingPipeline:
             metadata=metadata,
         )
 
-        logger.debug("Filtered")
         execution_times["filtering"] = time.perf_counter() - t_start
+        _reason_preview = (final_result.get("reasoning") or "")[:400]
+        _extra = []
+        if final_result.get("adaptive_route"):
+            _extra.append(
+                f"route={final_result['adaptive_route']}"
+                f"({final_result.get('adaptive_confidence', 0):.3f})"
+            )
+        for _k in ("tier1_dropped_count", "tier2_pool_count", "restored_count", "promoted_count"):
+            if _k in final_result:
+                _extra.append(f"{_k}={final_result[_k]}")
+        logger.info(
+            f"[Filter] status={final_result.get('status')} "
+            f"nodes={len(final_result.get('final_nodes', []))} "
+            f"time={execution_times['filtering']:.2f}s "
+            f"{' '.join(_extra)} | reasoning={_reason_preview}"
+        )
 
         # [F5] Extraction retry loop — triggered when filter verdict is
         # Unanswerable or selection is too sparse.

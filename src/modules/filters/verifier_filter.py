@@ -29,8 +29,8 @@ class VerifierFilter(BaseFilter):
         max_iteration: int = 1,
         temperature: float = 0.0,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = "vllm",
-        base_url: str = "http://localhost:8000/v1",
+        api_key: str = None,
+        base_url: str = None,
         **kwargs,
     ):
         self.model_name = model_name
@@ -131,7 +131,7 @@ class VerifierFilter(BaseFilter):
         )
         parsed = AgentUtils.extract_json(resp)
         tests = parsed.get("tests", [])
-        return tests if isinstance(tests, list) else []
+        return (tests if isinstance(tests, list) else []), resp
 
     def _check_tests(
         self,
@@ -156,7 +156,7 @@ class VerifierFilter(BaseFilter):
         resp = self.client.generate_text(
             prompt=prompt, model=self.model_name, temperature=self.temperature
         )
-        return AgentUtils.extract_json(resp)
+        return AgentUtils.extract_json(resp), resp
 
     def _restore_missing(
         self,
@@ -190,36 +190,54 @@ class VerifierFilter(BaseFilter):
             }
 
         current = self._initial_filter(query, subgraph, db_id)
-        trace = [f"Initial -> {len(self._flatten(current))} nodes"]
+        initial_nodes = self._flatten(current)
+        trace = [f"Initial -> {len(initial_nodes)} nodes"]
+        trace_detail: List[Dict[str, Any]] = [
+            {"step": "initial_filter", "nodes": initial_nodes}
+        ]
 
-        tests = self._generate_tests(query, subgraph, db_id)
+        tests, tests_raw = self._generate_tests(query, subgraph, db_id)
         trace.append(f"Generated {len(tests)} unit tests")
+        trace_detail.append({"step": "generate_tests", "tests": tests, "raw": tests_raw})
         if not tests:
             final_nodes = self._flatten(current)
             return {
                 "status": "Answerable" if final_nodes else "Unanswerable",
                 "final_nodes": final_nodes,
                 "reasoning": " | ".join(trace),
+                "trace": trace_detail,
             }
 
         for it in range(self.max_iteration):
-            check = self._check_tests(query, subgraph, current, tests, db_id)
+            check, check_raw = self._check_tests(query, subgraph, current, tests, db_id)
             failed = check.get("failed", []) or []
             missing = check.get("missing_nodes", []) or []
+            passed = check.get("passed", []) or []
             trace.append(
-                f"Iter{it+1} passed={len(check.get('passed', []))} "
-                f"failed={len(failed)} missing={len(missing)}"
+                f"Iter{it+1} passed={len(passed)} failed={len(failed)} missing={len(missing)}"
             )
+            trace_detail.append({
+                "step": f"check_iter{it+1}",
+                "passed": passed, "failed": failed, "missing": missing,
+                "raw": check_raw,
+            })
 
             if not failed and not missing:
                 break
 
             if missing:
+                before = set(self._flatten(current))
                 current = self._restore_missing(current, missing, subgraph)
+                after = set(self._flatten(current))
+                trace_detail.append({
+                    "step": f"restore_iter{it+1}",
+                    "added": sorted(after - before),
+                })
 
         final_nodes = self._flatten(current)
         return {
             "status": "Answerable" if final_nodes else "Unanswerable",
             "final_nodes": final_nodes,
             "reasoning": " | ".join(trace),
+            "trace": trace_detail,
         }

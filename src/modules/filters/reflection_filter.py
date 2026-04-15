@@ -27,8 +27,8 @@ class ReflectionFilter(BaseFilter):
         max_iteration: int = 1,
         temperature: float = 0.0,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = "vllm",
-        base_url: str = "http://localhost:8000/v1",
+        api_key: str = None,
+        base_url: str = None,
         **kwargs,
     ):
         self.model_name = model_name
@@ -135,7 +135,7 @@ class ReflectionFilter(BaseFilter):
         resp = self.client.generate_text(
             prompt=prompt, model=self.model_name, temperature=self.temperature
         )
-        return AgentUtils.extract_json(resp)
+        return AgentUtils.extract_json(resp), resp
 
     def _revise(
         self,
@@ -144,7 +144,7 @@ class ReflectionFilter(BaseFilter):
         current: Dict[str, List[str]],
         critique_text: str,
         db_id: str,
-    ) -> Dict[str, List[str]]:
+    ) -> tuple[Dict[str, List[str]], str]:
         full_str = self._schema_with_values(full_schema, db_id)
         current_str = "\n".join(
             f"{t}.{c}" for t, cols in current.items() for c in cols
@@ -161,7 +161,7 @@ class ReflectionFilter(BaseFilter):
             prompt=prompt, model=self.model_name, temperature=self.temperature
         )
         parsed = self._parse_schema_json(resp)
-        return parsed if parsed else current
+        return (parsed if parsed else current), resp
 
     def refine(
         self,
@@ -178,26 +178,47 @@ class ReflectionFilter(BaseFilter):
             }
 
         current = self._propose(query, subgraph, db_id)
-        reasoning_trace: List[str] = [f"Propose -> {len(self._flatten(current))} nodes"]
+        propose_nodes = self._flatten(current)
+        reasoning_trace: List[str] = [f"Propose -> {len(propose_nodes)} nodes"]
+        trace_detail: List[Dict[str, Any]] = [
+            {"step": "propose", "nodes": propose_nodes}
+        ]
 
         for it in range(self.max_iteration):
-            critique = self._critique(query, subgraph, current, db_id)
+            critique, critique_raw = self._critique(query, subgraph, current, db_id)
             verdict = str(critique.get("verdict", "")).lower()
             critique_text = critique.get("critique", "") or critique.get(
                 "step_by_step_reasoning", ""
             )
             reasoning_trace.append(f"Iter{it+1} verdict={verdict}")
+            trace_detail.append({
+                "step": f"critique_iter{it+1}",
+                "verdict": verdict,
+                "critique_text": critique_text,
+                "raw": critique_raw,
+            })
 
             if verdict.startswith("sufficient"):
                 break
 
-            revised = self._revise(query, subgraph, current, critique_text, db_id)
+            before = set(self._flatten(current))
+            revised, revise_raw = self._revise(
+                query, subgraph, current, critique_text, db_id
+            )
             if revised:
                 current = revised
+            after = set(self._flatten(current))
+            trace_detail.append({
+                "step": f"revise_iter{it+1}",
+                "added": sorted(after - before),
+                "removed": sorted(before - after),
+                "raw": revise_raw,
+            })
 
         final_nodes = self._flatten(current)
         return {
             "status": "Answerable" if final_nodes else "Unanswerable",
             "final_nodes": final_nodes,
             "reasoning": " | ".join(reasoning_trace),
+            "trace": trace_detail,
         }

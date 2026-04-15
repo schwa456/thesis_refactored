@@ -159,14 +159,15 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 | `abl_a04_04_supernode_t020_steiner_xiyan` | `ablation_supernode_binary_t020_steiner_xiyan` |
 | `abl_a04_offline_sweep` | `src/analysis/threshold_steiner_sweep.py` (offline script, no config) |
 
-### abl/a05_filter_agentic/ (Phase D — pre-registered 2026-04-14, not yet run)
+### abl/a05_filter_agentic/ (Phase D — rolling execution 2026-04-15; a05_11/12 deferred)
 
 Filter 모듈 고도화 (plan: `/home/hyeonjin/.claude/plans/vivid-sprouting-sunbeam.md`).
 Anchor: a03_17 components (SuperNode Direct + Fixed PCST). 외부 baseline 없음.
 
-| 신규 ID | Filter 모듈 | 근거 축 |
-|---------|------------|---------|
-| `a05_01_adaptive_multi_agent` | AdaptiveMultiAgentFilter (existing) | Multi-agent baseline |
+| 신규 ID | Filter 모듈 | 근거 축 | Status |
+|---------|------------|---------|--------|
+| `a05_01_adaptive_multi_agent` | AdaptiveMultiAgentFilter (existing) | Multi-agent baseline | ✅ R=0.3770 / P=0.6276 / F1=0.4713 |
+| `a05_02_reflection_1iter` | ReflectionFilter (F1, 1 iter) | Self-Refine (NeurIPS'23) | ✅ R=0.7320 / P=0.6833 / F1=0.7068 |
 | `a05_02_reflection_1iter` | ReflectionFilter (F1, 1 iter) | Self-Refine (NeurIPS'23) |
 | `a05_03_reflection_3iter` | ReflectionFilter (F1, 3 iter) | Iteration depth |
 | `a05_04_verifier` | VerifierFilter (F2) | CHESS Unit Tester (ICLR'25) |

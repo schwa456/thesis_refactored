@@ -34,8 +34,8 @@ class AdaptiveDepthFilter(BaseFilter):
         high_conf_threshold: float = 0.20,
         low_conf_threshold: float = 0.05,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = "vllm",
-        base_url: str = "http://localhost:8000/v1",
+        api_key: str = None,
+        base_url: str = None,
         reflection_max_iteration: int = 1,
         **kwargs,
     ):

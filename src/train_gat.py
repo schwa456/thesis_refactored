@@ -1,4 +1,11 @@
 import os
+from pathlib import Path
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+os.environ.setdefault("WANDB_DIR", str(Path(__file__).resolve().parents[1]))
 import json
 import yaml
 import torch
@@ -23,10 +30,10 @@ from utils.logger import setup_logger, get_logger
 # 1. 경로 설정
 # ----------------------------------------------------------------
 PATHS = {
-    "train_json": "/SSL_NAS/peoples/khj/thesis/train/train.json",
-    "train_db_dir": "/SSL_NAS/peoples/khj/thesis/train/train_databases",
-    "test_json": "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json",
-    "test_db_dir": "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases",
+    "train_json": os.getenv("TRAIN_JSON", "/SSL_NAS/peoples/khj/thesis/train/train.json"),
+    "train_db_dir": os.getenv("TRAIN_DB_DIR", "/SSL_NAS/peoples/khj/thesis/train/train_databases"),
+    "test_json": os.getenv("DEV_JSON", "./data/raw/BIRD_dev/dev.json"),
+    "test_db_dir": os.getenv("DEV_DB_DIR", "./data/raw/BIRD_dev/dev_databases"),
     "checkpoint_dir": "./outputs/checkpoints",
     "cache_dir": "./data/processed" # NAS 병목 방지용 로컬 캐시
 }
@@ -147,7 +154,7 @@ def run_train(config_path: str):
         cfg = yaml.safe_load(f)
         
     wandb.init(
-        project=cfg['project_name'],
+        project=cfg.get('project_name', os.getenv("WANDB_PROJECT", "Text-to-SQL-Alignment")),
         name=cfg['experiment_name'],
         config=cfg
     )

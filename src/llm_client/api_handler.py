@@ -11,11 +11,19 @@ class APIClient:
     LLM (텍스트 생성) 및 PLM (텍스트 임베딩) 호출을 전담하는 통신 클라이언트입니다.
     OpenAI 표준 규격을 따르므로 vLLM, Ollama, OpenAI, DeepSeek API 모두에 호환됩니다.
     """
-    def __init__(self, api_key: Optional[str] = "vllm", base_url: Optional[str] = "http://localhost:8000/v1"):
-        # 환경 변수를 우선적으로 사용하고, 없으면 파라미터로 받습니다.
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") 
-        # base_url이 있으면 로컬 vLLM/Ollama 서버 등을 찌릅니다.
-        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        # Priority: explicit arg > VLLM_* env > OPENAI_* env > sensible fallback.
+        self.api_key = (
+            api_key
+            or os.getenv("VLLM_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+            or "vllm"
+        )
+        self.base_url = (
+            base_url
+            or os.getenv("VLLM_BASE_URL")
+            or os.getenv("OPENAI_BASE_URL")
+        )
         
         logger.info(f"Initializing API Client... (Base URL: {self.base_url if self.base_url else 'Default OpenAI'})")
         
