@@ -7,6 +7,7 @@ except ImportError:
     pass
 os.environ.setdefault("WANDB_DIR", str(Path(__file__).resolve().parents[1]))
 import json
+import time
 import yaml
 import torch
 import torch.nn as nn
@@ -14,9 +15,43 @@ import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 from tqdm import tqdm
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import wandb
 import argparse
+
+
+def _grad_norm(params) -> float:
+    total_sq = 0.0
+    for p in params:
+        if p.grad is not None:
+            total_sq += float(p.grad.detach().data.norm(2).item()) ** 2
+    return total_sq ** 0.5
+
+
+def _summarize_layer_stats(layer_stats: Dict[str, Any]) -> Dict[str, float]:
+    """Flatten gat.last_layer_stats into a small set of scalar summaries for logging."""
+    if not layer_stats:
+        return {}
+    flat: Dict[str, float] = {}
+    flat["gat/forward_time_s"] = float(layer_stats.get("forward_time_s", 0.0))
+    for nt, ratio in (layer_stats.get("skip_ratio") or {}).items():
+        flat[f"gat/skip_ratio/{nt}"] = float(ratio)
+    out = layer_stats.get("output") or {}
+    for nt, stat in out.items():
+        if not stat:
+            continue
+        flat[f"gat/out_norm_mean/{nt}"] = float(stat.get("norm_mean", 0.0))
+        flat[f"gat/out_dead_ratio/{nt}"] = float(stat.get("dead_ratio", 0.0))
+    layers = layer_stats.get("layers") or []
+    if layers:
+        last = layers[-1]
+        for nt, stat in last.items():
+            if not stat:
+                continue
+            flat[f"gat/last_layer_norm_mean/{nt}"] = float(stat.get("norm_mean", 0.0))
+            if "delta_norm_mean" in stat:
+                flat[f"gat/last_layer_delta/{nt}"] = float(stat["delta_norm_mean"])
+    return flat
 
 # 프로젝트 내부 모듈 임포트
 from data.bird_dataset import BIRDGraphDataset, BIRDSuperNodeDataset
@@ -202,6 +237,12 @@ def run_train(config_path: str):
         logger.info("Query Super Node mode: injecting query nodes into graphs...")
         full_train_dataset = BIRDSuperNodeDataset(full_train_dataset)
 
+    train_log_cfg = cfg.get('training', {}).get('logging', {})
+    enable_layer_stats = bool(train_log_cfg.get('enable_layer_stats', True))
+    step_log_every = int(train_log_cfg.get('step_log_every', 10))
+    layer_stats_every = int(train_log_cfg.get('layer_stats_every', 50))
+    jsonl_log_enabled = bool(train_log_cfg.get('jsonl', True))
+
     gat_model = SchemaHeteroGAT(
         in_channels=cfg['model']['in_channels'],
         hidden_channels=cfg['model']['hidden_channels'],
@@ -209,7 +250,8 @@ def run_train(config_path: str):
         num_layers=cfg['model']['num_layers'],
         heads=cfg['model']['heads'],
         query_conditioned=query_conditioned,
-        query_supernode=query_supernode
+        query_supernode=query_supernode,
+        enable_stats=enable_layer_stats,
         ).to(device)
     if query_conditioned:
         logger.info("Query-Conditioned GAT enabled (Concatenation mode)")
@@ -265,34 +307,47 @@ def run_train(config_path: str):
     best_recall = 0.0
     epochs = cfg['training']['epochs']
 
+    # Per-step JSONL log path
+    step_log_path: Optional[Path] = None
+    if jsonl_log_enabled:
+        step_log_dir = Path("./logs") / cfg['experiment_name'] / "train"
+        step_log_dir.mkdir(parents=True, exist_ok=True)
+        step_log_path = step_log_dir / "train_step.jsonl"
+        logger.info(f"Per-step train log → {step_log_path}")
+
+    global_step = 0
+
     for epoch in range(epochs):
         gat_model.train()
         projector.train()
         epoch_loss = 0
         epoch_bce_loss = 0
         epoch_infonce_loss = 0
-        
+
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for step, batch in enumerate(pbar):
+            t_step = time.perf_counter()
             batch = batch.to(device)
             optimizer.zero_grad()
+
+            # Toggle layer_stats computation only on sampled steps (cost)
+            if enable_layer_stats:
+                gat_model.enable_stats = (global_step % layer_stats_every == 0)
 
             # GAT -> Node Embeddings
             q_emb = batch['query']
             if query_conditioned:
-                # query가 token-level [B, seq_len, dim]일 수 있으므로 sentence-level로 pooling
                 if q_emb.dim() == 3:
-                    q_emb_pooled = q_emb.mean(dim=1)  # [B, dim]
+                    q_emb_pooled = q_emb.mean(dim=1)
                 elif q_emb.dim() == 2:
-                    q_emb_pooled = q_emb  # 이미 [B, dim]
+                    q_emb_pooled = q_emb
                 else:
                     q_emb_pooled = q_emb.unsqueeze(0)
 
-                # batch 내 각 graph의 query를 node별로 대응하여 concat
                 augmented_x = {}
                 for n_type, x in batch.x_dict.items():
-                    node_batch_idx = batch[n_type].batch  # [num_nodes_in_batch]
-                    q_per_node = q_emb_pooled[node_batch_idx]  # [num_nodes, dim]
+                    node_batch_idx = batch[n_type].batch
+                    q_per_node = q_emb_pooled[node_batch_idx]
                     augmented_x[n_type] = torch.cat([x, q_per_node], dim=-1)
                 node_embs = gat_model(augmented_x, batch.edge_index_dict)
             else:
@@ -300,43 +355,85 @@ def run_train(config_path: str):
 
             step_bce_loss = 0
             step_infonce_loss = 0
-            
+            per_type_bce: Dict[str, float] = {}
+            per_type_infonce: Dict[str, float] = {}
+            per_type_nodes: Dict[str, int] = {}
+            per_type_pos: Dict[str, int] = {}
+
             for n_type in ['table', 'column', 'fk_node']:
                 if n_type not in node_embs or not hasattr(batch[n_type], 'y'): continue
                 if batch[n_type].num_nodes == 0: continue
-                
-                # 1. 조인트 임베딩 투영
+
                 z_q, z_n = projector(q_emb, node_embs[n_type], batch_index=batch[n_type].batch)
-                
-                # 2. BCE Loss 계산 (절대적 존재 여부)
+
                 logits = projector.compute_similarity(z_q, z_n)
                 bce_loss = criterion(logits, batch[n_type].y)
                 step_bce_loss += bce_loss
 
-                # 3. [신규] InfoNCE Loss 계산 (상대적 유사도 최적화 및 하드 네거티브 마이닝)
                 infonce_loss = compute_batched_infonce_loss(
                     z_q, z_n, batch[n_type].y, batch[n_type].batch,
                     temperature=temperature, num_hard_negatives=num_hard_negatives
                 )
                 step_infonce_loss += infonce_loss
 
-            # 4. Joint Loss 백프로파게이션
+                per_type_bce[n_type] = float(bce_loss.detach().item())
+                per_type_infonce[n_type] = float(infonce_loss.detach().item()) if torch.is_tensor(infonce_loss) else float(infonce_loss)
+                per_type_nodes[n_type] = int(batch[n_type].num_nodes)
+                per_type_pos[n_type] = int(batch[n_type].y.sum().item())
+
             total_loss = step_bce_loss + (infonce_lambda * step_infonce_loss)
             total_loss.backward()
+
+            # Gradient diagnostics BEFORE optimizer.step()
+            gat_grad_norm = _grad_norm(gat_model.parameters())
+            proj_grad_norm = _grad_norm(projector.parameters())
+            total_grad_norm = (gat_grad_norm ** 2 + proj_grad_norm ** 2) ** 0.5
+
             optimizer.step()
-            
+
             epoch_loss += total_loss.item()
             epoch_bce_loss += step_bce_loss.item()
             epoch_infonce_loss += step_infonce_loss.item()
+            step_time = time.perf_counter() - t_step
+            lr = optimizer.param_groups[0]['lr']
+            mem_alloc_gb = float(torch.cuda.memory_allocated(device) / (1024 ** 3)) if torch.cuda.is_available() else 0.0
+            mem_peak_gb = float(torch.cuda.max_memory_allocated(device) / (1024 ** 3)) if torch.cuda.is_available() else 0.0
 
-            if step % 10 == 0:
-                wandb.log({
-                    "train/loss_total": total_loss.item(),
-                    "train/loss_bce": step_bce_loss.item(),
-                    "train/loss_infonce": step_infonce_loss.item(),
-                    "epoch": epoch + 1
-                })
-            pbar.set_postfix({"loss": f"{total_loss.item():.4f}", "infoNCE": f"{step_infonce_loss.item():.4f}"})
+            layer_summary = _summarize_layer_stats(gat_model.last_layer_stats) if gat_model.enable_stats else {}
+
+            if step % step_log_every == 0:
+                payload = {
+                    "train/loss_total": float(total_loss.item()),
+                    "train/loss_bce": float(step_bce_loss.item()),
+                    "train/loss_infonce": float(step_infonce_loss.item()),
+                    "train/grad_norm_total": total_grad_norm,
+                    "train/grad_norm_gat": gat_grad_norm,
+                    "train/grad_norm_projector": proj_grad_norm,
+                    "train/lr": lr,
+                    "train/step_time_s": step_time,
+                    "train/mem_alloc_gb": mem_alloc_gb,
+                    "train/mem_peak_gb": mem_peak_gb,
+                    "epoch": epoch + 1,
+                    "global_step": global_step,
+                }
+                for nt, v in per_type_bce.items():
+                    payload[f"train/loss_bce/{nt}"] = v
+                for nt, v in per_type_infonce.items():
+                    payload[f"train/loss_infonce/{nt}"] = v
+                for nt, v in per_type_nodes.items():
+                    payload[f"train/num_nodes/{nt}"] = v
+                for nt, v in per_type_pos.items():
+                    payload[f"train/num_pos/{nt}"] = v
+                payload.update(layer_summary)
+                wandb.log(payload)
+
+                if step_log_path is not None:
+                    with open(step_log_path, "a") as fp:
+                        row = {"epoch": epoch + 1, "step": step, "global_step": global_step, **payload}
+                        fp.write(json.dumps(row) + "\n")
+
+            pbar.set_postfix({"loss": f"{total_loss.item():.4f}", "infoNCE": f"{step_infonce_loss.item():.4f}", "gnorm": f"{total_grad_norm:.2f}"})
+            global_step += 1
 
         # 검증 (Recall@15)
         val_recall = validate(gat_model, projector, val_loader, device, k=15,

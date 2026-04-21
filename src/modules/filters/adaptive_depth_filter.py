@@ -11,10 +11,12 @@ Confidence signal: margin between top-k GAT scores and the decision threshold
 Inspired by adaptive computation (Graves 2016), ReFoRCE ambiguous deferral,
 and the uncertainty routing already present in AdaptiveMultiAgentFilter.
 """
+import time
 from typing import Dict, List, Any
 
 from modules.registry import register
 from modules.base import BaseFilter
+from modules.filters.agents import AgentUtils
 from modules.filters.xiyan_filter import XiYanFilter
 from modules.filters.reflection_filter import ReflectionFilter
 from modules.filters.bidirectional_agent_filter import (
@@ -103,17 +105,21 @@ class AdaptiveDepthFilter(BaseFilter):
         metadata: Dict[str, Any] = None,
         **kwargs,
     ) -> Dict[str, Any]:
+        t_start = time.perf_counter()
+        token_before = AgentUtils.token_snapshot()
         gat_scores = gat_scores or {}
         conf = self._estimate_confidence(subgraph, gat_scores)
 
         if conf >= self.high_conf_threshold:
             route = "fast"
-            result = self._fast.refine(
+            inner = self._fast
+            result = inner.refine(
                 query=query, subgraph=subgraph, db_id=db_id, **kwargs
             )
         elif conf <= self.low_conf_threshold:
             route = "deep"
-            result = self._deep.refine(
+            inner = self._deep
+            result = inner.refine(
                 query=query,
                 subgraph=subgraph,
                 db_id=db_id,
@@ -124,11 +130,32 @@ class AdaptiveDepthFilter(BaseFilter):
             )
         else:
             route = "medium"
-            result = self._medium.refine(
+            inner = self._medium
+            result = inner.refine(
                 query=query, subgraph=subgraph, db_id=db_id, **kwargs
             )
 
         result["adaptive_route"] = route
         result["adaptive_confidence"] = conf
+
+        inner_info = getattr(inner, "last_info", None) or {}
+        token_after = AgentUtils.token_snapshot()
+        self.last_info = AgentUtils.build_filter_info(
+            filter_type="AdaptiveDepthFilter",
+            input_subgraph=subgraph,
+            final_nodes=result.get("final_nodes", []) or [],
+            status=result.get("status"),
+            token_before=token_before,
+            token_after=token_after,
+            t_start=t_start,
+            route=route,
+            confidence=float(conf),
+            high_conf_threshold=float(self.high_conf_threshold),
+            low_conf_threshold=float(self.low_conf_threshold),
+            inner_filter_type=inner_info.get("filter_type"),
+            inner_time_s=float(inner_info.get("filter_time_s", 0.0) or 0.0),
+            inner_info=dict(inner_info),
+        )
+        result["filter_info"] = dict(self.last_info)
         logger.debug(f"[AdaptiveDepth] conf={conf:.3f} route={route}")
         return result

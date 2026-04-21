@@ -40,10 +40,13 @@ def load_and_merge_config(config_name: str) -> dict:
     #config['experiment_name'] = config_name
 
     # 5. 디렉토리 자동 생성
+    # config_name의 전체 경로를 보존하여 configs/ 구조와 동일하게 저장한다.
+    # 예: experiments/s03_gat_ensemble/a09/s03_a09_01 → outputs/experiments/s03_gat_ensemble/a09/s03_a09_01
+    dir_leaf = config_name
     dirs_to_create = {
-        'log_dir': base_dir / "logs" / config_name,
-        'output_dir': base_dir / "outputs" / config_name,
-        'checkpoint_dir': base_dir / "checkpoints" / config_name
+        'log_dir': base_dir / "logs" / dir_leaf,
+        'output_dir': base_dir / "outputs" / dir_leaf,
+        'checkpoint_dir': base_dir / "checkpoints" / dir_leaf
     }
 
     config['paths'] = config.get('paths', {})

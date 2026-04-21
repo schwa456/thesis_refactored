@@ -9,6 +9,7 @@ restored from the extractor's full candidate schema.
 import json
 import sqlite3
 import os
+import time
 from typing import Dict, List, Any, Set
 
 from modules.registry import register
@@ -182,13 +183,26 @@ class VerifierFilter(BaseFilter):
         db_id: str = None,
         **kwargs,
     ) -> Dict[str, Any]:
+        t_start = time.perf_counter()
         if not subgraph:
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="VerifierFilter",
+                input_subgraph=subgraph or {},
+                final_nodes=[],
+                status="Unanswerable",
+                token_before={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                token_after={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                t_start=t_start,
+                model=self.model_name,
+            )
             return {
                 "status": "Unanswerable",
                 "final_nodes": [],
                 "reasoning": "Empty input subgraph",
+                "filter_info": dict(self.last_info),
             }
 
+        token_before = AgentUtils.token_snapshot()
         current = self._initial_filter(query, subgraph, db_id)
         initial_nodes = self._flatten(current)
         trace = [f"Initial -> {len(initial_nodes)} nodes"]
@@ -199,20 +213,46 @@ class VerifierFilter(BaseFilter):
         tests, tests_raw = self._generate_tests(query, subgraph, db_id)
         trace.append(f"Generated {len(tests)} unit tests")
         trace_detail.append({"step": "generate_tests", "tests": tests, "raw": tests_raw})
+
         if not tests:
             final_nodes = self._flatten(current)
+            status = "Answerable" if final_nodes else "Unanswerable"
+            token_after = AgentUtils.token_snapshot()
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="VerifierFilter",
+                input_subgraph=subgraph,
+                final_nodes=final_nodes,
+                status=status,
+                token_before=token_before,
+                token_after=token_after,
+                t_start=t_start,
+                model=self.model_name,
+                max_iteration=self.max_iteration,
+                iterations_run=0,
+                initial_nodes=len(initial_nodes),
+                tests_generated=0,
+                no_tests_skipped=True,
+            )
             return {
-                "status": "Answerable" if final_nodes else "Unanswerable",
+                "status": status,
                 "final_nodes": final_nodes,
                 "reasoning": " | ".join(trace),
                 "trace": trace_detail,
+                "filter_info": dict(self.last_info),
             }
 
+        iterations_run = 0
+        last_passed = 0
+        last_failed = 0
+        last_missing = 0
+        total_restored = 0
         for it in range(self.max_iteration):
+            iterations_run += 1
             check, check_raw = self._check_tests(query, subgraph, current, tests, db_id)
             failed = check.get("failed", []) or []
             missing = check.get("missing_nodes", []) or []
             passed = check.get("passed", []) or []
+            last_passed, last_failed, last_missing = len(passed), len(failed), len(missing)
             trace.append(
                 f"Iter{it+1} passed={len(passed)} failed={len(failed)} missing={len(missing)}"
             )
@@ -229,15 +269,39 @@ class VerifierFilter(BaseFilter):
                 before = set(self._flatten(current))
                 current = self._restore_missing(current, missing, subgraph)
                 after = set(self._flatten(current))
+                added = after - before
+                total_restored += len(added)
                 trace_detail.append({
                     "step": f"restore_iter{it+1}",
-                    "added": sorted(after - before),
+                    "added": sorted(added),
                 })
 
         final_nodes = self._flatten(current)
+        status = "Answerable" if final_nodes else "Unanswerable"
+        token_after = AgentUtils.token_snapshot()
+        self.last_info = AgentUtils.build_filter_info(
+            filter_type="VerifierFilter",
+            input_subgraph=subgraph,
+            final_nodes=final_nodes,
+            status=status,
+            token_before=token_before,
+            token_after=token_after,
+            t_start=t_start,
+            model=self.model_name,
+            max_iteration=self.max_iteration,
+            iterations_run=iterations_run,
+            initial_nodes=len(initial_nodes),
+            tests_generated=len(tests),
+            tests_last_passed=last_passed,
+            tests_last_failed=last_failed,
+            tests_last_missing=last_missing,
+            restored_via_tests=total_restored,
+            temperature=float(self.temperature),
+        )
         return {
-            "status": "Answerable" if final_nodes else "Unanswerable",
+            "status": status,
             "final_nodes": final_nodes,
             "reasoning": " | ".join(trace),
             "trace": trace_detail,
+            "filter_info": dict(self.last_info),
         }

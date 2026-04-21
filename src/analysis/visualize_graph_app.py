@@ -25,7 +25,7 @@ import networkx as nx
 from pyvis.network import Network
 
 # 프로젝트 루트 / src 경로 등록
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC = os.path.join(ROOT, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
@@ -54,15 +54,23 @@ from modules.extractors.pcst import PCSTExtractor, AdaptivePCSTExtractor  # noqa
 # ──────────────────────────────────────────────────────────────
 
 ABLATION_CELLS = [
-    # (dir_name,            label,                              Selector, Extractor, Filter)
-    ("experiment_b0_raw_pcst_baseline",  "#1 C+B+N (b0)  — Cosine · Basic PCST · No Filter",        "Cosine", "Basic",    "None"),
-    ("experiment_abl_cos_basic_xiyan",   "#2 C+B+X (EXP-A) — Cosine · Basic PCST · XiYan Filter",   "Cosine", "Basic",    "XiYan"),
-    ("experiment_b1_adaptive_pcst",      "#3 C+A+N (b1)  — Cosine · Adaptive PCST · No Filter",     "Cosine", "Adaptive", "None"),
-    ("experiment_abl_cos_adaptive_xiyan","#4 C+A+X (EXP-B) — Cosine · Adaptive PCST · XiYan Filter","Cosine", "Adaptive", "XiYan"),
-    ("experiment_b2_ensemble",           "#5 E+B+N (b2)  — Ensemble · Basic PCST · No Filter",      "Ensemble","Basic",   "None"),
-    ("experiment_abl_ens_basic_xiyan",   "#6 E+B+X (EXP-C) — Ensemble · Basic PCST · XiYan Filter", "Ensemble","Basic",   "XiYan"),
-    ("experiment_b_combined",            "#7 E+A+N (b_comb) — Ensemble · Adaptive PCST · No Filter", "Ensemble","Adaptive","None"),
-    ("experiment_b4_xiyan_filter",       "#8 E+A+X (Full) — Ensemble · Adaptive PCST · XiYan Filter","Ensemble","Adaptive","XiYan"),
+    # (display_name in discover_all_experiments(),  label,  Selector, Extractor, Filter)
+    ("s01_vector_only/a01_basic_pcst/s01_a01_02_raw_pcst_baseline",
+     "#1 C+B+N — Cosine · Basic PCST · No Filter",           "Cosine",   "Basic",    "None"),
+    ("abl/a01_2x2x2_selector_extractor_filter/abl_a01_05_cos_basic_xiyan",
+     "#2 C+B+X — Cosine · Basic PCST · XiYan Filter",        "Cosine",   "Basic",    "XiYan"),
+    ("s01_vector_only/a02_adaptive_pcst/s01_a02_01_adaptive_pcst",
+     "#3 C+A+N — Cosine · Adaptive PCST · No Filter",        "Cosine",   "Adaptive", "None"),
+    ("abl/a01_2x2x2_selector_extractor_filter/abl_a01_07_cos_adaptive_xiyan",
+     "#4 C+A+X — Cosine · Adaptive PCST · XiYan Filter",     "Cosine",   "Adaptive", "XiYan"),
+    ("s03_gat_ensemble/a01_basic_pcst/s03_a01_01_ensemble_basic",
+     "#5 E+B+N — Ensemble · Basic PCST · No Filter",         "Ensemble", "Basic",    "None"),
+    ("abl/a01_2x2x2_selector_extractor_filter/abl_a01_06_ens_basic_xiyan",
+     "#6 E+B+X — Ensemble · Basic PCST · XiYan Filter",      "Ensemble", "Basic",    "XiYan"),
+    ("s03_gat_ensemble/a02_adaptive_pcst/s03_a02_01_combined",
+     "#7 E+A+N — Ensemble · Adaptive PCST · No Filter",      "Ensemble", "Adaptive", "None"),
+    ("s03_gat_ensemble/a02_adaptive_pcst/s03_a02_03_xiyan_filter",
+     "#8 E+A+X — Ensemble · Adaptive PCST · XiYan Filter",   "Ensemble", "Adaptive", "XiYan"),
 ]
 
 ABLATION_DIR_TO_LABEL = {d: lbl for d, lbl, *_ in ABLATION_CELLS}
@@ -78,18 +86,77 @@ LOGS_DIR = os.path.join(ROOT, "logs")
 BIRD_DEV_JSON = os.path.join(ROOT, "data/raw/BIRD_dev/dev.json")
 
 
+def _find_score_analysis(directory: str) -> Optional[str]:
+    """디렉토리 안에서 score_analysis_*.jsonl 파일을 찾아 반환."""
+    if not os.path.isdir(directory):
+        return None
+    for f in os.listdir(directory):
+        if f.startswith("score_analysis_") and f.endswith(".jsonl"):
+            return os.path.join(directory, f)
+    return None
+
+
+def _walk_experiment_dirs(base: str, max_depth: int = 4) -> List[Tuple[str, str]]:
+    """base 아래에서 score_analysis_*.jsonl이 있는 디렉토리를 (display_name, abs_path) 쌍으로 반환."""
+    results = []
+    base = os.path.abspath(base)
+
+    def _recurse(current: str, depth: int, prefix: str):
+        if depth > max_depth or not os.path.isdir(current):
+            return
+        if _find_score_analysis(current):
+            name = prefix or os.path.basename(current)
+            results.append((name, current))
+            return  # 파일을 찾으면 더 깊이 들어가지 않음
+        for entry in sorted(os.listdir(current)):
+            child = os.path.join(current, entry)
+            if os.path.isdir(child) and not entry.startswith(".") and entry not in (
+                "analysis", "archive", "checkpoints", "configs", "logs"
+            ):
+                child_prefix = f"{prefix}/{entry}" if prefix else entry
+                _recurse(child, depth + 1, child_prefix)
+
+    _recurse(base, 0, "")
+    return results
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def discover_all_experiments() -> Dict[str, str]:
+    """모든 실험 디렉토리를 탐색하여 {display_name: abs_path} dict 반환.
+
+    탐색 순서:
+      1. outputs/experiments/  (구조화된 실험)
+      2. outputs/baselines/    (외부 baseline)
+      3. outputs/              (루트 레벨 실험, 위에서 이미 찾은 것은 제외)
+    """
+    found = {}
+    skip_root = {"experiments", "baselines", "analysis", "archive",
+                 "checkpoints", "configs", "logs", "summary_all.csv"}
+
+    # 1. experiments/
+    for name, path in _walk_experiment_dirs(os.path.join(OUTPUTS_DIR, "experiments")):
+        found[name] = path
+
+    # 2. baselines/
+    for name, path in _walk_experiment_dirs(os.path.join(OUTPUTS_DIR, "baselines")):
+        found[f"baselines/{name}"] = path
+
+    # 3. root-level (flat)
+    if os.path.isdir(OUTPUTS_DIR):
+        for entry in sorted(os.listdir(OUTPUTS_DIR)):
+            if entry in skip_root:
+                continue
+            full = os.path.join(OUTPUTS_DIR, entry)
+            if os.path.isdir(full) and _find_score_analysis(full):
+                if entry not in found:
+                    found[entry] = full
+
+    return dict(sorted(found.items()))
+
+
 def discover_experiments() -> List[str]:
-    """outputs/experiments + outputs/baselines 하위 디렉토리 리스트 반환."""
-    exps = []
-    for sub in ("experiments", "baselines"):
-        d = os.path.join(OUTPUTS_DIR, sub)
-        if not os.path.isdir(d):
-            continue
-        for name in sorted(os.listdir(d)):
-            full = os.path.join(d, name)
-            if os.path.isdir(full):
-                exps.append(name)
-    return exps
+    """하위 호환: display_name 리스트 반환."""
+    return list(discover_all_experiments().keys())
 
 
 def _strip_prefix(exp_name: str) -> str:
@@ -100,23 +167,52 @@ def _strip_prefix(exp_name: str) -> str:
 
 
 def get_score_path(exp_name: str) -> Optional[str]:
+    """실험 이름으로 score_analysis 파일 경로를 찾는다."""
+    all_exps = discover_all_experiments()
+    if exp_name in all_exps:
+        return _find_score_analysis(all_exps[exp_name])
+
+    # Legacy fallback
     short = _strip_prefix(exp_name)
-    if exp_name.startswith("experiment"):
-        return os.path.join(OUTPUTS_DIR, "experiments", exp_name, f"score_analysis_{short}.jsonl")
-    if exp_name.startswith("baseline") or exp_name.startswith("preliminary"):
-        return os.path.join(OUTPUTS_DIR, "baselines", exp_name, f"score_analysis_{short}.jsonl")
+    for candidate_dir in [
+        os.path.join(OUTPUTS_DIR, "experiments", exp_name),
+        os.path.join(OUTPUTS_DIR, "baselines", exp_name),
+        os.path.join(OUTPUTS_DIR, exp_name),
+    ]:
+        sa = _find_score_analysis(candidate_dir)
+        if sa:
+            return sa
+    return None
+
+
+def _resolve_log_dir(exp_name: str) -> Optional[str]:
+    """실험 이름에 대응하는 logs/ 하위 디렉토리를 찾는다."""
+    all_exps = discover_all_experiments()
+    if exp_name in all_exps:
+        abs_path = all_exps[exp_name]
+        # outputs/.../foo → logs/.../foo  (outputs를 logs로 교체)
+        rel = os.path.relpath(abs_path, OUTPUTS_DIR)
+        log_candidate = os.path.join(LOGS_DIR, rel)
+        if os.path.isdir(log_candidate):
+            return log_candidate
+        # 마지막 폴더명만 사용 (flat layout)
+        base = os.path.basename(abs_path)
+        flat_candidate = os.path.join(LOGS_DIR, base)
+        if os.path.isdir(flat_candidate):
+            return flat_candidate
+    # Legacy: experiments/baselines prefix
+    for sub in ("experiments", "baselines", ""):
+        d = os.path.join(LOGS_DIR, sub, exp_name) if sub else os.path.join(LOGS_DIR, exp_name)
+        if os.path.isdir(d):
+            return d
     return None
 
 
 def get_log_files(exp_name: str) -> List[str]:
-    short = _strip_prefix(exp_name)
-    sub = "experiments" if exp_name.startswith("experiment") else "baselines"
-    pattern = os.path.join(LOGS_DIR, sub, exp_name, f"{short}_*.log")
-    files = sorted(glob.glob(pattern))
-    if files:
-        return files
-    # fallback: any .log
-    return sorted(glob.glob(os.path.join(LOGS_DIR, sub, exp_name, "*.log")))
+    log_dir = _resolve_log_dir(exp_name)
+    if not log_dir:
+        return []
+    return sorted(glob.glob(os.path.join(log_dir, "*.log")))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -625,8 +721,24 @@ def main():
             if not experiments:
                 st.error("No experiments found under outputs/")
                 return
-            default_idx = experiments.index("experiment_b4_xiyan_filter") if "experiment_b4_xiyan_filter" in experiments else 0
-            exp_name = st.selectbox("Experiment / Baseline", experiments, index=default_idx)
+
+            # 카테고리 필터링
+            categories = sorted(set(e.split("/")[0] for e in experiments))
+            cat_filter = st.selectbox("Category", ["(all)"] + categories, index=0)
+            if cat_filter != "(all)":
+                filtered = [e for e in experiments if e.startswith(cat_filter)]
+            else:
+                filtered = experiments
+
+            if not filtered:
+                st.warning("No experiments in this category.")
+                return
+
+            exp_name = st.selectbox(
+                f"Experiment ({len(filtered)} total)",
+                filtered,
+                index=0,
+            )
             selected_dirs = [exp_name]
             qids = list_qids_in_experiment(exp_name)
 

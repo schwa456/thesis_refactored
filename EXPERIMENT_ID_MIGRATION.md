@@ -21,16 +21,23 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 │   ├── a05_component_aware/
 │   ├── a06_component_product/
 │   ├── a07_enriched_triplet/
-│   └── a08_bayesian_opt/
+│   ├── a08_bayesian_opt/
+│   ├── a09_topology_cost/       Topology-derived edge cost (edge-type param-free)
+│   └── a10_fk_steiner/          FK-Backbone Steiner Closure (θ_r sweep, Recall ≥ 0.85 target)
 ├── s04_gat_qcond_projector/     Query-Conditioned Projector GAT
 ├── s05_gat_direct/              DirectGATSelector (BCE-only)
 │   └── a01_full_pipeline/
+├── s06_gat_bottleneck_fix/      GAT over-smoothing 해소 처방 (PairNorm / GCNII / ListNet / Anti-Collapse / Dual-Stream)
+│   └── a01_additive_ablation/
 └── abl/                         Ablation studies
     ├── a01_2x2x2_selector_extractor_filter/
     ├── a02_alpha_sweep/
     ├── a03_direct_per_step/
     ├── a04_direct_binary_steiner_sweep/
-    └── a05_filter_agentic/       Filter module agentic refinement (F1-F5)
+    ├── a05_filter_agentic/       Filter module agentic refinement (F1-F5)
+    ├── a06_ext_fkprior/          [2026-04-20] Extractor E-III: Hybrid FK-Prior PCST
+    ├── a07_ext_path_ensemble/    [2026-04-20] Extractor E-II: Pathfinding + PCST Ensemble
+    └── a08_ext_louvain/          [2026-04-20] Extractor E-I: Louvain Community PCST
 ```
 
 ## ID 매핑
@@ -87,6 +94,23 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 | `s03_a07_02_edge_prize` | `experiment_edge_prize` (E2) |
 | `s03_a08_01_bo_fixed_cost` | `experiment_bo_fixed_cost` (BO1) |
 | `s03_a08_02_bo_score_driven` | `experiment_bo_score_driven` (BO2) |
+| `s03_a09_01_topology_no_filter` | (신규, 2026-04-16) TopologyCost 방향 2 prototype |
+| `s03_a09_02_ca_topology_no_filter` | (신규) CA + TopologyCost (방향 2+4) |
+| `s03_a09_03_basic_no_filter_anchor` | (신규) Basic PCST anchor for a09 비교 |
+| `s03_a09_04_ca_product_no_filter_anchor` | (신규) CA-ProductCost anchor (I24a 계열, no filter) |
+| `s03_a09_05_adaptive_no_filter_anchor` | (신규) Adaptive PCST anchor = TopologyCost 직계 부모 |
+| `s03_a10_01_fk_steiner_full_col` | (신규, 2026-04-16) FK-Backbone Steiner, θ_r=0.0 — R=0.9492, P=0.1567, F1=0.2690 |
+| `s03_a10_04_fk_steiner_r01` | (신규) θ_r=0.1 — R=0.9481, P=0.1582, F1=0.2711 |
+| `s03_a10_05_fk_steiner_r02` | (신규) θ_r=0.2 — R=0.9418, P=0.1644, F1=0.2800 |
+| `s03_a10_02_fk_steiner_mid_col` | (신규) θ_r=0.3 — R=0.9293, P=0.1812, F1=0.3033 |
+| `s03_a10_06_fk_steiner_r04` | (신규) θ_r=0.4 — R=0.9014, P=0.2125, F1=0.3439 |
+| `s03_a10_03_fk_steiner_high_col` | (신규) θ_r=0.5 — R=0.8565, P=0.2627, F1=0.4021 |
+| `s03_a10_07_fk_steiner_r06` | (신규) θ_r=0.6 — R=0.7789, P=0.3341, F1=0.4677 |
+| `s03_a10_08_fk_steiner_r07` | (신규) θ_r=0.7 — R=0.6662, P=0.4245, F1=0.5185 |
+| `s03_a10_09_fk_steiner_r08` | (신규) **θ_r=0.8 ★ F1 Peak** — R=0.5455, P=0.5044, F1=0.5241 |
+| `s03_a10_10_fk_steiner_r09` | (신규) θ_r=0.9 — R=0.4083, P=0.5300, F1=0.4612 |
+| `s03_a10_11_fk_steiner_r10` | (신규) θ_r=1.0 (FK-only) — R=0.2972, P=0.4920, F1=0.3706 |
+| _(offline)_ `a10_09` percentile sweep | (2026-04-17) 4 scopes × 21 percentiles = 85 configs, offline re-eval using a10_09 score_analysis (no new config ID). Best: `all_cols p=95` R=0.6167 / P=0.4626 / F1=0.5287. HISTORY §6-19. |
 
 ### s04_gat_qcond_projector/
 
@@ -104,6 +128,32 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 |---------|------|
 | `s05_a01_01_qcond_direct_xiyan` | `experiment_qcond_direct_idea24_xiyan` (Q6) |
 | `s05_a01_02_supernode_direct_xiyan` | `experiment_supernode_direct_idea24_xiyan` (Q7) |
+
+### s06_gat_bottleneck_fix/a01_additive_ablation/
+
+**Motivation**: `outputs/analysis/gat_bottleneck{,_qcond}/` 의 3-step 병목 진단 결과 도출된 처방의 기여 확인 ablation.
+- L1 catastrophic over-smoothing (QCond 0.89 / SN 0.97)
+- Skip-dominated gradient (SN) / Input-dominated (QCond)
+- Attention uniformity (L1=L2=L3 동일 패턴)
+- BCE–Recall divergence (QCond ep75, SN ep79)
+
+**Strategy**: Forward-additive ablation. B0 → B1 → ... → B5 로 한 처방씩 누적해 per-component 기여 측정.
+**Base anchor**: QCond Direct (T8, `best_gat_query_conditioned_direct.pt`). SuperNode 는 차후 GPU 여유 시 대칭 검증.
+**Filter 미적용**: Selector 단독 품질 (Val Recall@15) 기준. PCST/XiYan 은 추후 결합.
+
+| 신규 ID | 처방 (누적) | 근거 논문 | Val R@15 | Status |
+|---------|-----------|----------|---------|--------|
+| `s06_a01_01_b0_baseline` | 현행 QCond Direct (reference) | — | 0.5738 | ✅ 2026-04-16 (300ep) |
+| `s06_a01_02_b1_pairnorm` | + PairNorm (layer-wise) | Zhao & Akoglu (ICLR 2020) | 0.5707 | ✅ 2026-04-16 (-0.0031) |
+| `s06_a01_03_b2_initial_residual` | + Initial Residual (α=0.2) | Klicpera et al. (APPNP, ICLR 2019); Chen et al. (GCNII, ICML 2020) | 0.5986 | ✅ 2026-04-17 (+0.0248) |
+| `s06_a01_04_b3_listnet` | Loss: BCE → ListNet | Cao et al. (ICML 2007) | 0.5745 | ✅ 2026-04-17 (+0.0007) |
+| `s06_a01_05_b4_anti_collapse` | + Schema-Aware Anti-Collapse Reg (λ=0.3, τ_max=0.85) | 본 연구 | 0.5894 | ✅ 2026-04-17 (+0.0156) |
+| `s06_a01_06_b5_dual_stream` | Full Dual-Stream (query/schema 분리 + JK concat, 2 layers) | 본 연구 | **0.6073** | ✅ 2026-04-19 (+0.0335, rerun after fk_node fix) |
+| `s06_a01_07_b5_enriched_dual_stream` | B5 구조 ⊕ EnrichedHeteroGraphBuilder (tables.json NL + description CSV) | 본 연구 | 0.6016 | ✅ 2026-04-21 (+0.0278 vs B0, **−0.0057 vs B5**), batched dual_stream 으로 9h 14m (B5 ~29h 대비 3.1× 단축) |
+
+**Offline post-hoc analyses on B5 (frozen L_out):**
+- _(offline)_ **B5 Head Retrain 2×2** (2026-04-20, `outputs/analysis/s06_bottleneck/B5/retrain/`) — frozen L_out 위에 head 만 재학습. 5 cells: A(linear,bce,none), B(mlp,bce,none), C(mlp,listnet,none), D(mlp,bce,zscore), E(mlp,listnet,zscore). val-ES best: C Dev AUC 0.6891 / D Dev R@15 0.6228. dev-ES oracle best: C Dev AUC **0.7548** (+0.048 vs original B5 joint 0.7067). HISTORY §7-2.
+- _(offline)_ **B5 Head-Only LDBO Diagnostic** (2026-04-20, `outputs/analysis/s06_bottleneck/B5/retrain/ldbo/`) — 같은 4 cells (B/C/D/E) 를 train 69 DB 중 11 DB 홀드아웃 (LDBO) 방식으로 재학습. val R@15 여전히 0.99+ (→ held-out train DB와 dev DB 간 domain gap 큼). val-ES dev AUC LDBO vs query-random gap 미미 (-0.003~+0.007). **결론: train 내부 DB 다양성만으로는 realistic BIRD dev shift 를 simulate 불가.** HISTORY §7-3.
 
 ### abl/a01_2x2x2_selector_extractor_filter/ (Phase C)
 
@@ -159,7 +209,7 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 | `abl_a04_04_supernode_t020_steiner_xiyan` | `ablation_supernode_binary_t020_steiner_xiyan` |
 | `abl_a04_offline_sweep` | `src/analysis/threshold_steiner_sweep.py` (offline script, no config) |
 
-### abl/a05_filter_agentic/ (Phase D — rolling execution 2026-04-15; a05_11/12 deferred)
+### abl/a05_filter_agentic/ (Phase D — rolling execution 2026-04-15; a05_11/12 deferred; a05_13/14/15/17 added 2026-04-16~17 as gpt-4o-mini backbone sensitivity; a05_16 skipped for cost)
 
 Filter 모듈 고도화 (plan: `/home/hyeonjin/.claude/plans/vivid-sprouting-sunbeam.md`).
 Anchor: a03_17 components (SuperNode Direct + Fixed PCST). 외부 baseline 없음.
@@ -168,9 +218,8 @@ Anchor: a03_17 components (SuperNode Direct + Fixed PCST). 외부 baseline 없�
 |---------|------------|---------|--------|
 | `a05_01_adaptive_multi_agent` | AdaptiveMultiAgentFilter (existing) | Multi-agent baseline | ✅ R=0.3770 / P=0.6276 / F1=0.4713 |
 | `a05_02_reflection_1iter` | ReflectionFilter (F1, 1 iter) | Self-Refine (NeurIPS'23) | ✅ R=0.7320 / P=0.6833 / F1=0.7068 |
-| `a05_02_reflection_1iter` | ReflectionFilter (F1, 1 iter) | Self-Refine (NeurIPS'23) |
 | `a05_03_reflection_3iter` | ReflectionFilter (F1, 3 iter) | Iteration depth |
-| `a05_04_verifier` | VerifierFilter (F2) | CHESS Unit Tester (ICLR'25) |
+| `a05_04_verifier` | VerifierFilter (F2) | CHESS Unit Tester (ICLR'25) | ✅ R=0.7093 / P=0.6676 / F1=0.6878 |
 | `a05_05_tiered_no_tools` | TieredBidirectionalAgent (F3, no tools) | Ablation vs a05_06 |
 | `a05_06_tiered_full_tools` | TieredBidirectionalAgent (F3, full tools) | ★ 핵심 기여 |
 | `a05_07_adaptive_depth` | AdaptiveDepthFilter (F4) | Uncertainty routing |
@@ -179,6 +228,70 @@ Anchor: a03_17 components (SuperNode Direct + Fixed PCST). 외부 baseline 없�
 | `a05_10_adaptive_retry` | F4 + F5 (K=2) | Selective retry |
 | `a05_11_tiered_gpt4omini` | F3, GPT-4o-mini backbone | Backbone 민감도 |
 | `a05_12_adaptive_retry_gpt4omini` | F4+F5, GPT-4o-mini | Backbone 민감도 |
+| `a05_13_xiyan_gpt4omini` | XiYanFilter (gpt-4o-mini backbone) | Backbone 민감도 (prune-only baseline) | ✅ R=0.6037 / P=0.7317 / F1=0.6616 |
+| `a05_14_adaptive_multi_agent_gpt4omini` | AdaptiveMultiAgentFilter (gpt-4o-mini backbone) | Backbone 민감도 (multi-agent) | ✅ R=0.3992 / P=0.7576 / F1=0.5230 |
+| `a05_15_reflection_1iter_gpt4omini` | ReflectionFilter 1iter (gpt-4o-mini backbone) | Backbone 민감도 (restore path) | ✅ R=0.6827 / P=0.6620 / F1=0.6722 |
+| `a05_16_reflection_3iter_gpt4omini` | ReflectionFilter 3iter (gpt-4o-mini backbone) | Backbone 민감도 (deep critique) | ⊘ Skipped (비용 $3.6 추정, a05_03 Qwen 미완료로 기대 이득 불명확) |
+| `a05_17_verifier_gpt4omini` | VerifierFilter (gpt-4o-mini backbone) | Backbone 민감도 (unit test path) | ✅ R=0.7055 / P=0.6385 / F1=0.6706 |
+
+### abl/a06_ext_fkprior/ (Phase — Extractor E-III, 2026-04-20 추가)
+
+Hybrid PCST with FK topology prior. Anchor: s03_a02_01 (Ensemble Selector + AdaptivePCST).
+Spec: [src/modules/extractors/EXPERIMENT_PLAN_extractors.md §E-III](src/modules/extractors/EXPERIMENT_PLAN_extractors.md).
+On-the-fly FK shortest-path fallback 포함 — Builder B-III 완료 전에도 실행 가능.
+
+| 신규 ID | Extractor 파라미터 | Filter | Status |
+|---------|---------------------|--------|--------|
+| `a06_01_fkprior_discount03` | discount=0.3, bridge=0.0 | None | pending |
+| `a06_02_fkprior_bridge05` | discount=0.3, bridge=0.5 | None | pending |
+| `a06_03_fkprior_aggressive` | discount=0.5, bridge=1.0 | None | pending |
+| `a06_04_fkprior_discount03_xiyan` | discount=0.3, bridge=0.0 | XiYan | pending (paper main comp) |
+
+### abl/a07_ext_path_ensemble/ (Phase — Extractor E-II, 2026-04-20 추가)
+
+PCST + Steiner pathfinder ensemble (union / 2pass / intersection modes).
+Anchor: s03_a02_01 (Ensemble + AdaptivePCST). MSTExtractor 의 `steiner_tree_2approx` 재활용.
+Spec: [src/modules/extractors/EXPERIMENT_PLAN_extractors.md §E-II](src/modules/extractors/EXPERIMENT_PLAN_extractors.md).
+
+| 신규 ID | mode / k_anchors / boost | Filter | Status |
+|---------|--------------------------|--------|--------|
+| `a07_01_path_union_k5` | union / k=5 / boost=0.2 | None | pending |
+| `a07_02_path_2pass_k5` | 2pass / k=5 / boost=0.2 | None | pending |
+| `a07_03_path_union_k3` | union / k=3 / boost=0.2 | None | pending |
+| `a07_04_path_2pass_k10` | 2pass / k=10 / boost=0.3 | None | pending |
+| `a07_05_path_union_k5_xiyan` | union / k=5 / boost=0.2 | XiYan | pending (paper main comp) |
+
+### abl/a08_ext_louvain/ (Phase — Extractor E-I, 2026-04-20 추가)
+
+Louvain community masking 후 Base PCST. `networkx.algorithms.community.louvain_communities` 사용.
+Anchor: s03_a02_01 (Ensemble + AdaptivePCST). 입력 그래프 community (vs CA 의 PCST 이후 component).
+Spec: [src/modules/extractors/EXPERIMENT_PLAN_extractors.md §E-I](src/modules/extractors/EXPERIMENT_PLAN_extractors.md).
+
+| 신규 ID | 파라미터 | Filter | Status |
+|---------|---------|--------|--------|
+| `a08_01_louvain_top2` | res=1.0, top_m=2 | None | pending |
+| `a08_02_louvain_res05` | res=0.5, top_m=2 (coarse cluster) | None | pending |
+| `a08_03_louvain_adaptive_top3` | res=1.0, top_m=3, adaptive_coverage=True | None | pending |
+
+### abl/sel/ (Phase — Selector architecture ablation, 2026-04-20 추가)
+
+루트 PLAN Selector 5축(S-I ~ S-V). 우선순위 S-V > S-III > S-II > S-IV > S-I. 본 entries 는 selector 인프라 ID 슬롯을 예약.
+Spec: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md](src/modules/selectors/EXPERIMENT_PLAN_selectors.md).
+
+| 신규 ID | Selector | 핵심 파라미터 | Status |
+|---------|---------|--------------|--------|
+| `abl_sel_ns_l1_01` | NeurosymbolicL1Selector (S-V) — EnsembleSelector + λ·reach_mask hook (FK-reachability additive prior) | λ=0.1, α=0.85, top_k=20, anchor_min_token_len=3 | ✅ 구현 + smoke 통과 (reach_mask 정확도 검증, 4-component FK 그래프 anchor→component 매핑 일치). End-to-end F1 pending (vLLM 서버 필요). Anchor: `s03_a02_03_xiyan_filter` (Ensemble+AdaptivePCST+XiYan) |
+
+### abl/build/ (Phase A — Builder infrastructure, 2026-04-20 추가)
+
+루트 PLAN Phase A 의 Builder 3축(B-I/B-II/B-III). 본 entries 는 builder/metadata 인프라 ID 슬롯을 예약하고, 하류 Selector S-II/S-III/S-V 가 합류한 뒤 end-to-end 결과로 갱신.
+Spec: [src/modules/builders/EXPERIMENT_PLAN_builders.md](src/modules/builders/EXPERIMENT_PLAN_builders.md).
+
+| 신규 ID | Builder | 연동 하류 | Status |
+|---------|---------|----------|--------|
+| `abl_build_01_fk_reach` | EnrichedHeteroGraphBuilder + auto-injected FK reachability metadata (B-III) | 기존 Ensemble + AdaptivePCST + XiYan (Selector S-V / Extractor E-III / Filter FL-III 미합류) | ✅ Builder smoke 통과 (california_schools T=3, FK=2, reach=1.000, comps=1; dev pair coverage 93.53%, query coverage 94.45%). End-to-end run pending — Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
+| `abl_build_02_linegraph` | LineGraphBuilder(base=EnrichedHeteroGraphBuilder) (B-II) | 하류 Selector S-III(EHGAT) 미구현 | ✅ Builder smoke 통과 (california_schools edge_nodes=97, line_edges=3856, feat_dim=772). End-to-end pending S-III. |
+| `abl_build_03_rfm_tokens` | RFMCompatibleBuilder (B-I) — Enriched 위에 RFM 호환 special-token serialization 부착 | 하류 Selector S-II(RFM encoder) 미구현 — 현 stack 에서는 Enriched 와 동일 동작 | ✅ Builder smoke 통과 (dev 11 DB token median 1041 / max 2578). End-to-end pending S-II. Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
 
 ### GAT Checkpoints (별도 네임스페이스)
 

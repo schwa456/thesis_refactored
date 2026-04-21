@@ -60,14 +60,27 @@ def main():
     output_path = os.path.join(output_dir, f"output_{exp_name}.jsonl")
     reasoning_path = os.path.join(output_dir, f"reasoning_detail_{exp_name}.jsonl")
 
-    for path in [pred_save_path, score_save_path, profiling_path, output_path, reasoning_path]:
-        if os.path.exists(path):
-            os.remove(path)
+    resume = os.environ.get("RESUME", "0") == "1"
+    processed_ids = set()
+    if resume and os.path.exists(pred_save_path):
+        with open(pred_save_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    processed_ids.add(json.loads(line).get("question_id"))
+                except Exception:
+                    continue
+        logger.info(f"[RESUME] {len(processed_ids)} already-processed question_ids found; skipping them")
+    else:
+        for path in [pred_save_path, score_save_path, profiling_path, output_path, reasoning_path]:
+            if os.path.exists(path):
+                os.remove(path)
 
     total_ex_score = 0
     valid_ex_count = 0
-    
+
     for item in tqdm(dataset, desc="Running Pipeline"):
+        if resume and item.get("question_id") in processed_ids:
+            continue
         db_id = item.get("db_id")
         question = item.get("question")
         question_id = item.get("question_id")
@@ -184,6 +197,9 @@ def main():
                 "tier1_dropped_count", "tier2_pool_count",
                 "restored_count", "promoted_count",
                 "retry_attempts",
+                "connectivity_valid", "connectivity_issues",
+                "repair_added_tables", "repair_added_fk_cols",
+                "builder_info", "selector_info", "extractor_info", "filter_info",
             ):
                 if k in result:
                     pred_record[k] = result[k]
@@ -332,6 +348,33 @@ def main():
     except Exception as e:
         logger.warning(f"Filter timing aggregation failed: {e}")
 
+    token_usage_summary: Dict[str, Any] = {}
+    try:
+        from llm_client.api_handler import APIClient
+        token_usage_summary = APIClient.get_usage_summary()
+        total = token_usage_summary.get("total", {})
+        if total.get("calls", 0) > 0:
+            fresh_in = total["input_tokens"] - total["cached_input_tokens"]
+            logger.info(
+                f"🪙 LLM token usage — calls={total['calls']} | "
+                f"input={total['input_tokens']} (fresh={fresh_in}, cached={total['cached_input_tokens']}) | "
+                f"output={total['output_tokens']}"
+            )
+            for m, u in token_usage_summary.get("by_model", {}).items():
+                logger.info(
+                    f"    └ [{m}] calls={u['calls']} "
+                    f"input={u['input_tokens']} cached={u['cached_input_tokens']} output={u['output_tokens']}"
+                )
+            token_usage_path = os.path.join(output_dir, "token_usage.json")
+            with open(token_usage_path, 'w', encoding='utf-8') as f:
+                json.dump(token_usage_summary, f, ensure_ascii=False, indent=2)
+            logger.info(f"🪙 Token usage saved to {token_usage_path}")
+    except Exception as e:
+        logger.warning(f"Token usage logging failed: {e}")
+
+    # Aggregate per-stage telemetry from pred_save_path (*_info fields)
+    stage_aggregates: Dict[str, Any] = _aggregate_stage_telemetry(pred_save_path, logger)
+
     metric_save_path = os.path.join(output_dir, "metrics.txt")
     with open(metric_save_path, 'w', encoding='utf-8') as f:
         for k, v in metrics.items():
@@ -341,9 +384,206 @@ def main():
                 f.write(f"{k}: {int(v)}\n")
             else:
                 f.write(f"{k}: {v:.4f}\n")
+        total = token_usage_summary.get("total", {}) if token_usage_summary else {}
+        if total.get("calls", 0) > 0:
+            f.write(f"llm_calls: {total['calls']}\n")
+            f.write(f"llm_input_tokens: {total['input_tokens']}\n")
+            f.write(f"llm_cached_input_tokens: {total['cached_input_tokens']}\n")
+            f.write(f"llm_output_tokens: {total['output_tokens']}\n")
+        if stage_aggregates:
+            f.write("\n# --- Stage telemetry aggregates ---\n")
+            for k, v in stage_aggregates.items():
+                if isinstance(v, float):
+                    f.write(f"{k}: {v:.4f}\n")
+                elif isinstance(v, int):
+                    f.write(f"{k}: {v}\n")
+                else:
+                    f.write(f"{k}: {v}\n")
+            stage_agg_path = os.path.join(output_dir, "stage_aggregates.json")
+            with open(stage_agg_path, 'w', encoding='utf-8') as sf:
+                json.dump(stage_aggregates, sf, ensure_ascii=False, indent=2)
+            logger.info(f"📊 Stage aggregates saved to {stage_agg_path}")
 
     logger.info("✅ All tasks completed. Forcing process termination.")
     os._exit(0)
+
+
+def _aggregate_stage_telemetry(pred_path: str, logger) -> Dict[str, Any]:
+    """Aggregate builder/selector/extractor/filter *_info fields from predictions.jsonl.
+
+    Returns flat dict of means/counters keyed with stage prefix, useful for
+    at-a-glance per-experiment telemetry in metrics.txt / stage_aggregates.json.
+    """
+    if not os.path.exists(pred_path):
+        return {}
+
+    def _mean(vals: List[float]) -> float:
+        return float(sum(vals) / len(vals)) if vals else 0.0
+
+    builder_time: List[float] = []
+    builder_tables: List[int] = []
+    builder_columns: List[int] = []
+    builder_edges: List[int] = []
+    builder_types: Dict[str, int] = {}
+
+    selector_time: List[float] = []
+    selector_types: Dict[str, int] = {}
+
+    extractor_time: List[float] = []
+    extractor_types: Dict[str, int] = {}
+    extractor_selected_nodes: List[int] = []
+    extractor_prize_nonzero: List[int] = []
+    extractor_thresholds: List[float] = []
+
+    filter_time: List[float] = []
+    filter_types: Dict[str, int] = {}
+    filter_llm_calls: List[int] = []
+    filter_tokens_in: List[int] = []
+    filter_tokens_out: List[int] = []
+    filter_cached: List[int] = []
+    filter_route_dist: Dict[str, int] = {}
+    filter_retry_counts: List[int] = []
+    filter_repair_attempts: int = 0
+    filter_repair_success: int = 0
+
+    n_rows = 0
+    try:
+        with open(pred_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                n_rows += 1
+
+                bi = rec.get("builder_info") or {}
+                if bi:
+                    bt = bi.get("builder_type")
+                    if bt:
+                        builder_types[bt] = builder_types.get(bt, 0) + 1
+                    t = (bi.get("builder_timings") or {}).get("total_s")
+                    if isinstance(t, (int, float)):
+                        builder_time.append(float(t))
+                    if isinstance(bi.get("num_tables"), int):
+                        builder_tables.append(bi["num_tables"])
+                    if isinstance(bi.get("num_columns"), int):
+                        builder_columns.append(bi["num_columns"])
+                    if isinstance(bi.get("num_edges"), int):
+                        builder_edges.append(bi["num_edges"])
+
+                si = rec.get("selector_info") or {}
+                if si:
+                    st = si.get("selector_type") or si.get("sel_type")
+                    if st:
+                        selector_types[st] = selector_types.get(st, 0) + 1
+                    for key in ("selector_time_s", "sel_time_s", "select_time_s"):
+                        if isinstance(si.get(key), (int, float)):
+                            selector_time.append(float(si[key]))
+                            break
+
+                ei = rec.get("extractor_info") or {}
+                if ei:
+                    et = ei.get("extractor_type")
+                    if et:
+                        extractor_types[et] = extractor_types.get(et, 0) + 1
+                    if isinstance(ei.get("extractor_time_s"), (int, float)):
+                        extractor_time.append(float(ei["extractor_time_s"]))
+                    if isinstance(ei.get("extractor_num_selected_nodes"), int):
+                        extractor_selected_nodes.append(ei["extractor_num_selected_nodes"])
+                    if isinstance(ei.get("extractor_prize_nonzero"), int):
+                        extractor_prize_nonzero.append(ei["extractor_prize_nonzero"])
+                    if isinstance(ei.get("extractor_threshold"), (int, float)):
+                        extractor_thresholds.append(float(ei["extractor_threshold"]))
+
+                fi = rec.get("filter_info") or {}
+                if fi:
+                    ft = fi.get("filter_type")
+                    if ft:
+                        filter_types[ft] = filter_types.get(ft, 0) + 1
+                    if isinstance(fi.get("filter_time_s"), (int, float)):
+                        filter_time.append(float(fi["filter_time_s"]))
+                    if isinstance(fi.get("filter_llm_calls"), int):
+                        filter_llm_calls.append(fi["filter_llm_calls"])
+                    if isinstance(fi.get("filter_tokens_in"), int):
+                        filter_tokens_in.append(fi["filter_tokens_in"])
+                    if isinstance(fi.get("filter_tokens_out"), int):
+                        filter_tokens_out.append(fi["filter_tokens_out"])
+                    if isinstance(fi.get("filter_cached_tokens"), int):
+                        filter_cached.append(fi["filter_cached_tokens"])
+                    route = fi.get("filter_route") or fi.get("route")
+                    if isinstance(route, str):
+                        filter_route_dist[route] = filter_route_dist.get(route, 0) + 1
+                    ra = fi.get("filter_pipeline_retry_attempts")
+                    if ra is None:
+                        ra = fi.get("pipeline_retry_attempts")
+                    if isinstance(ra, int):
+                        filter_retry_counts.append(ra)
+                    repair_flag = fi.get("filter_repair_attempted")
+                    if repair_flag is None:
+                        repair_flag = fi.get("repair_attempted")
+                    if repair_flag:
+                        filter_repair_attempts += 1
+                        conn_valid = fi.get("filter_connectivity_valid")
+                        if conn_valid is None:
+                            conn_valid = fi.get("connectivity_valid")
+                        if conn_valid:
+                            filter_repair_success += 1
+    except Exception as e:
+        logger.warning(f"Stage telemetry aggregation failed: {e}")
+        return {}
+
+    agg: Dict[str, Any] = {"n_rows": n_rows}
+
+    if builder_time:
+        agg["builder_time_mean_s"] = _mean(builder_time)
+    if builder_tables:
+        agg["builder_num_tables_mean"] = _mean(builder_tables)
+    if builder_columns:
+        agg["builder_num_columns_mean"] = _mean(builder_columns)
+    if builder_edges:
+        agg["builder_num_edges_mean"] = _mean(builder_edges)
+    if builder_types:
+        agg["builder_type_distribution"] = dict(builder_types)
+
+    if selector_time:
+        agg["selector_time_mean_s"] = _mean(selector_time)
+    if selector_types:
+        agg["selector_type_distribution"] = dict(selector_types)
+
+    if extractor_time:
+        agg["extractor_time_mean_s"] = _mean(extractor_time)
+    if extractor_selected_nodes:
+        agg["extractor_selected_nodes_mean"] = _mean(extractor_selected_nodes)
+    if extractor_prize_nonzero:
+        agg["extractor_prize_nonzero_mean"] = _mean(extractor_prize_nonzero)
+    if extractor_thresholds:
+        agg["extractor_threshold_mean"] = _mean(extractor_thresholds)
+    if extractor_types:
+        agg["extractor_type_distribution"] = dict(extractor_types)
+
+    if filter_time:
+        agg["filter_stage_time_mean_s"] = _mean(filter_time)
+    if filter_llm_calls:
+        agg["filter_llm_calls_mean"] = _mean(filter_llm_calls)
+        agg["filter_llm_calls_total"] = int(sum(filter_llm_calls))
+    if filter_tokens_in:
+        agg["filter_tokens_in_total"] = int(sum(filter_tokens_in))
+    if filter_tokens_out:
+        agg["filter_tokens_out_total"] = int(sum(filter_tokens_out))
+    if filter_cached:
+        agg["filter_cached_tokens_total"] = int(sum(filter_cached))
+    if filter_types:
+        agg["filter_type_distribution"] = dict(filter_types)
+    if filter_route_dist:
+        agg["filter_route_distribution"] = dict(filter_route_dist)
+    if filter_retry_counts:
+        agg["pipeline_retry_attempts_mean"] = _mean(filter_retry_counts)
+        agg["pipeline_retry_attempts_max"] = int(max(filter_retry_counts))
+    if filter_repair_attempts:
+        agg["filter_repair_attempts"] = int(filter_repair_attempts)
+        agg["filter_repair_successes"] = int(filter_repair_success)
+
+    return agg
 
 if __name__ == "__main__":
     main()

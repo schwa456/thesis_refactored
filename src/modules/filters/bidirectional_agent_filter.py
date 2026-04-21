@@ -18,6 +18,7 @@ Differentiation: explicit tier-aware evidence hierarchy.
 import json
 import os
 import sqlite3
+import time
 from typing import Dict, List, Any, Set, Iterable
 
 from modules.registry import register
@@ -183,13 +184,26 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         metadata: Dict[str, Any] = None,
         **kwargs,
     ) -> Dict[str, Any]:
+        t_start = time.perf_counter()
         if not subgraph:
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="TieredBidirectionalAgentFilter",
+                input_subgraph=subgraph or {},
+                final_nodes=[],
+                status="Unanswerable",
+                token_before={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                token_after={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                t_start=t_start,
+                model=self.model_name,
+            )
             return {
                 "status": "Unanswerable",
                 "final_nodes": [],
                 "reasoning": "Empty input subgraph",
+                "filter_info": dict(self.last_info),
             }
 
+        token_before = AgentUtils.token_snapshot()
         tier1_flat = set(self._flatten(subgraph))
         tier2_set = set(tier2_pool or [])
         tier2_set -= tier1_flat
@@ -212,11 +226,34 @@ class TieredBidirectionalAgentFilter(BaseFilter):
 
         if not tier1_dropped and not tier2_set:
             final_nodes = self._flatten(current)
+            status = "Answerable" if final_nodes else "Unanswerable"
+            token_after = AgentUtils.token_snapshot()
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="TieredBidirectionalAgentFilter",
+                input_subgraph=subgraph,
+                final_nodes=final_nodes,
+                status=status,
+                token_before=token_before,
+                token_after=token_after,
+                t_start=t_start,
+                model=self.model_name,
+                tier1_dropped_count=0,
+                tier2_pool_count=0,
+                restored_count=0,
+                promoted_count=0,
+                restore_agent_triggered=False,
+                use_graph_context=bool(self.use_graph_context),
+            )
             return {
-                "status": "Answerable" if final_nodes else "Unanswerable",
+                "status": status,
                 "final_nodes": final_nodes,
                 "reasoning": " | ".join(trace),
                 "trace": trace_detail,
+                "tier1_dropped_count": 0,
+                "tier2_pool_count": 0,
+                "restored_count": 0,
+                "promoted_count": 0,
+                "filter_info": dict(self.last_info),
             }
 
         restore_res, restore_raw = self._restore(
@@ -233,6 +270,8 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         valid_promote = tier2_set
         restored = [n for n in restore if n in valid_restore]
         promoted = [n for n in promote if n in valid_promote]
+        restore_suggestions_invalid = len(restore) - len(restored)
+        promote_suggestions_invalid = len(promote) - len(promoted)
 
         updated = self._apply_additions(
             current, restored + promoted, valid_restore | valid_promote | current_flat
@@ -248,8 +287,32 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         })
 
         final_nodes = self._flatten(updated)
+        status = "Answerable" if final_nodes else "Unanswerable"
+        token_after = AgentUtils.token_snapshot()
+        gat_score_values = list(gat_scores.values()) if gat_scores else []
+        self.last_info = AgentUtils.build_filter_info(
+            filter_type="TieredBidirectionalAgentFilter",
+            input_subgraph=subgraph,
+            final_nodes=final_nodes,
+            status=status,
+            token_before=token_before,
+            token_after=token_after,
+            t_start=t_start,
+            model=self.model_name,
+            tier1_flat_size=len(tier1_flat),
+            tier1_dropped_count=len(tier1_dropped),
+            tier2_pool_count=len(tier2_set),
+            restored_count=len(restored),
+            promoted_count=len(promoted),
+            restore_suggestions_invalid=restore_suggestions_invalid,
+            promote_suggestions_invalid=promote_suggestions_invalid,
+            restore_agent_triggered=True,
+            gat_scores_available=len(gat_score_values),
+            gat_score_mean=float(sum(gat_score_values) / len(gat_score_values)) if gat_score_values else 0.0,
+            use_graph_context=bool(self.use_graph_context),
+        )
         return {
-            "status": "Answerable" if final_nodes else "Unanswerable",
+            "status": status,
             "final_nodes": final_nodes,
             "reasoning": " | ".join(trace),
             "trace": trace_detail,
@@ -257,4 +320,5 @@ class TieredBidirectionalAgentFilter(BaseFilter):
             "tier2_pool_count": len(tier2_set),
             "restored_count": len(restored),
             "promoted_count": len(promoted),
+            "filter_info": dict(self.last_info),
         }

@@ -363,36 +363,350 @@ DirectGATSelector (binary, threshold=0.5) 위에서 Selector → Extractor → F
 
 ### 6-16. a05 Agentic Filter Ablation — 2026-04-15
 
-Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic refinement 효과 비교. Backbone: Qwen3-Coder-30B-A3B-Instruct-FP8 (vLLM, GPUs 2+3).
+Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic refinement 효과 비교. Backbone: Qwen3-Coder-30B-A3B-Instruct-FP8 (vLLM, GPUs 2+3). a05_13/14/15/17만 backbone 민감도 측정용 gpt-4o-mini (OpenAI API).
 
 | ID | Filter | Recall | Precision | F1 | Runtime |
 |----|--------|--------|-----------|------|---------|
 | a03_17 (anchor) | XiYan | 0.6761 | 0.7128 | **0.6940** | — |
 | a05_01 | AdaptiveMultiAgent (Semantic+Structural+Skeptic) | 0.3770 | 0.6276 | 0.4713 | 10h 23m |
 | a05_02 | ReflectionFilter (1 iter, propose→critique→revise) | **0.7320** | 0.6833 | **0.7068** | 3h 18m (7.3s/q) |
+| a05_04 | VerifierFilter (XiYan + NL Unit Tester) | 0.7093 | 0.6676 | 0.6878 | 6h 48m (16.0s/q) |
+| a05_13 | XiYan (gpt-4o-mini backbone, prune-only) | 0.6037 | **0.7317** | 0.6616 | 38m (1.10s/q) |
+| a05_14 | AdaptiveMultiAgent (gpt-4o-mini backbone) | 0.3992 | 0.7576 | 0.5230 | 176m (6.9s/q) |
+| a05_15 | ReflectionFilter 1iter (gpt-4o-mini backbone) | 0.6827 | 0.6620 | 0.6722 | 131m (5.1s/q) |
+| a05_17 | VerifierFilter (gpt-4o-mini backbone) | 0.7055 | 0.6385 | 0.6706 | 206m (8.1s/q) |
 
 **관찰**:
 - **a05_01 F1=0.4713, anchor 대비 −22.3%p**: 3-agent consensus가 지나치게 보수적으로 교집합화 — Recall 0.38로 anchor 대비 -30%p 대폭 손실. Precision도 anchor XiYan보다 낮음 (0.63 < 0.71).
 - JSON Parsing failed warning 빈발: agents.py fallback이 Unanswerable로 처리되어 빈 선택 누적 → Recall 파괴.
 - **a05_02 F1=0.7068, anchor 대비 +1.3%p (신기록)**: Critique-revise가 Recall을 0.68→0.73으로 밀어올림. Precision은 0.71→0.68로 소폭 하락하나 net F1 상승. **Restore path 확보가 실제로 Recall 천장을 돌파**함을 실증.
+- **a05_04 F1=0.6878, anchor 대비 −0.6%p**: XiYan-style 초기 필터 + NL unit test 생성 + missing_nodes 복원. Recall 0.7093로 anchor 대비 +3.3%p 회복되나 Precision 0.6676으로 -4.5%p 하락 → net F1 하락. Unit tester의 missing 판정이 recall 확보에는 효과 있으나 정교하지 않은 복원으로 noise 유입. ReflectionFilter 대비 F1 -1.9%p (0.6878 vs 0.7068) — critique-revise의 통합 추론이 generate-then-check 분리 파이프라인보다 우월.
+- **a05_13 F1=0.6616, anchor 대비 −3.2%p**: XiYanFilter의 LLM만 Qwen3-Coder-30B → gpt-4o-mini로 교체 (구조·프롬프트 동일, 1534쿼리 38분, ~$0.41). Precision +0.0189 (0.7128→0.7317)로 소폭 개선되나 Recall −0.0724 (0.6761→0.6037)로 크게 손실 — gpt-4o-mini가 schema-value 판단 시 더 보수적으로 컬럼을 제거. Prune-only 구조에서는 backbone 교체가 recall 병목을 오히려 악화. 토큰 사용: input 2.70M (fresh 2.56M + cached 0.14M, 캐시 히트율 5.15%) / output 30K. F3/F4(a05_11/12)는 restore path가 있어 민감도 다를 수 있음.
+- **a05_14 F1=0.5230 (AdaptiveMultiAgent + gpt-4o-mini), a05_01(Qwen) 대비 +5.2%p / anchor 대비 −17.1%p**: 3-agent consensus 구조는 backbone 교체로도 구조적 한계 유지. Recall 0.3992 (a05_01 0.3770 대비 +0.022) / Precision 0.7576 (0.6276 대비 +0.130). gpt-4o-mini가 agent별 JSON parsing을 더 안정적으로 수행하여 parsing 실패로 인한 빈 선택 손실은 일부 해소되나, consensus 교집합화로 인한 recall 파괴가 여전. 토큰 1.43M input / 503K output / cached 0, 비용 ~$0.52. 3-agent 구조 자체가 prune-only에서는 recall 천장 상실 근본 원인.
+- **a05_15 F1=0.6722 (Reflection 1iter + gpt-4o-mini), a05_02(Qwen) 대비 −3.5%p / anchor 대비 −2.2%p**: 구조는 유지 (propose→critique→revise, 1iter) 하나 backbone 교체로 F1 손실. Recall 0.6827 (a05_02 0.7320 대비 −0.049) / Precision 0.6620 (0.6833 대비 −0.021). gpt-4o-mini의 critique가 Qwen 대비 원 subgraph 밖 노드 재도입을 덜 공격적으로 수행 → recall 천장 돌파 효과 약화. 토큰 8.13M input / 193K output / cached 144K (1.8%), 비용 ~$1.32. Reflection 구조는 a05_13/14 대비 backbone 민감도가 가장 큼 (F1 −3.5%p vs −3.2%p / +5.2%p) — critique의 질이 backbone 능력에 비례하는 structural 특성.
+- **a05_17 F1=0.6706 (Verifier + gpt-4o-mini), a05_04(Qwen) 대비 −1.7%p / anchor 대비 −2.3%p**: XiYan 초기 필터 + NL unit test 생성·검증 구조 유지. Recall 0.7055 (a05_04 0.7093 대비 −0.004로 거의 동일) / Precision 0.6385 (0.6676 대비 −0.029). Verifier는 NL unit test로 missing을 복원하는 recall path 의존도가 높아 backbone 영향이 상대적으로 작음 — Reflection 대비 민감도 절반 수준. 토큰 8.06M input / 496K output / cached 87K (1.1%), 비용 ~$1.50. JSON Parsing failed warning 일부 발생하나 fallback이 Initial nodes 유지로 recall 보존.
+- **GPT-4o-mini backbone 민감도 종합**: prune-only(a05_13 −3.2%p) < Verifier(a05_17 −1.7%p) < AdaptiveMultiAgent(a05_14 +5.2%p vs Qwen 최악치) / Reflection(a05_15 −3.5%p). **Recall path 유무와 무관하게 전반적으로 F1 2~3.5%p 하락**, 3-agent 구조만 parsing 안정성 이득으로 Qwen 대비 개선. Qwen3-Coder-30B가 schema linking에서 gpt-4o-mini 대비 구조적 우위. 4개 실험 총 비용 ~$3.76 (a05_13 $0.41 + a05_14 $0.52 + a05_15 $1.32 + a05_17 $1.50).
 - 향후 agentic filter는 (1) prune-only 대신 restore 경로 확보, (2) parsing robustness, (3) fallback 시 XiYan 결과 유지가 필수.
+
+---
+
+### 6-17. a09 TopologyCost PCST Ablation (edge-type param-free, NoFilter) — 2026-04-16
+
+**동기**: BO (6-6)가 edge-type cost weight (bt/fk/macro)를 튜닝했지만 F1=0.6751로 plateau 도달. 튜닝 공간 자체가 한계일 가능성 — 방향 2로 edge-type 파라미터를 제거하고 **그래프 토폴로지 (degree) 기반 cost**로 전환. Filter가 Precision을 담당한다는 전제 하에 extractor는 Implicit Bridge Table 확보 (Recall-oriented) 에 집중. 본 ablation은 **Filter 없이** raw extractor 순효과만 측정.
+
+**Cost 공식**: `c(u,v) = cost_scale × (1 / (1 + γ·log(1+max(deg_u,deg_v)))) × (1 / (1 + λ·(norm_p_u+norm_p_v)))`
+- 고차원 노드(테이블)를 지나는 bridge를 저렴화 → belongs_to/FK 경로 확보 촉진
+- Prize는 tiebreaker로만 작용 (λ=0.3, 약한 term)
+- Edge-type 파라미터 (bt/fk/macro) 완전 제거
+
+**결과** (Ensemble α=0.85 + 동일 GAT checkpoint + NoFilter 고정):
+
+| ID | Extractor | Recall | Precision | F1 | Δ vs a09_05 |
+|----|-----------|--------|-----------|------|-------------|
+| a09_05 (parent) | AdaptivePCST | 0.7210 | **0.3471** | **0.4686** | — |
+| **a09_01** | **TopologyCost (γ=1, λ=0.3)** | **0.7318** | 0.3412 | 0.4654 | **−0.0032** |
+| a09_04 (I24a 계열) | CA-ProductCost | 0.7489 | 0.3333 | 0.4613 | −0.0073 |
+| a09_02 | CA-TopologyCost | 0.7463 | 0.3313 | 0.4590 | −0.0096 |
+| a09_03 | Basic PCST (fixed) | **0.9679** | 0.1276 | 0.2255 | −0.2431 |
+
+**핵심 발견**:
+- **TopologyCost 순효과: F1 −0.0032** (직계 부모 AdaptivePCST 대비 미세 후퇴). Recall +0.0108 얻었으나 Precision −0.0059 더 떨어져 상쇄 — topology cost의 bridge 확보 효과는 관측되지만 추가 노드 유입이 precision 손실을 압도하지 못함.
+- **Edge-type 파라미터 3개 제거해도 F1 동등**: TopologyCost는 bt/fk/macro 3개 파라미터를 완전히 삭제하고도 Adaptive와 −0.3% 내에서 동작 → BO plateau가 tuning 공간 한계가 아니라 **extractor 자체의 plateau**임을 시사. edge-type cost를 포기해도 잃는 것이 없음 (단, 더 얻는 것도 없음).
+- **CA mixin이 TopologyCost에서는 역효과** (a09_01 → a09_02, F1 −0.0064). ProductCost에서 CA가 얻었던 F1 +0.02 이득과 **반대 패턴** — component 분해된 국소 threshold가 이미 prize-aware cost를 덮어쓰는 중복 작용 가능성.
+- **Basic PCST의 recall (0.9679)이 가장 높지만 F1 최하 (0.2255)**: NoFilter에서는 recall-only 전략이 실패. 과거 Basic+XiYan F1=0.7863 기록을 고려하면 recall 대량 확보 전략은 Filter와 결합해야만 가치를 가짐.
+- **"Filter가 precision 담당" 가설의 한계**: NoFilter 시점에서 순수 extractor recall 개선 폭이 +0.0108에 불과 → TopologyCost는 bridge 확보보다는 Adaptive 대비 marginal variant 수준. Filter 추가 시 topology cost의 micro-recall 이점이 살아나는지는 별도 pass 필요.
+
+**다음 의사결정**:
+1. TopologyCost + XiYanFilter 조합 평가 (a09_01 + XiYan) — recall 이득이 Filter 이후 net F1 양수로 전환되는지 확인
+2. γ/λ/cost_scale grid 또는 small BO — 본 실험의 (1.0, 0.3, 0.1)이 sweet spot인지 검증
+3. topology signal 교체 실험 — PageRank, clustering coefficient 등 degree 외 대안
+
+---
+
+### 6-18. a10 FK-Backbone Steiner Closure (Graph-Structure 기반 Recall ≥ 0.85 달성) — 2026-04-16
+
+**동기**: a09 TopologyCost가 F1 ±0.003 수준 plateau를 확증 — 기존 단일-단계 PCST는 edge cost 공간을 아무리 바꿔도 한계 달성. 근본적인 전환이 필요: "**Filter 이전에 Recall 0.85 이상 확보**"를 목표로, DB schema의 2-레벨 구조 (Table FK backbone + Column membership) 를 명시적으로 활용.
+
+**설계**: 단일 PCST를 두 단계로 분해
+1. **FK Backbone Steiner Tree** (table 수준): Selector가 고점수를 준 테이블 + high-score 컬럼의 parent 테이블을 terminal로, `table_to_table` FK edge로 구성된 G_fk 그래프에서 Kou-Markowsky-Berman 2-근사 Steiner tree를 구한다. **Implicit Bridge Table이 구조적으로 보장됨** (PCST는 bridge table의 prize가 낮으면 드랍했던 것을 여기선 Steiner 알고리즘이 필연적으로 포함).
+2. **Column Recovery**: Closed backbone에 속한 테이블 안에서 `score ≥ θ_r` 인 컬럼 복원 + `force_fk_columns=True` 로 closed 테이블 간 FK 컬럼 강제 포함.
+
+**Extractor**: `FKBackboneSteinerExtractor` (AdaptivePCST 상속, percentile=80, min/max_prize=3/25 재사용 → terminal 선정)
+
+**결과** — 11-point θ_r sweep (Ensemble α=0.85 + 동일 GAT checkpoint + NoFilter 고정, 2026-04-16 완료):
+
+| ID | θ_r | Recall | Precision | F1 | Δ F1 vs a09_05 |
+|----|-----|--------|-----------|------|----------------|
+| a09_05 (anchor) | — (AdaptivePCST) | 0.7210 | 0.3471 | 0.4686 | — |
+| a10_01 | 0.0 | **0.9492** | 0.1567 | 0.2690 | −0.1996 |
+| a10_04 | 0.1 | 0.9481 | 0.1582 | 0.2711 | −0.1975 |
+| a10_05 | 0.2 | 0.9418 | 0.1644 | 0.2800 | −0.1886 |
+| a10_02 | 0.3 | 0.9293 | 0.1812 | 0.3033 | −0.1653 |
+| a10_06 | 0.4 | 0.9014 | 0.2125 | 0.3439 | −0.1247 |
+| a10_03 | 0.5 | 0.8565 | 0.2627 | 0.4021 | −0.0665 |
+| a10_07 | 0.6 | 0.7789 | 0.3341 | 0.4677 | −0.0009 |
+| a10_08 | 0.7 | 0.6662 | 0.4245 | 0.5185 | +0.0499 |
+| **a10_09 ★** | **0.8** | **0.5455** | **0.5044** | **0.5241** | **+0.0555** |
+| a10_10 | 0.9 | 0.4083 | **0.5300** | 0.4612 | −0.0074 |
+| a10_11 | 1.0 | 0.2972 | 0.4920 | 0.3706 | −0.0980 |
+
+**핵심 발견**:
+- **Recall ≥ 0.85 목표 달성 구간**: θ_r ∈ [0.0, 0.5] 의 6개 config 모두 0.85 상회, 최고 0.9492 (θ_r=0.0). "0.1+ Recall jump" 요구는 구조적으로 해결됨 (기존 anchor 0.7210 대비 +0.2282). PCST의 cost 조정으로는 도달 불가능한 영역.
+- **F1 Peak: θ_r=0.8 (F1=0.5241)**: a09_05 AdaptivePCST anchor (F1=0.4686) 대비 **+0.0555**, NoFilter 체제에서 순수 Extractor 최고치. θ_r=0.7 (0.5185), 0.8 (0.5241), 0.9 (0.4612) 의 inverted-U 형태로 피크 명확.
+- **P > R Crossover**: θ_r ≈ 0.8 부근 (a10_09 에서 R=0.5455 / P=0.5044 거의 균형, θ_r=0.9 에서 P=0.5300 > R=0.4083 로 완전 역전).
+- **Precision 노이즈 천장**: P는 θ_r=0.9 에서 0.5300 이 한계, θ_r=1.0 에서는 오히려 **0.4920 으로 하락** — FK 강제 컬럼만 포함해도 bridge FK 자체가 gold 에 없는 경우가 있어 Steiner closure 에는 구조적 precision 상한이 존재.
+- **FK-Backbone Steiner의 Dual Operating Point**:
+  1. **Recall-first (θ_r=0.5)**: R=0.8565, P=0.2627, F1=0.4021 → Filter 전 recall 담보용
+  2. **F1-first (θ_r=0.8)**: R=0.5455, P=0.5044, F1=0.5241 → NoFilter 단독 최고 F1
+- **구조적 vs Cost-기반 대비**: a09 TopologyCost는 edge cost 완화로 Recall +0.0108 에 그쳤으나, a10 은 Steiner closure 강제로 Recall +0.2282 확보 — **"cost 튜닝 plateau" 를 돌파하는 길은 구조 이용뿐**임이 실증.
+
+**다음 의사결정**:
+1. **XiYan Filter 결합** (GPU 여유 시) — a10_03 (θ_r=0.5, R=0.8565, P=0.2627) 자리에서 Filter 가 P 를 얼마나 끌어올리는지가 최종 판정. 목표: 기존 chain top (a03_17 F1=0.6940 / abl_ens_basic_xiyan F1=0.7863) 돌파. Filter 투입 후 optimal θ_r 은 별도 sweep 필요할 수 있음 (P 여유가 Filter 부담과 trade).
+2. **force_fk_columns / fallback_to_parent 플래그 ablation** — 두 구조적 강제 요소 중 어느 쪽이 recall jump 를 주로 견인했는지 분해 (force_fk_columns=False / fallback_to_parent=False 각각 실험).
+3. **θ_r=0.8 근방 세밀 sweep** — F1 피크 0.05 간격 (0.75, 0.85) 추가 확인으로 최적점 정밀화.
+4. **Selector 교체 영향** — 본 실험은 `best_gat_model.pt` 고정. s06 bottleneck fix GAT checkpoint 로 교체 시 seed 품질 향상이 Extractor-stage recall/precision 에 어떻게 전파되는지 별도 pass.
+
+---
+
+### 6-19. FK-Backbone Steiner Column Recovery Percentile Sweep (Offline) — 2026-04-17
+
+**동기**: a10 FKBackboneSteiner의 `column_recovery_threshold θ_r`은 **절댓값**이다. Ensemble Selector(α=0.85)는 raw cosine이 지배적이므로 DB/query별 score 분포가 이동 → "θ_r=0.8"이 쿼리에 따라 상위 10~40% 사이에서 움직인다. Per-query **percentile 기준**으로 재정의하면 이 변동을 흡수할 수 있는지 검증 (α 조정/GAT 교체는 selector 세션의 재설계를 기다리기로 하고, extractor-side normalization만 먼저 시도).
+
+**방법 (오프라인 재평가)**: `FKBackboneSteinerExtractor` 에 `column_recovery_percentile` + `column_recovery_percentile_scope` 파라미터 추가. **a10_09 의 `score_analysis_*.jsonl` (per-query node scores) + dev graph cache를 재사용** 해 Selector를 재실행하지 않고 extractor stage만 재평가. 각 config마다 1534 쿼리 × (Step 4a column recovery 기준만 변경) → R/P/F1 macro 계산 (auto_join_keys 포함). Smoke test로 `abs θ_r=0.8` config 가 a10_09 출력과 bit-exact 일치함을 확인 (R=0.5455 / P=0.5044 / F1=0.5242).
+
+**4 scopes × 21 percentiles (0, 5, 10, …, 95, 100) = 84 configs + abs anchor (θ_r=0.8) = 85 configs**. Total runtime ~90s.
+
+**Scope 정의**:
+
+| Scope | Percentile 계산 모집단 |
+|---|---|
+| `global` | 쿼리의 모든 노드 (table + column + fk) score |
+| `all_cols` | 쿼리의 모든 컬럼 노드 score |
+| `closed_cols` | Steiner closure로 확정된 테이블 내부 컬럼 score (candidate 한정) |
+| `per_table` | closed table 각각 독립 (테이블별 percentile) |
+
+**결과 — 각 scope F1 peak**:
+
+| Scope | 최적 p | Recall | Precision | F1 | Δ vs abs_anchor |
+|---|---|---|---|---|---|
+| abs_anchor (θ_r=0.8) | — | 0.5455 | 0.5044 | **0.5242** | — |
+| `global` | p=95 | 0.5754 | 0.4776 | 0.5219 | −0.0023 |
+| **`all_cols` ★** | **p=95** | **0.6167** | 0.4626 | **0.5287** | **+0.0045** |
+| `closed_cols` | p=95 | 0.5688 | 0.4899 | 0.5264 | +0.0022 |
+| `per_table` | p=100 | 0.5471 | 0.4928 | 0.5185 | −0.0057 |
+
+**High-Recall 운영점 (R ≥ 0.85, Filter-앞 후보)**:
+
+| Scope | p | Recall | Precision |
+|---|---|---|---|
+| `global` | 50 | 0.8998 | 0.2058 |
+| `all_cols` | 55 | 0.8801 | 0.2151 |
+| **`closed_cols`** | 50 | **0.8522** | **0.2389** |
+| `per_table` | 50 | 0.8293 | 0.2173 |
+
+`closed_cols` 가 R~0.85 구간에서 P 최고 — Steiner closure 로 후보군이 이미 필터된 pool 에서 선별 → 과도 포함 억제. 절댓값 anchor 대비 같은 R 수준에서 P 가 높은 단일 config 운영점 확보.
+
+**핵심 발견**:
+- **개선 폭 작지만 양 효과**: `all_cols p=95` 가 abs_anchor 대비 **+0.0045 F1**. 큰 jump 는 아니어도 per-query calibration 이 제한적 이득을 준다.
+- **`global` ≈ `all_cols`**: 쿼리 노드 중 컬럼이 ~95% 를 차지해 두 분포가 거의 동일. `global` scope 는 사실상 중복 정의.
+- **`closed_cols` 는 targeted interpretation**: "복원 후보군에서 상위 p%" 로 해석이 깔끔. F1 peak 도 `all_cols` 에 근접(0.5264 vs 0.5287, −0.0023). **고-Recall 구간(R>0.85)에서 P 최고 → Filter-앞 단계에서 선호되는 scope**.
+- **`per_table` 은 floor 도 천장도 낮음**: p=5 에서도 R=0.9041(타 scope는 0.94+), F1 peak 도 최하(0.5185). 작은 테이블에서 percentile noise 로 gold 손실. **추천 X**.
+- **모든 scope가 고-percentile (p=90~100)에서 peak**: `θ_r=0.8` 절댓값이 실제로 상위 ~5% 의 고정 cut 에 해당. 현재 regime 이 이미 dev set 평균 최적 근처임을 재확인.
+- **per-query calibration의 이득이 제한적인 이유**:
+  1. Score 분포가 쿼리 간 의외로 일관적 (all-MiniLM cos 가 0.2~0.9 범위에 안정).
+  2. 이미 `adaptive_threshold P80` 이 seed_tables 단계에서 per-query normalize 중.
+  3. Column recovery 단계의 변동 흡수 이득은 주변부에 국한.
+
+**권장사항**:
+- **F1 최대화**: `all_cols p=95` (+0.0045 F1, interpretability 향상).
+- **High-Recall 운영점(Filter-앞)**: `closed_cols p=50` (R=0.8522, P=0.2389) — `all_cols p=55` 의 R=0.8801 보다 R 은 낮지만 P 는 더 높아 Filter 부담 최소화.
+- **`per_table` 비추천**, **`global` 불필요** (`all_cols` 와 중복).
+
+**다음 의사결정**:
+1. **`all_cols p=95` + XiYan Filter 조합** — 절댓값 θ_r=0.8 + XiYan 대비 net F1 유지 되는지.
+2. **`closed_cols p=50` + XiYan 조합** — high-Recall operating point 가 Filter 결합 후 최종 F1 peak 갱신하는지.
+3. **GAT 재학습 후 재실행** — selector 세션의 새 GAT checkpoint 배포 후 동일 sweep 재수행. Percentile 방식이 score scale 변화에 robust 한지 검증.
+4. **Micro-averaged vs macro-averaged 비교** — 본 분석은 query macro. 쿼리 크기 편향 보정을 위해 micro 도 병행 계산 시 해석 명확해질 수 있음.
+
+**산출물**:
+- 분석 MD: [notebooks/analysis_results/fk_steiner_percentile_sweep.md](notebooks/analysis_results/fk_steiner_percentile_sweep.md)
+- CSV: [notebooks/analysis_results/fk_steiner_percentile_sweep.csv](notebooks/analysis_results/fk_steiner_percentile_sweep.csv) (85 rows)
+- 스크립트: [src/analysis/fk_steiner_percentile_sweep.py](src/analysis/fk_steiner_percentile_sweep.py)
+- Extractor 확장: `FKBackboneSteinerExtractor` (pcst.py) — `column_recovery_percentile`, `column_recovery_percentile_scope ∈ {global, all_cols, closed_cols, per_table}` 추가. 미지정(None) 시 기존 절댓값 모드 유지 (backward compatible).
+
+---
+
+### 6-20. Builder Phase A — Infrastructure (B-I / B-II / B-III) — 2026-04-20
+
+Builder 모듈 세션에서 3개 인프라 제안을 일괄 구현. 모두 **인프라 layer** — 후속 모듈(Selector S-II/S-III/S-V, Extractor E-III, Filter FL-III)이 활용해야 end-to-end 효과 측정 가능. 본 항목은 빌더 단독 검증(스모크 테스트)까지의 기록이며, full pipeline 메트릭은 후속 작업에서 anchor (E1/E2) 대비 noise 수준 일치 확인 후 갱신.
+
+#### B-III. FK reachability precompute (★ 최우선, 임계 경로)
+
+**구현**: `HeteroGraphBuilder._compute_fk_reachability()` 추가. 모든 빌더(`HeteroGraphBuilder` / `EnrichedHeteroGraphBuilder` / `TripletGraphBuilder`)의 `build()` 종료 직전 `metadata.update(self._compute_fk_reachability(...))`. `scipy.sparse.csgraph.shortest_path` + `connected_components` + BFS predecessor walk 기반.
+
+**메타데이터 추가 키 (8종)**:
+- `fk_adjacency` — `np.ndarray[T,T] int8` (방향성 FK 인접)
+- `fk_adjacency_undirected` — 조인 경로용 무방향 버전
+- `fk_reachability` — `np.ndarray[T,T] bool` (transitive closure, undirected)
+- `fk_distance` — `np.ndarray[T,T] float32` (BFS hop, 비도달 = `inf`)
+- `fk_shortest_paths` — `Dict[(i,j), {distance, table_path, edge_path, fk_edge_ids}]`
+- `fk_components` — `Dict[table_idx, comp_id]`
+- `fk_num_components` — int
+- `fk_edge_lookup` — `Dict[(src_tbl, dst_tbl), List[fk_edge_id]]` (멀티-FK 처리)
+
+**스모크 테스트 결과**: `scripts/smoke_test_b3_fk_reach.py`
+- california_schools: T=3, FK=2, reach=1.000, components=1, paths=6 (3×3 - diag)
+- BIRD-Dev 11개 DB 전체: 1,171 multi-table queries, 1,793 gold join pairs 중 1,677 covered
+  - **Pair coverage 0.9353, Query coverage 0.9445**
+- 미스 분포 (top): debit_card_specializing 47, card_games 31. 모두 **선언되지 않은 shared-column join** (e.g., `cards.setCode = set_translations.setCode`) — 인프라 한계가 아닌 BIRD 스키마 자체의 비-FK 조인.
+
+**해석**: 95% target에 약간 미달이지만 root cause는 BIRD의 schema 선언 불완전성. 후속 작업으로 (1) 컬럼명 매칭 기반 implicit FK 추론을 metadata에 보조키로 추가하거나, (2) Filter 단계에서 LLM이 join key를 추가 추론하는 방식으로 보완 가능. 현 단계에서는 인프라로 충분.
+
+**호환성**: metadata_dict는 추가만 하고 기존 키(`table_to_id`, `col_to_id`, `fk_to_id`, `node_metadata`, `edges`, `edge_types`)는 변경 없음. 캐시(`BIRDGraphDataset`)는 graph data만 저장하고 metadata를 저장하지 않으므로 inference 시 fresh metadata가 흐른다 (캐시 무효화 불필요).
+
+**ID**: `abl_build_01_fk_reach` — anchor `s03_a07_01_enriched_gat` (E1, F1 0.7327). Pipeline은 metadata key를 무시하므로 noise 수준 일치 예상. (full pipeline 실행은 selector S-V/extractor E-III/filter FL-III 와 묶어 진행 예정)
+
+#### B-II. LineGraph builder (EHGAT 인프라)
+
+**구현**: `src/modules/builders/line_graph_builder.py` (신규). `LineGraphBuilder(BaseGraphBuilder)`. base builder를 wrapping (`_BASE_REGISTRY` dict로 `EnrichedHeteroGraphBuilder` / `TripletGraphBuilder` / 기본 셋 모두 지원).
+
+**구조 변환**:
+- 원본 그래프의 모든 PCST 후보 edge → 새 그래프의 노드 (`edge_node`)
+- 두 edge가 동일 노드를 공유 → `(edge_node, shares_node, edge_node)`
+- `EDGE_TYPE_ORDER = ["belongs_to", "is_source_of", "points_to", "table_to_table"]` (cross-DB 일관성)
+
+**Edge feature** (총 dim 772 또는 1156):
+- type one-hot (4) + endpoint mean embedding (384) + (`include_endpoint_diff=True` 시) abs diff (384) + (Triplet base 시) triplet edge embedding (384)
+
+**Params**: `base="EnrichedHeteroGraphBuilder"`, `base_params`, `include_endpoint_diff=True`, `skip_macro_edges=False`
+
+**Metadata 추가 키**: `edge_node_to_orig`, `orig_node_to_edges`, `edge_type_order`, `edge_type_to_idx`, `edge_feature_dim`, `edge_label_rule="both_endpoints_gold"`, `orig_data` (원본 HeteroData 보존), `orig_metadata`. FK reachability 키들도 forward.
+
+**스모크 테스트**: `scripts/smoke_test_b2_linegraph.py`
+- california_schools: 97 edge_nodes, 3,856 line_edges (feat_dim 772)
+- financial: 87 edge_nodes, 1,060 line_edges
+- Triplet base: feat_dim 1,156 (+384 triplet embedding) 정상 확인
+
+**한계**: end-to-end 파이프라인은 **Selector S-III (EHGAT)** 가 `edge_node` HeteroData를 소비할 수 있어야 동작. 현재는 builder-side smoke marker로만 등록.
+
+**ID**: `abl_build_02_linegraph` — anchor `s03_a07_02_edge_prize` (E2, F1 0.7424). S-III 후 재실행.
+
+#### B-I. RFM-compatible serialize API
+
+**구현**: `RFMCompatibleBuilder(EnrichedHeteroGraphBuilder)` 추가 (graph_builder.py). Enriched와 동일한 graph + metadata에 RFM 직렬화 텍스트/토큰 추가.
+
+**Special tokens**: `[DB] [TAB] [/TAB] [COL] [TYPE] [PK] [DESC] [VAL] [FKS] [FK→]`
+
+**직렬화 포맷**:
+```
+[DB] db_id [TAB] tab_name (NL_name) [COL] col1 [TYPE] type [PK] [DESC] desc [VAL] v1 | v2 | v3 [/TAB] ... [FKS] tab1.col1 [FK→] tab2.col2 ...
+```
+
+**Params**: `include_values=True`, `max_values=3`, `value_max_chars=50`, `max_desc_chars=200`
+
+**Metadata 추가 키**: `rfm_text`, `rfm_tokens` (List[str], 화이트스페이스 split), `rfm_special_tokens`
+
+**API**: `build()` (그래프 + 직렬화) 또는 `serialize(db_id, db_dir)` (오프라인 텍스트만)
+
+**스모크 테스트**: `scripts/smoke_test_b1_rfm.py`
+- BIRD-Dev 11 DB 토큰 수: min 203 / median 1,041 / mean 1,177 / max 2,578 (european_football_2)
+- 4K context 충분히 수용. 별도 토큰화기 wrapping 시 special_tokens는 vocab 추가 필요 — 후속 RFM 인코더 (S-II) 작업에서 처리.
+
+**한계**: 현재 파이프라인의 GAT/PCST/XiYan stack은 `rfm_text`/`rfm_tokens` 키를 무시 → behavioral identical to Enriched. 실제 효과는 **Selector S-II (RFM encoder)** 가 wired 된 후 측정.
+
+**ID**: `abl_build_03_rfm_tokens` — anchor `s03_a07_01_enriched_gat` (E1, F1 0.7327). S-II 후 재실행.
+
+#### 공통 (인터페이스 / 캐시)
+
+- **인터페이스 계약 보존**: `(HeteroData, metadata_dict)` 반환 형태 유지. metadata 키 추가만, 기존 키 변경 없음. Selector/Extractor/Filter는 무지(無知) 상태로 동작.
+- **캐시 라우팅**: `bird_dataset.py`에서 `type(builder).__name__ == "EnrichedHeteroGraphBuilder"` 조건을 `isinstance(builder, EnrichedHeteroGraphBuilder)`로 변경 → 서브클래스(Triplet/RFM)도 `_enriched` cache 공유.
+- **모듈 export**: `src/modules/builders/__init__.py`에서 6개 빌더 모두 노출 (Hetero/Enriched/Triplet/RFM/LineGraph/Cached).
+
+#### 다음 의사결정
+
+1. **B-III full-pipeline anchor 검증**: `abl_build_01_fk_reach` 실행해 E1과 noise 일치(±0.5pp) 확인. 차이 발생 시 metadata pass-through에 사이드 이펙트 의심.
+2. **Selector 세션과 인터페이스 정렬**: S-V (FK metadata 활용 게이트), S-III (LineGraph encoder), S-II (RFM encoder) 작업 순서 조율.
+3. **Implicit FK 보강 검토**: 컬럼명 + 타입 매칭 기반 후보 FK를 `metadata['fk_implicit']`로 추가하는 안. 현재 6.47% 미스를 추가로 회수할 잠재력. (선행 의사결정: explicit FK만으로 부족하다고 판정될 때)
+
+**산출물**:
+- 빌더 코드: [src/modules/builders/graph_builder.py](src/modules/builders/graph_builder.py) (FK reach + RFM), [src/modules/builders/line_graph_builder.py](src/modules/builders/line_graph_builder.py) (LineGraph)
+- 스모크 스크립트: [scripts/smoke_test_b3_fk_reach.py](scripts/smoke_test_b3_fk_reach.py), [scripts/smoke_test_b2_linegraph.py](scripts/smoke_test_b2_linegraph.py), [scripts/smoke_test_b1_rfm.py](scripts/smoke_test_b1_rfm.py)
+- 실험 config: [configs/experiments/abl/build/fk_reach/abl_build_01_fk_reach.yaml](configs/experiments/abl/build/fk_reach/abl_build_01_fk_reach.yaml), [configs/experiments/abl/build/linegraph/abl_build_02_linegraph.yaml](configs/experiments/abl/build/linegraph/abl_build_02_linegraph.yaml), [configs/experiments/abl/build/rfm_tokens/abl_build_03_rfm_tokens.yaml](configs/experiments/abl/build/rfm_tokens/abl_build_03_rfm_tokens.yaml)
+
+---
+
+### 6-21. Selector S-V — Neurosymbolic Layer 1 (FK-reachability prior) — 2026-04-20
+
+Builder B-III (`metadata['fk_reachability']`) 직후 착수한 Selector 축 첫 구현. EnsembleSelector 에 **최소 침습**(single hook override) 으로 symbolic prior 를 주입.
+
+#### 설계
+
+```
+boosted_scores = ensemble_scores + λ · reach_mask
+ensemble_scores = α · raw_cosine + (1−α) · gat_score       # α=0.85 (기존)
+reach_mask[v]  = 1.0 if owning_table(v) ∈ reachable(anchors)
+```
+
+- **Anchor 식별** (deterministic, token-level): question 을 `re.findall(r"[a-zA-Z0-9]+", lower())` 로 토큰화 (min_len=3). Table 이름과 column 이름을 snake_case/camelCase 로 분해 후 word intersection. 테이블 이름 hit 또는 해당 테이블의 컬럼 이름 hit 시 table_id 를 anchor 에 추가.
+- **Reach computation**: `fk_reachability[anchor_idx].any(axis=0)` — 여러 anchor 의 reachable set 합집합. Undirected 이므로 FK 방향과 무관.
+- **Mask 확장**: 테이블 → owning table 반영, 컬럼 → owning table 상속, FK 노드 → src/dst table 중 하나라도 reachable 이면 1.
+- **Graceful fallback** 3단계: `fk_reachability` 없음 → ensemble; anchor 없음 → ensemble; reach_mask sum=0 → ensemble.
+
+#### 구현 파일
+
+- `src/modules/selectors/neurosymbolic_l1_selector.py` (신규, 195 lines)
+- `src/modules/selectors/ensemble_selector.py`: `_post_ensemble_hook` method 추가 (default no-op) → `select()` 에서 top-k 직전 호출
+- `src/modules/selectors/__init__.py`: `NeurosymbolicL1Selector` export
+- `configs/experiments/abl/sel/ns_l1/abl_sel_ns_l1_01.yaml`: pilot config (λ=0.1)
+
+#### 스모크 검증 (real GAT weights)
+
+1. **B-III 메타데이터 shape**: california_schools (T=3, C=89) → `fk_reachability.shape=(3,3) bool`, 전부 True (connected) ✅
+2. **Anchor 식별** 3개 질문:
+   - "math score" → satscores + schools (column word hit)
+   - "FRPM" → frpm
+   - "nonsense xyz" → ∅ (graceful fallback)
+3. **Disconnected FK graph** (debit_card_specializing, 4 components):
+   - "customer purchases" → anchors [0, 3, 4], mask 19/27 nodes
+   - "gas prices" → anchors [1, 3], mask 15/27
+   - "how many transactions" → anchors [3], mask 10/27
+   - 각 결과가 해당 component 소속 노드만 정확히 커버하는 것 확인
+4. **End-to-end (Real ensemble, random top-k)**: max|Δscore|=0.1000 정확히 일치 (λ=0.1), boosted count 24/27 nodes
+
+#### 의의
+
+- **첫 Selector 축 진입**: 루트 PLAN 의 5개 축 중 **S-V 가 가장 낮은 엔지니어링 비용** (metadata 소비 + 1 hook). Builder B-III 완료가 선행 조건이었고 2026-04-20 에 해결됨.
+- **Zero regression 경로**: fk_reachability 없는 구설정에서도 parent class (EnsembleSelector) 동작을 그대로 유지하므로 기존 실험 결과와 noise 수준 일치해야 정상.
+- **가설**: anchor table 에서 FK-reachable 한 bridge table 의 recall 이 개선된다. 특히 3-table JOIN 이 필요한 쿼리에서 **AdaptivePCST 의 P80 threshold 하위로 떨어지던 FK 노드**를 λ bonus 로 prize 보존권에 끌어올림.
+
+#### 보류 작업
+
+- **End-to-end F1 측정**: `abl_sel_ns_l1_01` — vLLM 서버 (Qwen3-Coder-30B) 가동 후 실행 예정. Anchor `s03_a02_03_xiyan_filter` (F1 baseline) 과 직접 A/B.
+- **λ sweep**: 0.05 / 0.1 / 0.2 — pilot 결과 기반으로 선정. 각각 `abl_sel_ns_l1_{02,03,04}` 예약.
+- **Builder switch**: 현재 best_gat_model.pt (basic builder 로 학습) 사용. Enriched 쪽은 `best_gat_enriched.pt` + `EnrichedHeteroGraphBuilder` 조합으로 별도 실험 (`abl_sel_ns_l1_enriched_*`) 예정.
+
+**산출물**:
+- 셀렉터 코드: [src/modules/selectors/neurosymbolic_l1_selector.py](src/modules/selectors/neurosymbolic_l1_selector.py), hook in [src/modules/selectors/ensemble_selector.py](src/modules/selectors/ensemble_selector.py)
+- 실험 config: [configs/experiments/abl/sel/ns_l1/abl_sel_ns_l1_01.yaml](configs/experiments/abl/sel/ns_l1/abl_sel_ns_l1_01.yaml)
 
 ---
 
 ## 7. 전체 실험 순위 (Recall 기준 Top 10)
 
+NoFilter(Extractor-only) 실험과 Full-pipeline 실험이 혼재됨에 주의. **†** 표시는 NoFilter (extractor 단독 recall).
+
 | Rank | Experiment | Recall | Precision | F1 | Key Components |
 |------|-----------|--------|-----------|------|----------------|
-| 1 | abl_ens_basic_xiyan | **0.8149** | 0.7597 | 0.7863 | Ensemble + BasicPCST + XiYan |
-| 2 | abl_cos_basic_xiyan | 0.7987 | 0.7694 | 0.7838 | Cosine + BasicPCST + XiYan |
-| 3 | **a05_02_reflection_1iter** | **0.7320** | 0.6833 | 0.7068 | Ensemble + AdaptivePCST + **ReflectionFilter(1iter)** |
-| 4 | edge_prize | 0.6823 | 0.8139 | 0.7424 | TripletBuilder + EdgePrizePCST + XiYan |
-| 5 | abl_a03_17_supernode_binary_fixed_xiyan | 0.6761 | 0.7128 | 0.6940 | SuperNode-Direct(binary, τ=0.5) + BasicPCST + XiYan |
-| 6 | enriched_gat | 0.6658 | 0.8147 | 0.7327 | EnrichedBuilder + Ensemble + Adaptive + XiYan |
-| 7 | abl_a04_01_supernode_t005_steiner_xiyan | 0.6353 | 0.7054 | 0.6685 | SuperNode-Direct(τ=0.05) + SteinerBackbone + XiYan |
-| 8 | idea24_product_component_xiyan | 0.6304 | 0.8028 | 0.7063 | Ensemble + ProductCost+Component + XiYan |
-| 9 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
-| 10 | qcond_idea24_xiyan | 0.6236 | 0.8056 | 0.7032 | QueryCond(α=0.85) + Idea2+4 + XiYan |
+| 1 | a09_03_basic_no_filter_anchor † | **0.9679** | 0.1276 | 0.2255 | Ensemble + BasicPCST + **NoFilter** |
+| 2 | s03_a10_01_fk_steiner_full_col † | **0.9492** | 0.1567 | 0.2690 | Ensemble + **FKBackboneSteiner(θ_r=0.0)** + NoFilter |
+| 3 | s03_a10_04_fk_steiner_r01 † | 0.9481 | 0.1582 | 0.2711 | Ensemble + FKBackboneSteiner(θ_r=0.1) + NoFilter |
+| 4 | s03_a10_05_fk_steiner_r02 † | 0.9418 | 0.1644 | 0.2800 | Ensemble + FKBackboneSteiner(θ_r=0.2) + NoFilter |
+| 5 | s03_a10_02_fk_steiner_mid_col † | 0.9293 | 0.1812 | 0.3033 | Ensemble + FKBackboneSteiner(θ_r=0.3) + NoFilter |
+| 6 | s03_a10_06_fk_steiner_r04 † | 0.9014 | 0.2125 | 0.3439 | Ensemble + FKBackboneSteiner(θ_r=0.4) + NoFilter |
+| 7 | s03_a10_03_fk_steiner_high_col † | **0.8565** | 0.2627 | 0.4021 | Ensemble + **FKBackboneSteiner(θ_r=0.5)** + NoFilter |
+| 8 | abl_ens_basic_xiyan | 0.8149 | 0.7597 | **0.7863** | Ensemble + BasicPCST + XiYan |
+| 9 | abl_cos_basic_xiyan | 0.7987 | 0.7694 | 0.7838 | Cosine + BasicPCST + XiYan |
+| 10 | s03_a10_07_fk_steiner_r06 † | 0.7789 | 0.3341 | 0.4677 | Ensemble + FKBackboneSteiner(θ_r=0.6) + NoFilter |
 
 ## 8. 전체 실험 순위 (F1 기준 Top 10)
 
@@ -408,6 +722,7 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 | 8 | b4_xiyan_filter | 0.6244 | 0.7930 | 0.6987 | Ensemble + AdaptivePCST + XiYan |
 | 9 | supernode_idea24_a085_xiyan | 0.6154 | 0.8005 | 0.6958 | SuperNode(α=0.85) + Idea2+4 + XiYan |
 | 10 | abl_a03_17_supernode_binary_fixed_xiyan | 0.6761 | 0.7128 | 0.6940 | SuperNode-Direct(binary, τ=0.5) + BasicPCST + XiYan |
+| 11 | **a05_04_verifier** | 0.7093 | 0.6676 | 0.6878 | SuperNode-Direct + BasicPCST + **VerifierFilter** |
 
 ---
 
@@ -424,6 +739,7 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 7. **GAT Ensemble (α=0.85)**: Cosine 대비 P/R +0.01~0.02. 기여가 미미한 이유는 GAT 자체 판별력 한계.
 8. **ReflectionFilter (a05_02)**: XiYan 대비 R +0.11 (0.6244→0.7320), P −0.11 (0.7930→0.6833), F1 +0.008. Propose→critique→revise 루프가 XiYan의 recall 천장을 돌파한 최초 사례. Critique가 원래 subgraph 밖 노드 재도입을 허용하는 구조적 차별.
 9. **AdaptiveMultiAgentFilter (a05_01)**: R=0.3770으로 매우 낮음 — agent consensus 과보수적, JSON parsing 실패 다수. 추가 튜닝 필요.
+10. **VerifierFilter (a05_04)**: anchor(a03_17) 대비 R +0.03 (0.6761→0.7093), P −0.05 (0.7128→0.6676), F1 −0.006. XiYan 초기 필터 + NL unit test → missing 복원. Recall 회복은 성공하나 Reflection 대비 열등 (F1 0.6878 vs 0.7068) — generate-then-check 분리 구조가 통합 critique-revise보다 약함. ReAct-style 단일 agent 통합 reasoning의 우월성 시사.
 
 ### 구조적 패턴
 
@@ -436,11 +752,11 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 ### 다음 단계 제안
 
 1. **a05_03 Reflection 3iter** (진행 중, 2026-04-15 기준 ~34%): 1iter 대비 추가 recall 회복 또는 수렴 여부 확인.
-2. **a05_04 VerifierFilter (CHESS-style Unit Tester)**: NL unit test로 선택 검증, 실패 시 expansion.
+2. **a05_04 VerifierFilter** ✅ 완료 — R=0.7093 / P=0.6676 / F1=0.6878. Reflection(a05_02) 대비 F1 열등 (-1.9%p) — generate-then-check 분리 구조 한계 확인.
 3. **a05_05/06 Tiered Bidirectional Agent (F3)**: Tier-1(PCST) vs Tier-2(selector-only) 구분 + graph-native tools.
 4. **a05_07 Uncertainty-gated adaptive depth (F4)**: GAT confidence 기반 agentic compute 조절.
 5. **a05_09/10 Extraction-retry (F5)**: Unanswerable verdict → Extractor 완화 재호출 loop.
-6. **a05_11/12 GPT-4o-mini backbone**: Qwen3-Coder-30B 대비 backbone 민감도 검증.
+6. **Backbone 민감도 (gpt-4o-mini)** ✅ 4개 실험 완료 — `a05_13` XiYan F1=0.6616 (−3.2%p), `a05_14` AdaptiveMultiAgent F1=0.5230 (Qwen 대비 +5.2%p이나 anchor −17.1%p), `a05_15` Reflection 1iter F1=0.6722 (−3.5%p), `a05_17` Verifier F1=0.6706 (−1.7%p). **전반적으로 gpt-4o-mini가 Qwen3-Coder-30B 대비 F1 1.7~3.5%p 열세** (AdaptiveMultiAgent만 parsing 안정성 이득). Reflection이 backbone 민감도 최고 (critique 질이 backbone 능력에 비례), Verifier가 최저 (unit test recall path 의존). 총 비용 ~$3.76 / 누적 런타임 ~9h. 결론: **prune-only / agentic 전반에서 Qwen 유지가 유리**; a05_11/12 (F3/F4 + gpt-4o-mini)는 우선순위 하향.
 7. **Enriched + Query-Conditioned + Reflection 결합**: 각각의 최고점 결합 시 시너지 기대.
 8. **FK 노드 supervised training (Idea 1)**: GAT의 bridge table 인식 능력 강화.
 9. **Direct variant 결론**: BCE only Direct가 Projector(BCE+InfoNCE) 대비 열등 — DualTowerProjector + InfoNCE 유지가 유리.
@@ -499,7 +815,7 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 | `AdaptiveMultiAgentFilter` | `model_name`, `uncertainty_threshold=0.6` | Semantic+Structural+Skeptic agent voting. a05_01에서 R=0.3770 (과보수적) |
 | `XiYanFilter` | `model_name="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"`, `max_iteration=1`, `temperature=0.0` | XiYan-SQL pruning |
 | `ReflectionFilter` | `model_name`, `max_iteration=1~3`, `temperature=0.0` | Propose→Critique→Revise. 원 subgraph 외 노드 재도입 허용. a05_02 (1iter): R=0.7320 F1=0.7068 |
-| `VerifierFilter` (예정) | `model_name`, unit test 개수 | CHESS-style NL unit tester + Expander. a05_04 |
+| `VerifierFilter` | `model_name`, `max_iteration=1`, `temperature=0.0` | XiYan-style 초기 필터 + NL unit test 생성/검증 + missing_nodes 복원. a05_04: R=0.7093 F1=0.6878 |
 | `BidirectionalAgentFilter` (예정) | tier1_subgraph, tier2_pool, gat_scores, tools | Tier-aware prune + restore with graph-native tools. a05_05/06 |
 | `AdaptiveDepthFilter` (예정) | uncertainty_threshold | GAT confidence 기반 depth 선택 (단일/Reflection/Bidirectional). a05_07 |
 
@@ -604,7 +920,7 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 | a05_01 | a05_01_adaptive_multi_agent | `AdaptiveMultiAgentFilter(uncertainty=0.6)` | Qwen | ✅ | 0.3770 | 0.6276 | 0.4713 |
 | a05_02 | a05_02_reflection_1iter | `ReflectionFilter(max_iter=1)` | Qwen | ✅ | **0.7320** | 0.6833 | **0.7068** |
 | a05_03 | a05_03_reflection_3iter | `ReflectionFilter(max_iter=3)` | Qwen | 🏃 (~34%) | - | - | - |
-| a05_04 | a05_04_verifier | `VerifierFilter` (XiYan + Unit Tester) | Qwen | ⏸ | - | - | - |
+| a05_04 | a05_04_verifier | `VerifierFilter` (XiYan + Unit Tester) | Qwen | ✅ | 0.7093 | 0.6676 | 0.6878 |
 | a05_05 | a05_05_bidirectional_notool | `BidirectionalAgentFilter` (tier1+tier2, no tools) | Qwen | ⏸ | - | - | - |
 | a05_06 | a05_06_bidirectional_fulltool | `BidirectionalAgentFilter` + graph tools ★ | Qwen | ⏸ | - | - | - |
 | a05_07 | a05_07_adaptive_depth | `AdaptiveDepthFilter` (uncertainty gating) | Qwen | ⏸ | - | - | - |
@@ -613,3 +929,212 @@ Anchor: a03_17 (SuperNode Direct + Fixed PCST). Filter만 교체하여 agentic r
 | a05_10 | a05_10_retry_gated | F5 + F4 gating | Qwen | ⏸ | - | - | - |
 | a05_11 | a05_11_bidirectional_gpt4omini | F3 full tools | **GPT-4o-mini** | ⏸ | - | - | - |
 | a05_12 | a05_12_retry_gpt4omini | F5+F4 stack | **GPT-4o-mini** | ⏸ | - | - | - |
+
+---
+
+## 7. Phase E — GAT Bottleneck Fix (s06 series, 2026-04-16~)
+
+**Motivation**: `outputs/analysis/gat_bottleneck{,_qcond}/` 의 3-step 병목 진단(2026-04-15~16)
+결과를 처방으로 반영하는 ablation 사이클. 관찰된 4가지 병리:
+
+1. **Layer-1 catastrophic over-smoothing**: QCond L1 cosine 0.89 / SN 0.97 — 단 1홉 만에 critical(0.85) 초과
+2. **Skip/Input-dominated learning**: SN `skip_dict` gradient 5.0 압도적 / QCond `lin_dict` gradient 2.0 압도적 → GAT layer 실질 기여 약함
+3. **Attention uniformity**: 3 layer entropy 패턴 완전 동일 → layer별 고유 relational view 미학습
+4. **BCE–Recall divergence**: QCond ep75 / SN ep79 이후 loss↓ / Recall plateau (~221 epoch 낭비)
+
+### Phase E-1 (s06_a01): Forward-Additive Ablation on QCond
+
+- Anchor: QCond Direct (T8, `best_gat_query_conditioned_direct.pt`, Val Recall@15=0.591)
+- Filter 없이 Selector only 측정 (Val Recall@15 기준)
+- Compute budget 제약으로 QCond 라인만 우선 검증. SN은 추후 대칭 검증 예정.
+
+| # | ID | 처방 | 예상 Val R@15 | **실제 Val R@15** | B0 대비 Δ | 학습시간 | 상태 |
+|---|----|------|---------------|-------------------|-----------|---------|------|
+| s06-B0 | s06_a01_01_b0_baseline | 현행 QCond Direct (reference) | 0.591 | **0.5738** | — | 3h 48m | ✅ 2026-04-16 |
+| s06-B1 | s06_a01_02_b1_pairnorm | + PairNorm | 0.605 | **0.5707** | −0.0031 | 4h 12m | ✅ 2026-04-16 |
+| s06-B2 | s06_a01_03_b2_initial_residual | + Initial Residual (APPNP α=0.2) | 0.615 | **0.5986** | +0.0248 | 3h 57m | ✅ 2026-04-17 |
+| s06-B3 | s06_a01_04_b3_listnet | BCE → ListNet | 0.625 | **0.5745** | +0.0007 | 5h 36m | ✅ 2026-04-17 |
+| s06-B4 | s06_a01_05_b4_anti_collapse | + Schema-Aware Anti-Collapse (λ=0.3) | 0.640 | **0.5894** | +0.0156 | 9h 23m | ✅ 2026-04-17 |
+| s06-B5 | s06_a01_06_b5_dual_stream | Full Dual-Stream + JK concat, 2 layers | 0.670 | **0.6073** | **+0.0335** | ~29h (rerun) | ✅ 2026-04-19 |
+
+**Hypothesis vs 실측**: 각 처방이 독립적으로 Recall +0.01~0.015 씩 기여하고, Dual-Stream 구조 변경이 +0.03 추가하리라 예상 → 최종 B5 ≈ 0.67 목표. **실측**: B5 = 0.6073 (예상보다 -0.063 낮음). 개별 처방 기여도는 **비단조** (B1 오히려 후퇴, B3 무영향, B2/B4/B5만 유의미). 과잉 예측의 원인: 누적 효과 가정이 비현실적 (처방 간 상호작용, anti-collapse 가 listnet 과 동일 축 신호 공유).
+
+**특이사항**:
+- B5 첫 run 은 2026-04-17 19:59 에 1초만에 crash (fk_node 관련 버그) → 2026-04-17 21:32 rerun. rerun 이 정상. 체크포인트 best epoch 은 rerun 초반 (04-18 04:35 저장).
+- B1 (PairNorm 단독) 은 **오히려 성능 후퇴** → PairNorm 이 단독으론 oversmoothing 제어는 되지만 discriminative capacity 를 제거해버림. B2 (+Initial Residual) 가 pair 로 붙어야 회복.
+- B3 (ListNet) 변화 무영향 — joint-train 에서는 ListNet 의 list-wise signal 이 AntiCollapse/BCE 와 섞이며 희석되는 것으로 추정. 별도 post-hoc head retrain (§7-2 exp C) 에서는 ListNet 이 실제로 Dev AUC +0.024 기여함이 확인됨. 즉 "joint training 에서만 signal 이 뭉개짐".
+- B5 에서 `jumping_knowledge=concat + 2 layers + dual_stream` 구조 변경이 가장 큰 단일 기여 (+0.0179 vs B4).
+
+**논문 기여 매핑**:
+- Observation → Empirical motivation (§IV-A 병목 진단)
+- B1~B3 → 기존 원리 적용 (standard baselines for over-smoothing / ranking)
+- B4 (SACR) → 본 연구 기여 1 "Schema-Aware Anti-Collapse Regularization"
+- B5 (Dual-Stream) → 본 연구 기여 2 "Query-Schema Stream Disentanglement"
+- Per-component Recall 차 → Ablation Table (§IV-B)
+
+**구현 산출물** (2026-04-16):
+- `src/models/gat_network_v2.py` — PairNorm, Initial Residual, JK, Dual-Stream 플래그
+- `src/models/losses.py` — ListNet, Anti-Collapse regularizer
+- `src/train_gat_s06.py` — s06 전용 학습 스크립트
+- `configs/experiments/s06_gat_bottleneck_fix/a01_additive_ablation/*.yaml` — 6개 config
+
+**실행 명령** (GPU 확보 후):
+```bash
+for cfg in configs/experiments/s06_gat_bottleneck_fix/a01_additive_ablation/*.yaml; do
+  PYTHONPATH=src python src/train_gat_s06.py --config "$cfg"
+done
+```
+
+### Phase E-2 (B5 verification & head retrain diagnostic, 2026-04-20)
+
+**Motivation**: B5 Val R@15=0.6073 / Dev Recall 품질의 병목이 (a) GAT representation 자체인지 (b) joint-train 된 classifier head 인지 분리 진단. 동일 데이터셋에서 frozen L_out (마지막 GAT layer 출력) 을 cache 한 뒤 head 만 재학습.
+
+**Verification 사전 관찰** (`src/analysis/b5_verification.py`):
+- Dev 기준 `cosine(gold, gold) μ=0.2242`, `cosine(gold, non) μ=0.1060`, `cosine(non, non) μ=0.2165` → gold↔non 구분은 있으나 margin 얇음.
+- Linear Probe (5-fold CV LogisticRegression on dev L_out) **AUC 0.9195 ± 0.002, holdout 0.9178** → representation 자체는 매우 잘 분리됨.
+- 원본 B5 joint classifier dev AUC 0.7067 — linear probe 0.92 대비 **-0.20 의 큰 gap** → **joint-trained head 가 bottleneck** 가설.
+
+**정정**: linear probe 0.92 는 *within-dev* CV (dev 데이터로 학습+평가 분리). 우리가 실제로 할 "train 으로 head 학습 → dev 평가" 와 개념 다름. 실제 bottleneck 은 **train→dev 분포 shift** 였음 (§7-2 결과).
+
+### §7-2. B5 Post-Hoc Head Retrain 2×2 Ablation (Offline, 2026-04-20)
+
+**Setup**: B5 frozen L_out cache (`outputs/analysis/s06_bottleneck/B5/retrain/lout_cache_{train,dev}.pt`, 학습 GAT state 그대로 freeze) 위에 head 만 50 epoch 재학습.
+- Split: train query 10% 를 val, 나머지 90% 학습 (query-random split, seed=42).
+- Grid: head ∈ {linear, mlp(256→256→128→1)} × loss ∈ {bce, listnet} × normalize ∈ {none, per-query zscore}.
+- Script: `src/analysis/b5_head_retrain.py`, runner: `scripts/run_b5_head_retrain{,_CDE}.sh`.
+
+**Matrix (head=mlp):**
+
+| Exp | Loss | Norm | val R@15 | Dev AUC (val-ES) | Dev R@15 (val-ES) | best Dev AUC (oracle) | best Dev R@15 (oracle) |
+|-----|------|------|----------|------------------|---------------------|----------------------|------------------------|
+| A (linear) | bce | none | 0.9945 | 0.6483 | 0.5856 | — | — |
+| B | bce | none | 0.9962 | 0.6648 | 0.6042 | — | — |
+| **C** | **listnet** | none | 0.9962 | **0.6891** | 0.6184 | **0.7548 @ep3** | 0.6497 @ep3 |
+| **D** | bce | **zscore** | 0.9953 | 0.6724 | **0.6228** | 0.7027 @ep1 | **0.6571 @ep2** |
+| E | listnet | zscore | 0.9948 | 0.6687 | 0.6146 | 0.7292 @ep3 | 0.6514 @ep2 |
+
+참조: 원본 B5 joint classifier Dev AUC=0.7067, Val R@15=0.6073.
+
+**관찰**:
+1. **Val R@15 전부 ≥ 0.99** → head 가 train L_out 에 overfit 쉬움. 남은 차이는 전부 train→dev 분포 shift 에서 발생.
+2. **개선 강도 ListNet >> zscore >> combine(sub-additive)**: listnet alone Dev AUC +0.024 (vs B) / zscore alone +0.008 / 두 기법 combine 은 C 단독보다 -0.020 (상쇄).
+3. **Metric 별 승자 상이**: Dev AUC 1등 C / Dev R@15 1등 D.
+4. **Oracle dev-ES 로 보면 retrain 이 joint 를 앞섬**: C best_dev_auc 0.7548 (+0.048 vs 0.7067), D best_dev_r15 0.6571 (+0.050 vs 0.6073). 즉 joint-train 의 head 가 suboptimal.
+5. **극단적 early peak**: C/D/E 모두 ep1~3 에서 best_dev. Train val AUC 0.99 에 2~3 epoch 만에 도달 → head 에게 L_out 은 거의 linear-separable.
+
+**결론**: "head 가 bottleneck 이다" 는 oracle dev-ES 관점에서만 참. Realistic val-ES (train-internal val split) 로 고르면 retrain 이 joint 를 소폭 밑돌기도 함 → **진짜 병목은 train→dev domain shift**. 이를 진단하기 위해 §7-3 LDBO 진행.
+
+### §7-3. B5 Head-Only LDBO Diagnostic (Offline, 2026-04-20)
+
+**Motivation**: §7-2 는 val split 이 *query-random* 이라 같은 DB 의 다른 query 가 val 에 섞임 → val = "본 적 있는 DB 의 새 query", dev = "본 적 없는 DB". Val-ES 기준과 실제 dev 성능이 어긋나는 근본 원인. 이를 완화하려면 val 도 "본 적 없는 DB" scenario 여야 함 → **Leave-DB-Out (LDBO)**.
+
+**Setup**: Train 의 69 unique DB 중 11 개 (≈ dev 크기, 16%) 를 seed=42 로 홀드아웃 → `proxy_dev`. 나머지 58 DB 로 head 학습. GAT 는 재학습 없음 (이미 69 DB 전체를 본 checkpoint 사용 → **진단용**이지 해결책 아님을 명확히 인지).
+- 홀드아웃 DB: `['bike_share_1', 'book_publishing_company', 'coinmarketcap', 'ice_hockey_draft', 'movie_3', 'movies_4', 'restaurant', 'shooting', 'talkingdata', 'university', 'video_games']`
+- Implementation: `b5_head_retrain.py` 에 `--ldbo_frac`, `--train_json` 인자 추가; runner `scripts/run_b5_ldbo_diagnostic.sh` (GPU 0 순차, 4 cells B/C/D/E).
+
+**결과 (LDBO val-ES vs Query-Random val-ES 비교)**:
+
+| Exp | Loss | Norm | LDBO val R@15 | QR val R@15 | **LDBO Dev AUC(ES)** | **QR Dev AUC(ES)** | Δ(L−Q) |
+|-----|------|------|---------------|-------------|----------------------|--------------------|--------|
+| B | bce | none | 0.9963 | 0.9962 | 0.6614 | 0.6648 | −0.003 |
+| C | listnet | none | 0.9958 | 0.9962 | 0.6594 | 0.6891 | **−0.030** |
+| D | bce | zscore | 0.9947 | 0.9953 | 0.6660 | 0.6724 | −0.006 |
+| E | listnet | zscore | 0.9950 | 0.9948 | **0.6761** | 0.6687 | **+0.007** |
+
+LDBO oracle best_dev: B 0.6980@1 / C 0.6722@4 / D 0.7029@1 / E 0.6877@10.
+
+**핵심 진단** (negative result, **본 실험의 가장 중요한 발견**):
+
+1. **LDBO val R@15 여전히 0.99+** → 홀드아웃된 11 train DB 가 "unseen" 역할을 충분히 수행하지 못함. `proxy_dev` 에서도 head 는 여전히 거의 완벽히 recall 함.
+2. **val↔dev R@15 gap 변화 없음**: query-random 0.99-0.62=0.37 vs LDBO 0.99-0.62=0.37.
+3. **val-ES 기준 Dev AUC 도 LDBO 에서 개선 없음** (B/C/D 약간 악화, E만 +0.007). 즉 LDBO-ES 가 oracle dev-ES 보다 나은 가이드 못 됨.
+4. 해석: **BIRD train DB 간 domain 다양성 ≪ BIRD train↔dev domain gap**. Dev 의 11 DB 는 schema/column naming style 이 train 에서 전혀 안 보이는 영역 → train 내부에서 아무리 DB 홀드아웃해도 그 shift 를 simulate 할 수 없음.
+
+**함의**:
+- **LDBO-ES 전략 무용** (최소한 head-only 수준에서는). 더 근본적인 intervention 필요.
+- 가능한 방향:
+  1. **GAT 재학습 with LDBO split** (이 실험은 GAT frozen; GAT 까지 LDBO 로 재학습하면 representation 자체가 "unseen DB" 를 본 적 있게 됨 — 비용 ~8h)
+  2. **Encoder 개선**: L_out 의 근본은 sentence encoder 출력. Dev DB 의 novel column name 에 대한 encoder OOD 가 실제 병목일 가능성.
+  3. **Domain-adversarial training** (DANN-style): DB-id 를 gradient-reversal 로 invariance 신호
+  4. **Cross-DB contrastive pretraining of encoder** on BIRD-wide column corpus
+- Val-ES 와 dev-ES 는 여전히 큰 gap (ex. C oracle 0.7548 vs val-ES 0.6891 = 0.066). "dev label 을 early stop 기준으로 쓰는 것" 을 피하려면 별도 meta-dev 분할 필요.
+
+**논문 기여 매핑**:
+- §7-3 의 negative result 는 "naive LDBO 로는 BIRD 의 train-dev shift 해결 불가" 라는 **방법론 경고** 형태로 논문 §V (limitations / future work) 에 인용 가능.
+- §7-2 의 "joint training 의 head 가 oracle 대비 suboptimal" 발견은 §III-C 학습 레시피 개선 근거로 사용 가능.
+
+**구현 산출물**:
+- `src/analysis/b5_verification.py` — cosine / classifier logit / linear probe 진단
+- `src/analysis/b5_extract_frozen_lout.py` — frozen L_out 캐시 추출 (train/dev)
+- `src/analysis/b5_head_retrain.py` — head-only retrain (query-random + LDBO 양쪽 지원)
+- `scripts/run_b5_head_retrain.sh` — A/B (linear vs mlp, bce, none)
+- `scripts/run_b5_head_retrain_CDE.sh` — C/D/E (mlp × listnet/zscore grid)
+- `scripts/run_b5_ldbo_diagnostic.sh` — LDBO 4 cells, GPU 0 순차
+
+### §7-4. B5 Enriched — Training + 3축 병목 분석 확장 (2026-04-21)
+
+**Motivation**: §7-2/§7-3 결론이 "L_out 이후 head 학습은 포화, 진짜 병목은 train→dev domain shift". Dev 의 novel column naming 에 대한 encoder OOD 완화를 시도하려면 **입력 텍스트 자체를 풍부하게** — `tables.json` 의 자연어 테이블/컬럼명과 `database_description/*.csv` 주입 (EnrichedHeteroGraphBuilder). B5 구조 그대로 유지하여 **"enrichment 순수 효과"** 만 측정.
+
+**Setup**:
+- Config: `configs/experiments/s06_gat_bottleneck_fix/a01_additive_ablation/s06_a01_07_b5_enriched_dual_stream.yaml`
+- Builder: `EnrichedHeteroGraphBuilder(tables_json_path=/SSL_NAS/peoples/khj/thesis/train/train_tables.json)`
+- Model: B5 동일 (PN + IR α=0.2 + JK concat + Dual-Stream + ListNet + AC 0.3, L=2)
+- `batch_size=8` (기존 B5 batch=1 → 29h 에서 병목, batched dual_stream 코드로 가속)
+- 300 epoch, pos_weight=100, lr=1e-4
+
+**Training 결과** (2026-04-20 21:49 ~ 04-21 07:03):
+
+| 항목 | 값 |
+|---|---|
+| 총 학습 시간 | **9h 14m** (B5 ~29h 대비 **3.1× 단축**) |
+| Best Val R@15 | **0.6016 @ Epoch 60** (B0 0.5738 대비 +0.0278, **B5 0.6073 대비 −0.0057**) |
+| Best 갱신 에폭 | E60 (23:46:37 04-20) 이후 240 epoch 무갱신 → early saturation |
+| Final (E300) | Loss 1.1382, Val R@15 0.5969 |
+| Checkpoint | `/SSL_NAS/peoples/khj/thesis/checkpoints/s06_gat_bottleneck_fix/best_gat_s06_a01_07_b5_enriched.pt` (67 MB) |
+
+**핵심 관찰**:
+1. **Enriched features 가 R@15 를 개선하지 못함** (−0.0057 vs B5). Final train loss 는 소폭 낮음 (1.138 vs 1.162) → train fit 개선, dev 일반화 실패. Train 내부 DB 의 NL/description 에 과적합 가능성.
+2. **수렴 속도는 B5 와 동일 (Best @ E60)** — 60 epoch 면 충분, 300 epoch 무용. 향후 학습은 80~100 epoch 로 단축 권장.
+3. **Batched dual_stream 코드 이득** — batch_size=1 → 8 로 학습시간 3.1× 단축.
+
+**3축 병목 분석** (CPU, dev 1534 queries, 스크립트: `src/analysis/gat_bottleneck_analysis_v2.py --models B5E`):
+
+| ID | L0_PLM | L1_GAT | L2_GAT | L_out | grad_ratio |
+|----|--------|--------|--------|-------|-----------|
+| B5 | 0.657 | 0.373 | 0.920 | 0.357 | 0.687 |
+| **B5E** | **0.636** | 0.430 | **0.978** | **0.329** | 0.244 |
+
+**Step 2 관찰** (Over-smoothing):
+- **L0 더 분산 (0.657 → 0.636)**: Enriched 텍스트가 column 간 원본 임베딩을 의도대로 분산시킴 — 시작점은 B5 보다 좋음.
+- **L2 더 collapse (0.920 → 0.978, 거의 완전 동질화)**: 2-layer GAT 후엔 오히려 sibling column 이 더 비슷해짐. `column→belongs_to→table` attention (entropy ≈1.95, B5 와 동일) 이 richer features 를 table 중심으로 과도하게 pooling. **Enriched info 가 table-centric homogenization 을 강화** 하는 역설.
+- **L_out 더 분산 (0.357 → 0.329)**: Dual-Stream fusion 이 L2 collapse 를 뚫고 최종 표현을 오히려 더 분리. **"Fusion head 가 GAT 병리를 사후 교정"** — B5E 에서 이 분업이 더 뚜렷.
+
+**Step 3 관찰** (Gradient flow):
+- **모든 파라미터 그룹 gradient 가 2~4× 증가**: `lin_dict` 0.43→1.13, `conv_L1` 0.043→0.171, `jk_lin` 0.144→0.515, `fusion_head` **0.59→1.83**, `query_encoder` 0.63→1.35. 학습 신호 양적으로 증가하나 R@15 로 전환 실패.
+- **`grad_ratio` 0.244 (B5 0.687)**: conv_L2 gradient 가 conv_L1 의 1/4 수준. 2-layer 에선 L2 가 조기 수렴한 것으로 해석 가능 (vanish 위기 아님 — 절대값은 B5 보다 큼).
+- **Fusion 이 최대 gradient 담당 (1.83)**: B5 대비 3.1× 증가. **"Enriched 로 인한 L2 collapse 는 Fusion 이 보완"** — 그러나 보완이 완벽하지 못해 R@15 회복까진 못 함.
+- **Attention entropy 는 B5 와 거의 동일** — edge weight 학습엔 영향 못 미침.
+
+**핵심 발견**:
+- **Enriched features 의 순효과는 neutral~slightly negative** (−0.0057 R@15). train-internal val 에선 fit 향상, dev 일반화 실패. §7-3 의 "BIRD dev shift 는 encoder-level 개선 없이 풀리지 않음" 가설과 정합 — Enriched text 로 input 만 풍부하게 해도 representation gap 해소 안 됨.
+- **2-layer 구조 + Fusion 이 L2 collapse 를 사후 교정하는 패턴 강화**. Enriched 의 더 풍부한 input 은 오히려 GAT 를 통과하며 homogenize → Fusion 부담 증가.
+- **학습 시간 3.1× 단축 이득은 명확** (batched dual_stream code). Code 는 유지가치 있음.
+
+**함의 (후속 실험)**:
+1. **B5E L=3 재학습**: Enriched 에 추가 hop 이 필요한지 검증 (현재는 2-layer 가설 차용).
+2. **"Enriched only" 효과 분리**: B0 또는 B4 에 Enriched 만 투입 (Dual-Stream/JK 없이) → 순수 enrichment 기여도 측정.
+3. **Downstream E2E F1 재평가**: R@15 는 −0.0057 이지만 L_out 품질 (−0.028) 은 개선. Extractor/Filter 거치면 F1 에서 다를 수 있음.
+4. **B5E + Neurosymbolic L1 (§6-21)**: FK-reachability prior 가 Enriched representation 과 결합 시 시너지 측정. `abl_sel_ns_l1_enriched_*` 으로 예약.
+5. **Train-time domain-adversarial regularizer**: DB-id 에 대한 gradient reversal 로 domain-invariance 강제 (§7-3 의 방향 #3 후속).
+
+**논문 기여 매핑**:
+- "Enriched input features alone insufficient for BIRD train→dev shift" — §V (limitations) 에 §7-3 와 함께 인용 가능한 second evidence.
+- "Fusion head as last-stage over-smoothing corrector" — §III-C (model design) 에 dual-stream architecture 의 역할 해석 근거.
+- Batched dual_stream 학습가속 (3.1×) — reproducibility 섹션에 실무 노트.
+
+**산출물**:
+- Training log: `logs/train/s06_a01_07_b5_enriched_dual_stream_20260420_214928.log`
+- Checkpoint: `/SSL_NAS/peoples/khj/thesis/checkpoints/s06_gat_bottleneck_fix/best_gat_s06_a01_07_b5_enriched.pt`
+- 3축 분석 결과: `outputs/analysis/s06_bottleneck_b5_enriched/` (B5E 단독), `outputs/analysis/s06_bottleneck_merged/` (B0~B5+B5E cross-model 플롯)
+- 분석 문서: [notebooks/analysis_results/s06_bottleneck_b5_enriched_extension.md](notebooks/analysis_results/s06_bottleneck_b5_enriched_extension.md)
+- 스크립트: `src/analysis/gat_bottleneck_analysis_v2.py` (+ `--models` filter), `src/analysis/merge_b5e_bottleneck.py`

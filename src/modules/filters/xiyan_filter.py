@@ -2,10 +2,12 @@ import os
 import re
 import json
 import sqlite3
+import time
 from typing import Dict, List, Any
 
 from modules.registry import register
 from modules.base import BaseFilter
+from modules.filters.agents import AgentUtils
 from llm_client.api_handler import APIClient
 from prompts.prompt_manager import PromptManager
 from utils.logger import get_logger
@@ -67,17 +69,35 @@ class XiYanFilter(BaseFilter):
         return "\n".join(schema_lines)
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], db_id: str = None, **kwargs) -> Dict[str, Any]:
+        t_start = time.perf_counter()
         if not subgraph:
-            return {"status": "Unanswerable", "final_nodes": [], "reasoning": "Empty input subgraph"}
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="XiYanFilter",
+                input_subgraph=subgraph or {},
+                final_nodes=[],
+                status="Unanswerable",
+                token_before={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                token_after={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                t_start=t_start,
+                model=self.model_name,
+                iterations_run=0,
+            )
+            return {"status": "Unanswerable", "final_nodes": [], "reasoning": "Empty input subgraph", "filter_info": dict(self.last_info)}
 
+        token_before = AgentUtils.token_snapshot()
         current_schema = subgraph.copy()
-        
+        iterations_run = 0
+        parse_errors = 0
+        iteration_trace: List[Dict[str, Any]] = []
+
         for i in range(self.max_iteration):
+            iterations_run += 1
             logger.debug(f"[XiYanFilter] Iteration {i+1}/{self.max_iteration}")
-            
+            cols_before = sum(len(v) for v in current_schema.values())
+
             # 1. M-Schema (Value 포함) 포맷팅
             schema_str = self._build_mschema_with_values(current_schema, db_id)
-            
+
             # 2. Few-shot JSON 예시 동적 구성
             example_tables = list(current_schema.keys())[:2]
             example_json_obj = {}
@@ -93,43 +113,60 @@ class XiYanFilter(BaseFilter):
                 query=query,
                 example_json_str=example_json_str
             )
-            
+
             response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=self.temperature)
             logger.debug(f"[XiYanFilter] LLM Response: {response}")
-            
+
             # 4. JSON 파싱 및 정제
+            iter_parse_ok = False
+            stop_iteration = False
             try:
                 # [단계 A] 마크다운 포맷팅 강제 제거
                 # LLM이 습관적으로 붙이는 코드 블록 마커를 텍스트에서 완전히 지웁니다.
                 clean_response = response.replace("```json", "").replace("```", "").strip()
-                
+
                 # [단계 B] 첫 번째 '{' 와 마지막 '}' 위치 추적
                 # 정규식의 탐욕적 매칭 오류를 방지하고 최상위 JSON 객체를 정확히 도출합니다.
                 start_idx = clean_response.find('{')
                 end_idx = clean_response.rfind('}')
-                
+
                 if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
                     # 인덱스를 기반으로 JSON 문자열만 슬라이싱
                     json_str = clean_response[start_idx : end_idx + 1]
-                    
+
                     # [단계 C] JSON 로드 및 타입 검증
                     selected_columns = json.loads(json_str)
-                    
+
                     if isinstance(selected_columns, dict):
-                        current_schema = selected_columns 
+                        current_schema = selected_columns
                         logger.debug(f"[XiYanFilter] 파싱 성공. 추출된 테이블 수: {len(current_schema)}")
+                        iter_parse_ok = True
                     else:
                         logger.warning(f"[XiYanFilter] 파싱된 JSON이 Dict 형식이 아닙니다 (타입: {type(selected_columns)}).")
-                        break  # 포맷 위반 시 Iteration 중단 후 이전 스키마(Fallback) 사용
+                        parse_errors += 1
+                        stop_iteration = True
                 else:
                     raise ValueError("응답 텍스트 내에 유효한 중괄호 '{ ... }' 쌍이 존재하지 않습니다.")
-                    
+
             except json.JSONDecodeError as e:
                 # LLM이 따옴표를 빼먹거나 후행 쉼표(Trailing comma)를 넣는 등의 문법 오류를 낸 경우
                 logger.warning(f"[XiYanFilter] JSON 디코딩 에러 발생: {e}. 추출 시도된 텍스트: {json_str[:100]}...")
-                break
+                parse_errors += 1
+                stop_iteration = True
             except Exception as e:
                 logger.warning(f"[XiYanFilter] 파싱 중 예기치 않은 예외 발생: {e}")
+                parse_errors += 1
+                stop_iteration = True
+
+            cols_after = sum(len(v) for v in current_schema.values())
+            iteration_trace.append({
+                "iteration": i + 1,
+                "cols_before": cols_before,
+                "cols_after": cols_after,
+                "cols_removed": cols_before - cols_after,
+                "parse_ok": iter_parse_ok,
+            })
+            if stop_iteration:
                 break
 
         # 5. 파이프라인 규격(Flat list)으로 노드 변환
@@ -138,8 +175,26 @@ class XiYanFilter(BaseFilter):
             for col in cols:
                 final_nodes.append(f"{table}.{col}")
 
+        status = "Answerable" if final_nodes else "Unanswerable"
+        token_after = AgentUtils.token_snapshot()
+        self.last_info = AgentUtils.build_filter_info(
+            filter_type="XiYanFilter",
+            input_subgraph=subgraph,
+            final_nodes=final_nodes,
+            status=status,
+            token_before=token_before,
+            token_after=token_after,
+            t_start=t_start,
+            model=self.model_name,
+            max_iteration=self.max_iteration,
+            iterations_run=iterations_run,
+            parse_errors=parse_errors,
+            iteration_trace=iteration_trace,
+            temperature=float(self.temperature),
+        )
         return {
-            "status": "Answerable" if final_nodes else "Unanswerable",
+            "status": status,
             "final_nodes": final_nodes,
-            "reasoning": f"Filtered with DB Value Examples (iterations={self.max_iteration})"
+            "reasoning": f"Filtered with DB Value Examples (iterations={self.max_iteration})",
+            "filter_info": dict(self.last_info),
         }

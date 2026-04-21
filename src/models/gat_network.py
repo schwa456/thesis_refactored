@@ -1,8 +1,31 @@
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, GATv2Conv, Linear
 from torch_geometric.data import HeteroData
+from typing import Any, Dict
+
+
+def _tensor_stats(t: torch.Tensor, dead_eps: float = 1e-4) -> Dict[str, float]:
+    """Cheap summary statistics for a 2D embedding tensor [N, D]."""
+    if t is None or t.numel() == 0:
+        return {"n": 0}
+    with torch.no_grad():
+        norms = t.detach().norm(dim=-1)
+        abs_t = t.detach().abs()
+        dead = (abs_t < dead_eps).float().mean().item()
+        return {
+            "n": int(t.shape[0]),
+            "d": int(t.shape[-1]),
+            "norm_mean": float(norms.mean().item()),
+            "norm_std": float(norms.std().item()) if norms.numel() > 1 else 0.0,
+            "abs_mean": float(abs_t.mean().item()),
+            "abs_p50": float(abs_t.median().item()),
+            "abs_p95": float(abs_t.flatten().kthvalue(max(1, int(abs_t.numel() * 0.95))).values.item()) if abs_t.numel() > 0 else 0.0,
+            "dead_ratio": dead,
+        }
+
 
 class SchemaHeteroGAT(nn.Module):
     """
@@ -12,11 +35,13 @@ class SchemaHeteroGAT(nn.Module):
     """
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,
                  num_layers: int = 3, heads: int = 4, query_conditioned: bool = False,
-                 query_supernode: bool = False):
+                 query_supernode: bool = False, enable_stats: bool = False):
         super(SchemaHeteroGAT, self).__init__()
         self.num_layers = num_layers
         self.query_conditioned = query_conditioned
         self.query_supernode = query_supernode
+        self.enable_stats = enable_stats
+        self.last_layer_stats: Dict[str, Any] = {}
 
         # query_conditioned=True 시 node feature에 query를 concat → 입력 차원 2배
         effective_in = in_channels * 2 if query_conditioned else in_channels
@@ -79,6 +104,10 @@ class SchemaHeteroGAT(nn.Module):
         edge_index_dict: {('table', 'has_column', 'column'): Tensor, ...}
         query_emb: Optional[Tensor] — [1, dim] or [dim]. query_conditioned=True 시 사용.
         """
+        stats_on = self.enable_stats
+        t_start = time.perf_counter() if stats_on else 0.0
+        layer_stats: Dict[str, Any] = {"layers": []} if stats_on else {}
+
         # Query Conditioning: query_emb를 모든 노드 feature에 concat
         if self.query_conditioned and query_emb is not None:
             if query_emb.dim() == 1:
@@ -89,22 +118,58 @@ class SchemaHeteroGAT(nn.Module):
                 augmented[nt] = torch.cat([x, q_exp], dim=-1)
             x_dict = augmented
 
+        if stats_on:
+            layer_stats["input"] = {nt: _tensor_stats(x) for nt, x in x_dict.items()}
+
         # Step 1: Input Projection (Linear 통과 및 Activation)
         out_dict = {}
         for node_type, x in x_dict.items():
             out_dict[node_type] = F.leaky_relu(self.lin_dict[node_type](x))
 
+        if stats_on:
+            layer_stats["after_input_proj"] = {nt: _tensor_stats(x) for nt, x in out_dict.items()}
+
         # Step 2: Message Passing (GAT Layers)
         for i in range(self.num_layers):
+            pre = out_dict
             out_dict = self.convs[i](out_dict, edge_index_dict)
-            
-            # 레이어 사이에 비선형 활성화 함수 적용
             out_dict = {node_type: F.elu(x) for node_type, x in out_dict.items()}
+
+            if stats_on:
+                per_layer = {}
+                for nt, x_post in out_dict.items():
+                    stat = _tensor_stats(x_post)
+                    x_pre = pre.get(nt)
+                    if x_pre is not None and x_post.shape == x_pre.shape:
+                        with torch.no_grad():
+                            delta = (x_post - x_pre).norm(dim=-1)
+                            stat["delta_norm_mean"] = float(delta.mean().item())
+                    per_layer[nt] = stat
+                layer_stats["layers"].append(per_layer)
 
         # Step 3: Output Projection
         final_dict = {}
+        skip_norms = {} if stats_on else None
+        out_lin_norms = {} if stats_on else None
         for node_type, x in out_dict.items():
-            final_dict[node_type] = self.out_lin_dict[node_type](x) + self.skip_dict[node_type](x_dict[node_type])
+            out_lin = self.out_lin_dict[node_type](x)
+            skip = self.skip_dict[node_type](x_dict[node_type])
+            final_dict[node_type] = out_lin + skip
+            if stats_on:
+                with torch.no_grad():
+                    out_lin_norms[node_type] = float(out_lin.detach().norm(dim=-1).mean().item())
+                    skip_norms[node_type] = float(skip.detach().norm(dim=-1).mean().item())
 
-        # 최종 반환 형태: 각 노드 타입별 업데이트된 임베딩 텐서
+        if stats_on:
+            layer_stats["output"] = {nt: _tensor_stats(x) for nt, x in final_dict.items()}
+            layer_stats["out_lin_norm_mean"] = out_lin_norms
+            layer_stats["skip_norm_mean"] = skip_norms
+            # Skip contribution ratio: skip_norm / (skip_norm + out_lin_norm)
+            layer_stats["skip_ratio"] = {
+                nt: (skip_norms[nt] / (skip_norms[nt] + out_lin_norms[nt] + 1e-12))
+                for nt in skip_norms
+            }
+            layer_stats["forward_time_s"] = float(time.perf_counter() - t_start)
+            self.last_layer_stats = layer_stats
+
         return final_dict

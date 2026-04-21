@@ -7,6 +7,7 @@ self-critiques its own selection and may re-introduce nodes it dropped.
 import json
 import sqlite3
 import os
+import time
 from typing import Dict, List, Any, Set, Tuple
 
 from modules.registry import register
@@ -170,13 +171,28 @@ class ReflectionFilter(BaseFilter):
         db_id: str = None,
         **kwargs,
     ) -> Dict[str, Any]:
+        t_start = time.perf_counter()
         if not subgraph:
+            self.last_info = AgentUtils.build_filter_info(
+                filter_type="ReflectionFilter",
+                input_subgraph=subgraph or {},
+                final_nodes=[],
+                status="Unanswerable",
+                token_before={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                token_after={"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0},
+                t_start=t_start,
+                model=self.model_name,
+                iterations_run=0,
+            )
             return {
                 "status": "Unanswerable",
                 "final_nodes": [],
                 "reasoning": "Empty input subgraph",
+                "filter_info": dict(self.last_info),
             }
 
+        token_before = AgentUtils.token_snapshot()
+        original_flat = set(self._flatten(subgraph))
         current = self._propose(query, subgraph, db_id)
         propose_nodes = self._flatten(current)
         reasoning_trace: List[str] = [f"Propose -> {len(propose_nodes)} nodes"]
@@ -184,9 +200,17 @@ class ReflectionFilter(BaseFilter):
             {"step": "propose", "nodes": propose_nodes}
         ]
 
+        verdicts: List[str] = []
+        iterations_run = 0
+        revise_added_total = 0
+        revise_removed_total = 0
+        out_of_subgraph_restored = 0  # revise가 원래 subgraph 밖에서 복원한 노드 수
+        sufficient_hit = False
         for it in range(self.max_iteration):
+            iterations_run += 1
             critique, critique_raw = self._critique(query, subgraph, current, db_id)
             verdict = str(critique.get("verdict", "")).lower()
+            verdicts.append(verdict)
             critique_text = critique.get("critique", "") or critique.get(
                 "step_by_step_reasoning", ""
             )
@@ -199,6 +223,7 @@ class ReflectionFilter(BaseFilter):
             })
 
             if verdict.startswith("sufficient"):
+                sufficient_hit = True
                 break
 
             before = set(self._flatten(current))
@@ -208,17 +233,44 @@ class ReflectionFilter(BaseFilter):
             if revised:
                 current = revised
             after = set(self._flatten(current))
+            added = after - before
+            removed = before - after
+            revise_added_total += len(added)
+            revise_removed_total += len(removed)
+            out_of_subgraph_restored += len(added - original_flat)
             trace_detail.append({
                 "step": f"revise_iter{it+1}",
-                "added": sorted(after - before),
-                "removed": sorted(before - after),
+                "added": sorted(added),
+                "removed": sorted(removed),
                 "raw": revise_raw,
             })
 
         final_nodes = self._flatten(current)
+        status = "Answerable" if final_nodes else "Unanswerable"
+        token_after = AgentUtils.token_snapshot()
+        self.last_info = AgentUtils.build_filter_info(
+            filter_type="ReflectionFilter",
+            input_subgraph=subgraph,
+            final_nodes=final_nodes,
+            status=status,
+            token_before=token_before,
+            token_after=token_after,
+            t_start=t_start,
+            model=self.model_name,
+            max_iteration=self.max_iteration,
+            iterations_run=iterations_run,
+            propose_nodes=len(propose_nodes),
+            verdicts=verdicts,
+            sufficient_hit=sufficient_hit,
+            revise_added_total=revise_added_total,
+            revise_removed_total=revise_removed_total,
+            out_of_subgraph_restored=out_of_subgraph_restored,
+            temperature=float(self.temperature),
+        )
         return {
-            "status": "Answerable" if final_nodes else "Unanswerable",
+            "status": status,
             "final_nodes": final_nodes,
             "reasoning": " | ".join(reasoning_trace),
             "trace": trace_detail,
+            "filter_info": dict(self.last_info),
         }

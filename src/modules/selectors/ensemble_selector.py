@@ -75,6 +75,18 @@ class EnsembleSelector(BaseSelector):
         self.latest_scores = []
         logger.info(f"Initialized EnsembleSelector (alpha={alpha}, top_k={top_k})")
 
+    def _post_ensemble_hook(
+        self,
+        ensemble_scores: torch.Tensor,
+        question: str,
+        graph_data: HeteroData,
+        metadata: Dict[str, Any],
+    ) -> torch.Tensor:
+        """Subclass hook applied after (alpha*raw + (1-alpha)*gat), before top-k.
+        Default: identity. Overridden by NeurosymbolicL1Selector for λ·reach boost.
+        """
+        return ensemble_scores
+
     def _compute_gat_scores(self, question: str, graph_data: HeteroData, metadata: Dict[str, Any]) -> torch.Tensor:
         """GAT + DualTower로 node scores 계산"""
         graph_data = graph_data.to(self.device)
@@ -171,6 +183,11 @@ class EnsembleSelector(BaseSelector):
             gat_norm = gat_scores
 
         ensemble_scores = self.alpha * raw_norm + (1.0 - self.alpha) * gat_norm
+
+        # 3-a. Subclass hook (Neurosymbolic Layer 1 등) — default no-op
+        ensemble_scores = self._post_ensemble_hook(
+            ensemble_scores, question=question, graph_data=graph_data, metadata=metadata
+        )
 
         # 4. Top-K 선택
         k_actual = min(self.top_k, len(candidates))

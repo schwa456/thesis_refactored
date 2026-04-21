@@ -1,3 +1,4 @@
+import time
 import networkx as nx
 from typing import List, Dict, Tuple, Any, Optional
 
@@ -70,13 +71,25 @@ class MSTExtractor(BaseExtractor):
     seed 간 metric closure MST를 구한 뒤 원래 경로로 복원합니다.
     """
     def __init__(self, **kwargs):
+        self.last_info: Dict[str, Any] = {}
         logger.info("Initialized MST Extractor (Steiner 2-approx)")
 
     def extract(self, graph_data: Dict[str, Any], node_scores: List[float],
                 seed_nodes: Optional[List[int]] = None,
                 **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
+        t_start = time.perf_counter()
         if not seed_nodes:
             logger.warning("MST requires seed_nodes. Returning empty.")
+            self.last_info = {
+                "extractor_type": "MSTExtractor",
+                "extractor_num_input_nodes": int(len(node_scores)),
+                "extractor_num_edges": int(len(graph_data.get('edges', []) or [])),
+                "extractor_num_selected_nodes": 0,
+                "extractor_num_selected_edges": 0,
+                "mst_seed_count": 0,
+                "no_seeds": True,
+                "extractor_time_s": float(time.perf_counter() - t_start),
+            }
             return [], []
 
         edges = graph_data.get('edges', [])
@@ -87,4 +100,15 @@ class MSTExtractor(BaseExtractor):
 
         logger.debug(f"[MST] Steiner tree: {len(selected_nodes)} nodes from "
                      f"{len(seed_nodes)} seeds ({len(selected_edges)} edges)")
+        self.last_info = {
+            "extractor_type": "MSTExtractor",
+            "extractor_num_input_nodes": int(len(node_scores)),
+            "extractor_num_edges": int(len(edges)),
+            "extractor_num_selected_nodes": int(len(selected_nodes)),
+            "extractor_num_selected_edges": int(len(selected_edges)),
+            "mst_seed_count": int(len(seed_nodes)),
+            "mst_seeds_in_graph": int(sum(1 for s in seed_nodes if s in G)),
+            "mst_steiner_nodes_added": int(max(len(selected_nodes) - len(seed_nodes), 0)),
+            "extractor_time_s": float(time.perf_counter() - t_start),
+        }
         return selected_nodes, selected_edges

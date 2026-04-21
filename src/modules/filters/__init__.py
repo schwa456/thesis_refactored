@@ -5,6 +5,7 @@ from .verifier_filter import VerifierFilter
 from .bidirectional_agent_filter import TieredBidirectionalAgentFilter
 from .adaptive_depth_filter import AdaptiveDepthFilter
 from .stacked_filter import StackedFilter
+from .symbolic_verifier_filter import SymbolicVerifierFilter
 
 __all__ = [
     "SingleAgentFilter",
@@ -16,4 +17,5 @@ __all__ = [
     "TieredBidirectionalAgentFilter",
     "AdaptiveDepthFilter",
     "StackedFilter",
+    "SymbolicVerifierFilter",
 ]

@@ -6,6 +6,7 @@ from .token_aware_selector import TokenAwareSelector
 from .gat_classifier_selector import GATClassifierSelector
 from .ensemble_selector import EnsembleSelector
 from .direct_gat_selector import DirectGATSelector
+from .neurosymbolic_l1_selector import NeurosymbolicL1Selector
 
 __all__ = [
     "FixedTopKSelector",
@@ -18,4 +19,5 @@ __all__ = [
     "GATClassifierSelector",
     "EnsembleSelector",
     "DirectGATSelector",
+    "NeurosymbolicL1Selector",
     ]

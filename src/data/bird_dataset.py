@@ -22,16 +22,22 @@ class BIRDGraphDataset(Dataset):
             self.raw_data = json.load(f)
         
         file_name = os.path.basename(json_path).split('.')[0]
-        # Enriched builder uses a separate cache on NAS to save local disk
-        builder_suffix = "_enriched" if type(builder).__name__ == "EnrichedHeteroGraphBuilder" else ""
+        # Enriched node text is shared by Enriched / Triplet / RFM (all subclass
+        # EnrichedHeteroGraphBuilder via super().build()). Use isinstance so the
+        # cache name reflects the actual node-feature distribution rather than
+        # the leaf class name.
+        from modules.builders.graph_builder import EnrichedHeteroGraphBuilder as _EHB
+        builder_suffix = "_enriched" if isinstance(builder, _EHB) else ""
+        # B-II.b — base T2T edge toggle (advisor 2026-04-21 의견 2). Distinct
+        # cache when macro edges are stripped at build time.
+        if getattr(builder, "include_table_to_table", True) is False:
+            builder_suffix += "_no_t2t"
         # PLMEncoder produces sentence-level [1, 384], TokenEncoder produces token-level [seq_len, 384]
         encoder_name = type(encoder).__name__
         encoder_suffix = "_plm" if encoder_name == "LocalPLMEncoder" else ""
-        if builder_suffix:
-            cache_dir = os.path.dirname(json_path)  # NAS: same dir as train.json
-            self.cache_path = os.path.join(cache_dir, f"{file_name}{builder_suffix}{encoder_suffix}_graphs.pt")
-        else:
-            self.cache_path = f"/home/hyeonjin/thesis_refactored/data/processed/{file_name}{encoder_suffix}_graphs.pt"
+        # 모든 cache 는 로컬 data/processed/ 아래에 둔다 (offload NAS 로의 symlink 로 연결 권장).
+        # 기존 동작 (/SSL_NAS/peoples/khj/thesis/train/ 에 직접 저장) 은 NFS 혼잡 시 42min+ stall 발생.
+        self.cache_path = f"/home/hyeonjin/thesis_refactored/data/processed/{file_name}{builder_suffix}{encoder_suffix}_graphs.pt"
 
         # _process_data에서 데이터 리스트를 생성하거나 로드함
         self.data_list = self._get_or_create_data()

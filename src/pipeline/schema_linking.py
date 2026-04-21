@@ -369,5 +369,26 @@ class SchemaLinkingPipeline:
 
         final_result["raw_scores"] = scores_list
         final_result["node_names"] = [metadata['node_metadata'].get(i, str(i)) for i in range(len(scores_list))]
-        
+
+        builder_info = getattr(self.builder, 'last_info', None) or metadata.get('builder_info')
+        if builder_info:
+            final_result["builder_info"] = dict(builder_info)
+        selector_info = getattr(self.selector, 'last_info', None)
+        if selector_info:
+            final_result["selector_info"] = dict(selector_info)
+        extractor_info = getattr(self.extractor, 'last_info', None)
+        if extractor_info:
+            final_result["extractor_info"] = dict(extractor_info)
+
+        filter_info = getattr(self.filter, 'last_info', None) or final_result.get("filter_info")
+        if filter_info:
+            filter_info = dict(filter_info)
+            filter_info["pipeline_tier2_pool_size"] = len(tier2_pool)
+            filter_info["pipeline_gat_scores_available"] = len(gat_scores)
+            filter_info["pipeline_retry_enabled"] = bool(self.retry_enabled)
+            filter_info["pipeline_retry_attempts"] = int(final_result.get("retry_attempts", 0))
+            if retry_trace:
+                filter_info["pipeline_retry_trace"] = list(retry_trace)
+            final_result["filter_info"] = filter_info
+
         return final_result
