@@ -4,7 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, GATv2Conv, Linear
 from torch_geometric.data import HeteroData
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List, Tuple
+
+
+SUPERNODE_EDGE_DIRECTIONS = {"bidirectional", "directed_from_sn"}
+SUPERNODE_TOPK_CRITERIA = {"raw", "cosine", "ce"}
 
 
 def _tensor_stats(t: torch.Tensor, dead_eps: float = 1e-4) -> Dict[str, float]:
@@ -35,13 +39,27 @@ class SchemaHeteroGAT(nn.Module):
     """
     def __init__(self, in_channels: int, hidden_channels: int, out_channels: int,
                  num_layers: int = 3, heads: int = 4, query_conditioned: bool = False,
-                 query_supernode: bool = False, enable_stats: bool = False):
+                 query_supernode: bool = False, enable_stats: bool = False,
+                 supernode_edge_direction: str = "bidirectional",
+                 supernode_topk: Optional[int] = None,
+                 supernode_topk_criterion: str = "raw"):
         super(SchemaHeteroGAT, self).__init__()
         self.num_layers = num_layers
         self.query_conditioned = query_conditioned
         self.query_supernode = query_supernode
         self.enable_stats = enable_stats
         self.last_layer_stats: Dict[str, Any] = {}
+
+        # V-2/V-3 옵션 (SuperNode v2)
+        if supernode_edge_direction not in SUPERNODE_EDGE_DIRECTIONS:
+            raise ValueError(f"supernode_edge_direction must be in {SUPERNODE_EDGE_DIRECTIONS}")
+        if supernode_topk_criterion not in SUPERNODE_TOPK_CRITERIA:
+            raise ValueError(f"supernode_topk_criterion must be in {SUPERNODE_TOPK_CRITERIA}")
+        if supernode_topk is not None and not query_supernode:
+            raise ValueError("supernode_topk 는 query_supernode=True 에서만 의미가 있음")
+        self.supernode_edge_direction = supernode_edge_direction
+        self.supernode_topk = supernode_topk
+        self.supernode_topk_criterion = supernode_topk_criterion
 
         # query_conditioned=True 시 node feature에 query를 concat → 입력 차원 2배
         effective_in = in_channels * 2 if query_conditioned else in_channels
@@ -69,13 +87,23 @@ class SchemaHeteroGAT(nn.Module):
             ('table', 'table_to_table', 'table'): GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
         }
 
-        # Query Super Node: 모든 schema 노드와 양방향 edge
+        # Query Super Node edges.
+        # V-2: supernode_edge_direction ∈ {bidirectional, directed_from_sn}.
+        #   - bidirectional (default, 기존): query→schema + schema→query 양방향 등록
+        #   - directed_from_sn: query→schema 만. schema→query 제거. SN 은 self-loop 로 보존.
+        # V-3: supernode_topk > 0 시 forward 시점에 query→schema edge_index 를 top-k 로 제한.
         supernode_edge_types = {}
         if query_supernode:
             for schema_nt in ['table', 'column', 'fk_node']:
                 supernode_edge_types[('query_node', f'attends_to_{schema_nt}', schema_nt)] = \
                     GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
-                supernode_edge_types[(schema_nt, f'attended_by_{schema_nt}', 'query_node')] = \
+                if self.supernode_edge_direction == "bidirectional":
+                    supernode_edge_types[(schema_nt, f'attended_by_{schema_nt}', 'query_node')] = \
+                        GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
+            # V-2: directed_from_sn 의 경우 query_node 가 HeteroConv 메시지를 받지 못해 drop 됨.
+            # self-loop edge type 을 등록해 두고, forward 시 identity edge_index 를 주입하여 보존.
+            if self.supernode_edge_direction == "directed_from_sn":
+                supernode_edge_types[('query_node', 'self_loop', 'query_node')] = \
                     GATv2Conv(-1, hidden_channels, heads=heads, add_self_loops=False)
 
         self.convs = nn.ModuleList()
@@ -98,15 +126,33 @@ class SchemaHeteroGAT(nn.Module):
         })
 
     def forward(self, x_dict: dict, edge_index_dict: dict,
-                query_emb: torch.Tensor = None) -> dict:
+                query_emb: torch.Tensor = None,
+                active_num_layers: Optional[int] = None) -> dict:
         """
         x_dict: {'table': Tensor, 'column': Tensor, 'fk_node': Tensor}
         edge_index_dict: {('table', 'has_column', 'column'): Tensor, ...}
         query_emb: Optional[Tensor] — [1, dim] or [dim]. query_conditioned=True 시 사용.
+        active_num_layers: Optional[int] — inference-time early-exit depth. None 시
+            self.num_layers 전체 사용. 값이 주어지면 clamp([1, self.num_layers]) 후
+            `self.convs[:L']` 까지만 message passing 수행. Proposal C H2 per-DB dynamic
+            num_layers 를 checkpoint 재학습 없이 측정하기 위한 hook.
         """
         stats_on = self.enable_stats
         t_start = time.perf_counter() if stats_on else 0.0
         layer_stats: Dict[str, Any] = {"layers": []} if stats_on else {}
+
+        # V-3: SuperNode top-k filtering (pre-GAT raw score 기반).
+        # Selective 연결: SN → top-k schema node 만 유지 (bidirectional 인 경우 역방향도 동일 마스킹).
+        if (self.query_supernode and self.supernode_topk is not None
+                and self.supernode_topk > 0 and query_emb is not None):
+            topk_masks = self._compute_topk_mask(query_emb, x_dict)
+            edge_index_dict = self._apply_topk_to_edges(edge_index_dict, topk_masks)
+
+        # V-2: directed_from_sn 시 query_node 가 HeteroConv drop 되지 않도록 self-loop edge 주입.
+        if (self.query_supernode
+                and self.supernode_edge_direction == "directed_from_sn"
+                and 'query_node' in x_dict):
+            edge_index_dict = self._inject_sn_self_loop(edge_index_dict, x_dict)
 
         # Query Conditioning: query_emb를 모든 노드 feature에 concat
         if self.query_conditioned and query_emb is not None:
@@ -130,7 +176,11 @@ class SchemaHeteroGAT(nn.Module):
             layer_stats["after_input_proj"] = {nt: _tensor_stats(x) for nt, x in out_dict.items()}
 
         # Step 2: Message Passing (GAT Layers)
-        for i in range(self.num_layers):
+        if active_num_layers is None:
+            depth = self.num_layers
+        else:
+            depth = max(1, min(int(active_num_layers), self.num_layers))
+        for i in range(depth):
             pre = out_dict
             out_dict = self.convs[i](out_dict, edge_index_dict)
             out_dict = {node_type: F.elu(x) for node_type, x in out_dict.items()}
@@ -173,3 +223,83 @@ class SchemaHeteroGAT(nn.Module):
             self.last_layer_stats = layer_stats
 
         return final_dict
+
+    # ──────────────────────────────────────────────────────────────
+    # V-2 / V-3 helper methods
+    # ──────────────────────────────────────────────────────────────
+    def _compute_topk_mask(self, query_emb: torch.Tensor,
+                           x_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """V-3: pre-GAT raw cosine score 기준 schema 노드 top-k 선별.
+
+        Global top-k (전체 schema 노드 통합). criterion='raw' 만 구현 (Phase 1).
+        criterion='cosine' / 'ce' 는 raw 와 의미상 동치이므로 현재는 모두 raw 로 fallback.
+        """
+        q = query_emb if query_emb.dim() == 2 else query_emb.unsqueeze(0)
+        if q.size(0) > 1:
+            q = q.mean(dim=0, keepdim=True)
+        q_norm = F.normalize(q, dim=-1)
+
+        schema_types = ['table', 'column', 'fk_node']
+        scores_list: List[torch.Tensor] = []
+        type_tags: List[str] = []
+        local_idx: List[int] = []
+        for nt in schema_types:
+            if nt not in x_dict or x_dict[nt].size(0) == 0:
+                continue
+            n_norm = F.normalize(x_dict[nt], dim=-1)
+            sc = (n_norm @ q_norm.t()).squeeze(-1)  # [N_nt]
+            scores_list.append(sc)
+            type_tags.extend([nt] * sc.size(0))
+            local_idx.extend(range(sc.size(0)))
+
+        masks: Dict[str, torch.Tensor] = {}
+        for nt in schema_types:
+            if nt in x_dict:
+                masks[nt] = torch.zeros(x_dict[nt].size(0), dtype=torch.bool,
+                                        device=x_dict[nt].device)
+
+        if not scores_list:
+            return masks
+
+        combined = torch.cat(scores_list, dim=0)
+        k = min(int(self.supernode_topk), combined.size(0))
+        topk = torch.topk(combined, k=k).indices.tolist()
+        for i in topk:
+            nt = type_tags[i]
+            masks[nt][local_idx[i]] = True
+        return masks
+
+    def _apply_topk_to_edges(self, edge_index_dict: dict,
+                             masks: Dict[str, torch.Tensor]) -> dict:
+        """SN → schema (+ 역방향 bidirectional 시) edge 를 top-k 로 제한.
+        caller 의 edge_index_dict 는 보존하고 shallow-copy 를 반환."""
+        filtered = dict(edge_index_dict)
+        for nt in ['table', 'column', 'fk_node']:
+            mask = masks.get(nt)
+            if mask is None:
+                continue
+            fwd_key = ('query_node', f'attends_to_{nt}', nt)
+            if fwd_key in filtered:
+                ei = filtered[fwd_key]
+                if ei.numel() > 0:
+                    keep = mask[ei[1]]
+                    filtered[fwd_key] = ei[:, keep]
+            rev_key = (nt, f'attended_by_{nt}', 'query_node')
+            if rev_key in filtered:
+                ei = filtered[rev_key]
+                if ei.numel() > 0:
+                    keep = mask[ei[0]]
+                    filtered[rev_key] = ei[:, keep]
+        return filtered
+
+    def _inject_sn_self_loop(self, edge_index_dict: dict,
+                             x_dict: Dict[str, torch.Tensor]) -> dict:
+        """directed_from_sn 시 query_node 를 HeteroConv 에서 보존하기 위한 self-loop 주입."""
+        num_q = x_dict['query_node'].size(0)
+        if num_q == 0:
+            return edge_index_dict
+        dev = x_dict['query_node'].device
+        idx = torch.arange(num_q, device=dev, dtype=torch.long)
+        new = dict(edge_index_dict)
+        new[('query_node', 'self_loop', 'query_node')] = torch.stack([idx, idx], dim=0)
+        return new

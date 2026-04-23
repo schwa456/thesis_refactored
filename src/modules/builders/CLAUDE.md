@@ -78,10 +78,19 @@ Builder는 `(HeteroData, metadata_dict)` 반환. metadata_dict는:
 
 **이 계약을 깨면 Selector/Extractor가 모두 깨진다.**
 
-## metadata 추가 키 (B-III, 2026-04-20부터 모든 빌더 공통)
+## 생성자 옵션 (B-II.b, 2026-04-21)
 
-`HeteroGraphBuilder._compute_fk_reachability()`가 build() 종료 직전 자동 주입. 옵션 플래그 없이 항상 활성. T<20 기준 microsec 수준.
+| 옵션 | 기본 | 설명 |
+|------|------|------|
+| `add_t2t_edges` | `True` | False 시 base graph 와 PCST flat 표현 모두에서 `(table, table_to_table, table)` macro edges 제거. `LineGraphBuilder.skip_macro_edges` 와 직교 (base on/off × line-graph on/off → 4 조합). Cache suffix `_no_t2t` 자동. |
 
+`metadata['add_t2t_edges']` 에 사용 중인 값이 그대로 노출되므로 하류에서 토글 상태 검사 가능.
+
+## metadata 추가 키 (B-III, 2026-04-20 / B-III.b, 2026-04-21 — 모든 빌더 공통)
+
+`HeteroGraphBuilder._compute_fk_reachability()` + `_compute_schema_diameter()` 가 build() 종료 직전 자동 주입. 옵션 플래그 없이 항상 활성. T<20 기준 microsec 수준.
+
+### FK reachability (B-III)
 | 키 | 타입 | 설명 |
 |----|------|------|
 | `fk_adjacency` | `np.ndarray[T,T] int8` | 방향성 FK 인접 |
@@ -92,6 +101,16 @@ Builder는 `(HeteroData, metadata_dict)` 반환. metadata_dict는:
 | `fk_components` | `Dict[table_idx, comp_id]` | undirected weakly connected |
 | `fk_num_components` | int | |
 | `fk_edge_lookup` | `Dict[(src_tbl, dst_tbl), List[fk_edge_id]]` | 멀티-FK 처리 |
+
+### Schema diameter (B-III.b — full hetero, advisor 2026-04-21 의견 2)
+| 키 | 타입 | 설명 |
+|----|------|------|
+| `schema_diameter` | int | 전체 hetero graph 무방향 D_max (disconnected 시 component max). T2T toggle 영향 받음 (예: california_schools D=4(on)→8(off)) |
+| `schema_eccentricity` | `Dict[flat_idx, int]` | 노드별 max finite shortest-path |
+
+**활용**: Selector QCondGAT 의 `num_layers ∈ {1, 2, 3, D_max, D_max+1}` 자동 스윕 (advisor proposal C). Table-only FK subgraph diameter 는 별도 sub-task 로 분리.
+
+**Selector 편의 캐시** ([scripts/build_diameter_cache.py](../../../scripts/build_diameter_cache.py)): `data/processed/<split>_diameter.pt` (`{db_id: D_max}` dict). Enriched/triplet cache 와 동일 패턴 — NAS `/SSL_NAS/peoples/khj/thesis_refactored_offload/processed/` 에 실파일, 로컬은 symlink. Selector 가 graph cache 를 로드하지 않고 D_max 만 읽을 수 있도록 분리.
 
 **활용 시나리오** (하류 세션에서 구현):
 - Selector S-V — fk_reachability를 게이트로 사용 (gold join path 가산점)

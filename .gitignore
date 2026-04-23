@@ -9,7 +9,7 @@ wandb/run*
 *.pyc
 *.csv
 *.out
-./output/
+outputs/*
 *.log
 __pycache__
 *.pt
@@ -37,4 +37,9 @@ data/*
 .env
 *.stdout
 *.pdf
-.md
+*.md
+notebooks/*
+speed_test.py
+src/utils/mschema
+.claude/*
+~/thesis_refactored/related_works/*

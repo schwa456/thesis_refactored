@@ -102,7 +102,7 @@ class LineGraphBuilder:
 - B-II 의 line-graph 스위치와 **직교** (base T2T on/off × line-graph T2T on/off → 4 조합 가능).
 
 ### 설계 요소
-- **`HeteroGraphBuilder` 생성자 인자**: `include_table_to_table: bool = True` (default True 로 backward compat).
+- **`HeteroGraphBuilder` 생성자 인자**: `add_t2t_edges: bool = True` (default True 로 backward compat).
   - False 시: `(table, table_to_table, table)` edge 와 메타데이터의 `edge_types == "table_to_table"` 항목을 모두 제외.
   - `EnrichedHeteroGraphBuilder` / `TripletGraphBuilder` / `RFMCompatibleBuilder` 모두 super 호출로 자동 전파.
 - **PCST flat indexing 영향 없음**: T2T 는 macro edge 영역만 차지 → table/column/fk_node 노드 인덱스는 동일.
@@ -111,10 +111,10 @@ class LineGraphBuilder:
 ### 인터페이스
 ```python
 class HeteroGraphBuilder:
-    def __init__(self, ..., include_table_to_table: bool = True):
-        self.include_table_to_table = include_table_to_table
+    def __init__(self, ..., add_t2t_edges: bool = True):
+        self.add_t2t_edges = add_t2t_edges
     def _build_macro_edges(self, ...):
-        if not self.include_table_to_table:
+        if not self.add_t2t_edges:
             return [], []  # skip both edges and edge_types
         ...
 ```
@@ -125,8 +125,8 @@ class HeteroGraphBuilder:
 - FK reachability 메타데이터 (B-III) 는 T2T 와 무관 (FK adjacency 만 사용) → 영향 없음.
 
 ### 검증
-- california_schools 에서 `include_table_to_table=False` 시 macro edge 0 개 확인.
-- Smoke test: 기존 `scripts/smoke_test_b3_fk_reach.py` 를 `include_table_to_table=False` 로 한 번 더 실행해 reachability/components 가 변하지 않는지.
+- california_schools 에서 `add_t2t_edges=False` 시 macro edge 0 개 확인.
+- Smoke test: 기존 `scripts/smoke_test_b3_fk_reach.py` 를 `add_t2t_edges=False` 로 한 번 더 실행해 reachability/components 가 변하지 않는지.
 - (실험 abl_build_05_no_t2t — §통합 실험 로드맵 참조)
 
 ### 학술 기여
@@ -216,7 +216,7 @@ class HeteroGraphBuilder:
 - BIRD-Dev 평균 schema 노드 수 < 100 → BFS 비용 무시 가능.
 - Disconnected 컴포넌트가 있을 때: 각 component diameter max 를 `schema_diameter` 로 정의 (cross-component 거리 = inf 는 제외).
 - `LineGraphBuilder` 는 base 의 schema_diameter 를 forward 만 (line-graph 자체 diameter 는 별도 키로 둘 가치 낮음 — Selector 가 base graph num_layers 결정용).
-- 캐시: `data/processed/{json_basename}_diameter.pt` 에 per-DB 저장 (B-III reachability 와 같은 캐시 파일에 통합 가능).
+- 캐시: `data/processed/<split>_diameter.pt` (`{db_id: D_max}` dict). Enriched/triplet cache 와 동일 패턴 — NAS `/SSL_NAS/peoples/khj/thesis_refactored_offload/processed/` 에 실파일, 로컬은 symlink. Selector 가 graph cache 를 로드하지 않고 D_max 만 읽도록 분리. 작성 스크립트: [scripts/build_diameter_cache.py](../../../scripts/build_diameter_cache.py) (idempotent — 캐시 존재 시 skip, `--force` 로 재빌드). **전체 11 DB build 는 GAT 학습 trigger 시점에 수행** (NAS 경합 회피). Verification 은 [scripts/smoke_test_diameter_cache.py](../../../scripts/smoke_test_diameter_cache.py) (1-DB minimal).
 
 ### 검증
 - california_schools (T=3, 1 component): D_max ∈ {2, 3} 예상. `frpm`-`schools`-`satscores` 형태.
@@ -249,7 +249,7 @@ B-III.b Diameter (이 절) ──┘
 | B2 | `abl_build_02_linegraph` | `LineGraphBuilder(base=Enriched)` | EHGAT Selector (S-III) | Edge-centric 학습 pilot |
 | B3 | `abl_build_03_rfm_tokens` | `RFMCompatibleBuilder` | RFM Selector (S-II) | Zero-shot transfer readiness |
 | B4 | `abl_build_04_enriched_triplet` | Enriched + Triplet 결합 | EdgePrize PCST | 두 최고점(E1 × E2) 시너지 |
-| **B5** | `abl_build_05_no_t2t` | `EnrichedHeteroGraphBuilder(include_table_to_table=False)` | 기존 GAT/QCondGAT | **B-II.b** — base T2T off → over-smoothing 변화 |
+| **B5** | `abl_build_05_no_t2t` | `EnrichedHeteroGraphBuilder(add_t2t_edges=False)` | 기존 GAT/QCondGAT | **B-II.b** — base T2T off → over-smoothing 변화 |
 | **B6** | `abl_build_06_diameter_meta` | 모든 빌더 (metadata 키 추가만) | Selector QCondGAT (`num_layers ∈ {1,2,3,D_max,D_max+1}`) | **B-III.b** — diameter precompute, 인프라 검증. anchor E1 와 noise 일치 |
 
 E1/E2의 precision 상한(0.81) 유지가 선결 조건. 새 builder가 기존 베이스라인 대비 precision 하락이 크면(>−3%p) rollback.
@@ -260,10 +260,10 @@ E1/E2의 precision 상한(0.81) 유지가 선결 조건. 새 builder가 기존 �
 
 | 파일 | 변경 |
 |------|------|
-| [graph_builder.py](graph_builder.py) | `RFMCompatibleBuilder` 신규 + `_compute_fk_reachability` 함수 + **`include_table_to_table` 생성자 인자 (B-II.b)** + **`_compute_schema_diameter` 함수 (B-III.b)** |
+| [graph_builder.py](graph_builder.py) | `RFMCompatibleBuilder` 신규 + `_compute_fk_reachability` 함수 + **`add_t2t_edges` 생성자 인자 (B-II.b)** + **`_compute_schema_diameter` 함수 (B-III.b)** |
 | [line_graph_builder.py](line_graph_builder.py) | 신규 — EHGAT용 line graph 변환. **B-II.b 상황에서 `EDGE_TYPE_ORDER` 의 빈 T2T idx 처리 검증** |
 | [cached_builder.py](cached_builder.py) | 새 builder suffix 캐시 정책 추가 (`_enriched`, `_no_t2t` 조합) |
-| `src/data/bird_dataset.py` | RFM / LineGraph builder 캐시 경로 처리 + **`include_table_to_table=False` 시 `_no_t2t` suffix 분기 (B-II.b)** |
+| `src/data/bird_dataset.py` | RFM / LineGraph builder 캐시 경로 처리 + **`add_t2t_edges=False` 시 `_no_t2t` suffix 분기 (B-II.b)** |
 | `configs/experiments/abl/build/no_t2t/abl_build_05_no_t2t.yaml` | 신규 (B-II.b) |
 | `configs/experiments/abl/build/diameter_meta/abl_build_06_diameter_meta.yaml` | 신규 (B-III.b — anchor E1 noise 일치 확인용) |
 | `scripts/smoke_test_b2b_no_t2t.py` | 신규 — B-II.b smoke + reachability invariance 검증 |

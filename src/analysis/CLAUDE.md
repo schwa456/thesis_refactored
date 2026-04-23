@@ -110,3 +110,16 @@ notebooks/analysis_results/*.csv         # 중간 집계
 - 분석 결과로 실험 설계가 바뀌어야 한다면 **루트 세션에 리포트 링크와 함께 제안**
 - 실험 문서 3종 (HISTORY/CATALOG/ID_MIGRATION)은 **실험 실행자 책임** — analyzer는 읽기만
 - 메모리 규칙 재확인: 메트릭 R/P/F1 4자리, ETA 보고, kill 전 확인
+
+## 응답 말미 핸드오프 (루트 CLAUDE.md 공통 규칙 참조)
+
+루트 `## 응답 말미 핸드오프 정리` 규칙을 따른다. Analyzer 세션의 **기본 핸드오프 대상**은 다음 순으로 선택:
+
+| 상황 | 대상 | 지시 프롬프트 예시 |
+|------|------|-------------------|
+| 분석이 PLAN 우선순위·phase 전환·다음 실험 결정에 영향 | **planner** | "먼저 planning/CLAUDE.md 읽고, notebooks/analysis_results/<report>.md 참조해 EXPERIMENT_PLAN.md §<n> 을 개정하라. 근거: <핵심 관찰>." |
+| 기존 메트릭에 정정이 필요하거나 실험 재실행이 필요 | **root** | "먼저 /home/hyeonjin/thesis_refactored/CLAUDE.md 읽고, <config 경로> 재실행 (이유: <리포트 링크>)." |
+| 추가 분석이 필요한데 이번 턴에서 처리 못함 | **analyzer (자기 자신, 다음 턴)** | "<구체 질문> — 데이터: <경로>, 저장: notebooks/analysis_results/<new_topic>.md" |
+| 결과 해석·판단에 사용자 의사결정이 필요 | **user** | "<선택지 A/B>, 각각 trade-off: <요약>" |
+
+**금지**: analyzer가 루트 CLAUDE.md 수정, 실험 실행, HISTORY 갱신을 직접 지시하는 핸드오프를 생성하지 않는다 (모두 루트에 위임).

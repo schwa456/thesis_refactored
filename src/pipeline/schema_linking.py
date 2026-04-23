@@ -77,6 +77,9 @@ class SchemaLinkingPipeline:
         logger.debug(f"Building Graph")
         t_start = time.perf_counter()
         graph_data, metadata = self.builder.build(db_id=db_id, db_dir=self.db_dir)
+        # Selector/Extractor 가 DB 별 정책을 적용할 수 있도록 db_id 주입 (Proposal C H2 등).
+        if isinstance(metadata, dict):
+            metadata.setdefault("db_id", db_id)
         logger.debug(f"Graph Build Completed.")
         logger.debug(f"graph_data: {graph_data}")
         logger.debug(f"metadata: {metadata}")

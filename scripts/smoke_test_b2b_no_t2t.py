@@ -1,6 +1,6 @@
 """B-II.b smoke test — base heterograph T2T edge toggle.
 
-Verifies that `include_table_to_table=False` strips the
+Verifies that `add_t2t_edges=False` strips the
 `(table, table_to_table, table)` edges from the base heterograph and the
 PCST flat representation, while leaving FK reachability and the schema
 diameter intact (FK reachability uses fk_adjacency only; T2T removal
@@ -34,8 +34,8 @@ def diff(a, b, label):
 
 def run(builder_cls, **base_kwargs):
     print(f"\n=== {builder_cls.__name__} ===")
-    on = builder_cls(include_table_to_table=True, **base_kwargs)
-    off = builder_cls(include_table_to_table=False, **base_kwargs)
+    on = builder_cls(add_t2t_edges=True, **base_kwargs)
+    off = builder_cls(add_t2t_edges=False, **base_kwargs)
 
     d_on, m_on = on.build(DB_ID, DB_DIR)
     d_off, m_off = off.build(DB_ID, DB_DIR)
@@ -49,7 +49,7 @@ def run(builder_cls, **base_kwargs):
     off_has_t2t = ('table', 'table_to_table', 'table') in d_off.edge_types
     print(f"  HeteroData T2T edge_index present: on={on_has_t2t}, off={off_has_t2t}")
 
-    print(f"  metadata['include_table_to_table']: on={m_on['include_table_to_table']}, off={m_off['include_table_to_table']}")
+    print(f"  metadata['add_t2t_edges']: on={m_on['add_t2t_edges']}, off={m_off['add_t2t_edges']}")
 
     reach_on = m_on["fk_reachability"]
     reach_off = m_off["fk_reachability"]
@@ -59,7 +59,7 @@ def run(builder_cls, **base_kwargs):
     diff(m_on["schema_diameter"], m_off["schema_diameter"], "schema_diameter")
     print(f"  schema_diameter identical: {m_on['schema_diameter'] == m_off['schema_diameter']}")
 
-    assert t2t_off == 0, f"include_table_to_table=False should yield 0 T2T edges, got {t2t_off}"
+    assert t2t_off == 0, f"add_t2t_edges=False should yield 0 T2T edges, got {t2t_off}"
     assert not off_has_t2t, "HeteroData should not contain T2T edge type when off"
     assert np.array_equal(reach_on, reach_off), "FK reachability must be invariant under T2T toggle"
 

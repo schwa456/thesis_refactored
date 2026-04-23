@@ -73,6 +73,7 @@ conda run -n base python src/main.py --config <config_name>
 - **데이터**:
   - 원본 BIRD 데이터: `/SSL_NAS/peoples/khj/thesis/train/`, `/SSL_NAS/peoples/khj/thesis/dev/`
   - Processed graph cache: enriched는 이미 NAS에 저장됨 (train.json과 같은 디렉토리). 기본 builder cache는 `data/processed/`에 있으나, **신규로 생성되는 대용량 캐시는 NAS로 보낼 것**
+  - **BIRD dev 만 예외** — 로컬 SSD (`data/raw/BIRD_dev/`) 에 유지. NAS 포화/지연 상태에서 XiYan 필터의 DB 값 조회 (`sqlite_schema`) 가 `folio_wait_bit_common` 커널 스톨을 만드는 이슈가 2026-04-22 관측됨. dev 는 크지 않으므로 (~수 GB) 로컬 유지.
 - **새 경로 추가 시**: 하드코딩된 `outputs/checkpoints/`나 `data/processed/`가 1GB 이상을 쓸 가능성이 있으면, NAS 경로로 작성하거나 symlink를 미리 건다
 - **NAS 공간 확인**: 현재 여유 ~1.1T / 총 26T. 대용량 쓰기 전에 `df -h /SSL_NAS` 체크
 
@@ -155,6 +156,24 @@ ID 체계 재정리 (2026-04-14): b0/s01-s05/abl 접두어는 [EXPERIMENT_ID_MIG
 - 모듈 작업: `src/modules/<module>/CLAUDE.md`
 - 분석 작업: `src/analysis/CLAUDE.md`
 - 계획 개정: `planning/CLAUDE.md`
+
+### 응답 말미 핸드오프 정리 (모든 세션 공통)
+모든 세션(루트 · planner · analyzer · module)은 **한 턴의 응답을 마칠 때 "다음 핸드오프" 블록을 포함**한다. 목적: 멀티세션 체인에서 다음 행동 주체와 구체 지시가 한눈에 드러나도록.
+
+**형식** (응답 말미에 위치, 헤더 `## 다음 핸드오프` 사용):
+```
+## 다음 핸드오프
+- **대상 세션**: <root | planner | analyzer | module:<name> | user>
+- **지시 프롬프트**: <그 세션의 cwd에서 `claude` 열고 그대로 붙여넣을 수 있는 문장>
+- **근거/링크**: <이번 응답의 어떤 산출물/리포트/결정에서 파생됐는지>
+```
+
+**규칙**:
+- 핸드오프가 불필요하면 `## 다음 핸드오프: 추가 세션 호출 불필요` 한 줄로 명시. 생략 금지 — 사용자가 상태 파악에 추가 질문을 하지 않도록.
+- 여러 경로가 병렬로 필요하면 복수 블록으로 나열(analyzer 요청 + 루트 실행 등).
+- 지시 프롬프트에는 **파일 경로·config 이름·데이터 출처를 명시** — "분석 해줘" 같은 모호한 문장 금지.
+- 서브세션이 다른 서브세션에 직접 핸드오프할 수 있으나, **루트 CLAUDE.md / 실험 실행 / HISTORY 갱신이 필요하면 반드시 root 경유**.
+- 세션별 기본 핸드오프 패턴은 각 CLAUDE.md 에 정의됨 ([planning/CLAUDE.md](planning/CLAUDE.md), [src/analysis/CLAUDE.md](src/analysis/CLAUDE.md)).
 
 ## 크로스모듈 이슈 해결 시 주의
 - Selector의 top-k는 PCST에 게이트로 쓰이지 않음 (모든 노드 → PCST로 전달)

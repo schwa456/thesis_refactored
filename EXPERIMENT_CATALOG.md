@@ -313,6 +313,33 @@ ID 체계 및 폴더 구조: [`EXPERIMENT_ID_MIGRATION.md`](EXPERIMENT_ID_MIGRAT
 - **Anchor**: `s03_a07_01_enriched_gat` (E1, F1=0.7327) — Enriched와 동일 inference path. RFM Selector(S-II) 미장착 상태에서는 결과 동일해야 정상.
 
 
+### abl/build/no_t2t
+*B-II.b: base heterograph T2T edge toggle (advisor 2026-04-21 의견 2). `(table, table_to_table, table)` macro edges 를 base 단계에서 제거. line-graph `skip_macro_edges` 와 직교한 control variable.*
+
+#### `abl_build_05_no_t2t`
+
+- **Graph Builder**: `EnrichedHeteroGraphBuilder` — `tables_json_path`=data/raw/BIRD_dev/dev_tables.json, `include_views`=False, `run_leiden_clustering`=True, **`add_t2t_edges`=False**
+  - Cache: `dev_enriched_no_t2t_plm_graphs.pt` (별도 suffix)
+  - 검증 (california_schools): T2T edges 4 → 0, FK reachability 동일, schema_diameter 4 → 8 (FK→column→FK 우회 거리)
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_enriched.pt, `alpha`=0.85, `top_k`=20
+- **Connectivity Extractor**: `AdaptivePCSTExtractor` — defaults
+- **Filter**: `XiYanFilter` — defaults
+- **Anchor**: `s03_a07_01_enriched_gat` (E1, F1=0.7327). **주의**: Enriched checkpoint 는 T2T 포함 그래프 위에서 학습됨 → distribution shift 가능, recall 하락 시 GAT 재학습 필요.
+
+
+### abl/build/diameter_meta
+*B-III.b: full hetero schema diameter precompute (advisor 2026-04-21 의견 2). metadata 에 `schema_diameter`, `schema_eccentricity` 추가만, 파이프라인은 키를 무시 → behavioral identical to E1. 후속 Selector QCondGAT `num_layers ∈ {1,2,3,D_max,D_max+1}` 스윕(advisor proposal C)의 기반 인프라.*
+
+#### `abl_build_06_diameter_meta`
+
+- **Graph Builder**: `EnrichedHeteroGraphBuilder` — defaults (E1 와 동일)
+  - Added metadata: `schema_diameter` (int, full hetero undirected D_max, disconnected 시 component max), `schema_eccentricity` (Dict[flat_idx, int])
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_enriched.pt, `alpha`=0.85, `top_k`=20
+- **Connectivity Extractor**: `AdaptivePCSTExtractor` — defaults
+- **Filter**: `XiYanFilter` — defaults
+- **Anchor**: `s03_a07_01_enriched_gat` (E1, F1=0.7327) — noise 일치(±0.5pp) 확인용 regression marker.
+
+
 ## s01 — VectorOnly Selector (Cosine Only)
 
 ### s01_vector_only/a01_basic_pcst
@@ -700,6 +727,35 @@ ID 체계 및 폴더 구조: [`EXPERIMENT_ID_MIGRATION.md`](EXPERIMENT_ID_MIGRAT
 - **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_query_supernode.pt, `alpha`=0.0, `top_k`=20, `query_supernode`=True, `encoder_type`=plm
 - **Projection**: `enabled=False`
 - **Connectivity Extractor**: `ComponentAwareProductCostPCSTExtractor` — `bt_weight`=0.1, `fk_weight`=0.2, `macro_weight`=0.5, `min_cost`=0.0001, `percentile`=80.0, `min_prize_nodes`=3, `max_prize_nodes`=25, `node_threshold`=0.0
+- **Filter**: `XiYanFilter` — `model_name`=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, `max_iteration`=1, `temperature`=0.0
+- **Post-processing**: `auto_join_keys`=True
+
+
+## s04_ablation — Stagewise Backfill (Wave 1.5, Extractor 축 통일)
+
+Basic PCST 로 Extractor 를 통일해 Selector 축 (Legacy Ensemble vs QCond encoder vs QCond+GAT blend) 순수 기여를 분리. 2026-04-22 Wave 1.5 backfill 번들. HISTORY §8 참조.
+
+#### `s04_stagewise_ensemble_raw_a0`
+
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_query_conditioned.pt, `alpha`=0.0, `top_k`=20, `query_conditioned`=False (legacy cosine-only), `encoder_type`=plm
+- **Projection**: `enabled=False`
+- **Connectivity Extractor**: `PCSTExtractor` — `base_cost`=0.05, `belongs_to_cost`=0.01, `fk_cost`=0.05, `macro_cost`=0.5, `node_threshold`=0.1
+- **Filter**: `XiYanFilter` — `model_name`=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, `max_iteration`=1, `temperature`=0.0
+- **Post-processing**: `auto_join_keys`=True
+
+#### `s04_stagewise_qcond_raw_basic`
+
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_query_conditioned.pt, `alpha`=0.0, `top_k`=20, `query_conditioned`=True, `encoder_type`=plm
+- **Projection**: `enabled=False`
+- **Connectivity Extractor**: `PCSTExtractor` — `base_cost`=0.05, `belongs_to_cost`=0.01, `fk_cost`=0.05, `macro_cost`=0.5, `node_threshold`=0.1
+- **Filter**: `XiYanFilter` — `model_name`=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, `max_iteration`=1, `temperature`=0.0
+- **Post-processing**: `auto_join_keys`=True
+
+#### `s04_stagewise_qcond_gat_basic` ★ (F1 new top 0.7877)
+
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_query_conditioned.pt, `alpha`=0.85, `top_k`=20, `query_conditioned`=True, `encoder_type`=plm
+- **Projection**: `enabled=False`
+- **Connectivity Extractor**: `PCSTExtractor` — `base_cost`=0.05, `belongs_to_cost`=0.01, `fk_cost`=0.05, `macro_cost`=0.5, `node_threshold`=0.1
 - **Filter**: `XiYanFilter` — `model_name`=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, `max_iteration`=1, `temperature`=0.0
 - **Post-processing**: `auto_join_keys`=True
 

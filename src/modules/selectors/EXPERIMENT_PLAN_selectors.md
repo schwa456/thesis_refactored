@@ -410,20 +410,288 @@ class SchemaHeteroGATv2(...):
 
 ---
 
+## QCondGAT v2 계열 — 구현 스펙 (2026-04-21 의견 2/3/4 + Q1/Q2 수렴)
+
+> **출처 (proposals)**:
+> - [planning/proposals/abl_sel_diameter_layers.md](/home/hyeonjin/thesis_refactored/planning/proposals/abl_sel_diameter_layers.md) §4 (의견 2, Q1 답변 = per-DB D_max)
+> - [planning/proposals/abl_sel_supernode_directed.md](/home/hyeonjin/thesis_refactored/planning/proposals/abl_sel_supernode_directed.md) §4 (의견 3)
+> - [planning/proposals/abl_sel_supernode_topk.md](/home/hyeonjin/thesis_refactored/planning/proposals/abl_sel_supernode_topk.md) §4 (의견 4, Q2 답변 = Raw Score 우선)
+> - [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](/home/hyeonjin/thesis_refactored/planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §8 Proposal C/D/E
+>
+> **앞 섹션과의 관계**: "QCondGAT 계열 Ablation Track" (§A/D/E) 은 **일정·비용·매트릭스** 중심. 본 섹션은 **코드·Config·인터페이스 정본**. Config key 명명을 proposal 기준으로 canonical 화:
+> - `supernode_directed` (bool, 앞 §D) → **`supernode_edge_direction ∈ {bidirectional, directed_from_sn}`** (enum) 으로 대체
+> - `supernode_top_k` (앞 §E) → **`supernode_topk`**
+> - `supernode_topk_metric` (앞 §E) → **`supernode_topk_criterion`**
+> - V-1 (per-DB dynamic num_layers) 는 앞 섹션에 없던 **신규 축**.
+>
+> **공통 학습 전제**:
+> 1. 세 항목 모두 edge topology 또는 depth 변경 → T5/T7/T9 체크포인트 재사용 불가. GAT **재학습 필수** (Enriched builder 기반 v2).
+> 2. **체크포인트 명명**: `best_gat_enriched_<variant>.pt` 패턴. 예: `best_gat_enriched_sn_directed.pt`, `best_gat_enriched_sn_topk_raw_k10.pt`, `best_gat_enriched_nl_dmax.pt`.
+> 3. **저장 위치 (루트 CLAUDE.md NAS 규칙)**: 실제 파일은 `/SSL_NAS/peoples/khj/thesis/checkpoints/`, 로컬 `outputs/checkpoints/<name>.pt` 는 symlink. 학습 중인 체크포인트는 로컬에 두다 종료 직후 NAS 이관 + symlink 교체.
+
+---
+
+### V-1. Per-DB Dynamic `num_layers` (의견 2, Q1: D_max)
+
+#### 동기
+- 현행 고정 `num_layers=3` 은 작은 DB (`card_games`, V≈20) 에서 over-smoothing 과잉, 큰 DB (`european_football_2`, `formula_1`) 에서 under-reaching.
+- Proposal C: per-DB schema heterograph 의 **최대 shortest-path (D_max)** 에 맞춰 layer 수 설정.
+
+#### Config 스펙
+```yaml
+selector:
+  num_layers_mode: D_max            # {fixed, D_max, D_max_plus1}
+  num_layers_fallback: 3            # D_max 조회 실패 시 int
+  diameter_path: data/processed/train_diameter.pt   # per-DB D_max dict
+```
+- `fixed` 모드: 기존 `model.num_layers` 그대로 사용 (back-compat).
+- `D_max`: `diameter_dict[db_name]` 로 조회.
+- `D_max_plus1`: `D_max + 1`.
+- 조회 실패 (dict 키 부재 or dict 파일 없음) 시 `num_layers_fallback` 으로 fallback + warning 로그.
+
+#### 구현
+- **선결 (Builder 세션 Phase A, proposal §4.1)**: `data/processed/<split>_diameter.pt` 사전 생성. Per-DB schema-only subgraph → all-pairs shortest path (BFS, V≤80 → μs 단위) → max. B-III FK reachability 계산과 1-패스 공유.
+- **Loader / Trainer 로직** (`src/data/bird_dataset.py` 또는 graph loader):
+  ```python
+  diameter_dict = torch.load(cfg.selector.diameter_path) if cfg.selector.num_layers_mode != "fixed" else None
+
+  def resolve_num_layers(db_name: str) -> int:
+      if cfg.selector.num_layers_mode == "fixed":
+          return cfg.model.num_layers
+      d = diameter_dict.get(db_name)
+      if d is None:
+          logger.warning(f"diameter missing for {db_name}; fallback {cfg.selector.num_layers_fallback}")
+          return cfg.selector.num_layers_fallback
+      return d if cfg.selector.num_layers_mode == "D_max" else d + 1
+  ```
+- **배치 이질성 처리**: batch 내 sample 간 `num_layers` 가 다르면 (a) DB-grouped batch sampler 로 동질 batch 만 만들거나 (b) 모델을 `max(num_layers_in_batch)` 로 빌드하고 layer 별 halt mask. **초기 구현은 (a)** — 단순, 디버그 용이.
+- **모델 변경**: `src/models/gat_network_v2.py` 의 `num_layers` 는 이미 파라미터화됨. 래퍼에서 per-sample resolve 해서 전달만 추가.
+
+#### 예상 실험 ID
+| ID | mode | fallback | 비고 |
+|----|------|----------|-----|
+| `abl_sel_diameter_layers_nl_fixed3` | fixed | — | 기존 baseline 재라벨 |
+| `abl_sel_diameter_layers_nl_dmax` | D_max | 3 | peak 후보 |
+| `abl_sel_diameter_layers_nl_dmax_plus1` | D_max+1 | 3 | over-depth 리스크 관찰 |
+
+#### 체크포인트 (NAS + symlink)
+- `best_gat_enriched_nl_fixed3.pt` (T5 재라벨 가능 — 동일 값)
+- `best_gat_enriched_nl_dmax.pt` (신규)
+- `best_gat_enriched_nl_dmax_plus1.pt` (신규)
+
+#### 검증
+- F1 peak (Δ > 0.5% vs fixed=3) 존재 여부 → H1.
+- D_max 가 큰 DB (예: `european_football_2`) 에서 `D_max` cell 이 오히려 하락하면 H2 (depth 상한 실재) 증거.
+
+#### H2 subtask — inference-only per-DB dynamic (2026-04-22 추가)
+
+**동기**: Wave 2 Phase 1 에서 `L ∈ {1, 2, 3, 6, 7}` 전역 고정 깊이 5-cell sweep 을 재학습. 동일 체크포인트를 재사용하여 재학습 없이 H2 ("극단 D_max DB 에서 per-DB 맞춤 깊이가 전역 고정보다 높은가") 를 측정하기 위한 **inference-time early-exit** 경로를 구현.
+
+**구현 (2026-04-22)**:
+- `src/models/gat_network.py` `SchemaHeteroGAT.forward(..., active_num_layers: Optional[int] = None)` 파라미터 추가.
+  - `None` 이면 기존처럼 `self.num_layers` 전부 사용 (back-compat).
+  - 정수가 주어지면 `clamp(1, self.num_layers)` 후 `self.convs[:L']` 까지만 메시지 패싱 수행. ModuleList slicing 방식 — 체크포인트 key 변경 없음.
+- `src/modules/selectors/ensemble_selector.py`:
+  - `num_layers` (int) 파라미터를 GAT 생성자에 전달 (기존 누락 버그 동시 수정 — 이전엔 config 와 무관하게 `num_layers=3` 디폴트 사용).
+  - `num_layers_mode ∈ {fixed, per_db_dynamic, D_max, D_max_plus1}`, `diameter_cache_path`, `num_layers_fallback` 신규 인자.
+  - `_resolve_active_depth(metadata)` helper: `metadata['db_id']` → `diameter_dict` → mode 에 따라 `active_num_layers` 산출. 누락/unknown DB 는 fallback (+경고 로그).
+  - `_compute_gat_scores` 내 세 갈래 (`query_supernode` / `query_conditioned` / 기본) 모두 `active_num_layers=depth` 를 forward 로 전달.
+- `src/pipeline/schema_linking.py`: `self.builder.build(...)` 직후 `metadata.setdefault("db_id", db_id)` 로 DB id 를 metadata 에 주입. Extractor/Filter 도 동일 키로 접근 가능.
+- 모드 값 중 `per_db_dynamic` 는 `D_max` 의 별칭 (장래 mix policy 확장 여지).
+
+**체크포인트 재사용 가능성 (dev_diameter.pt 분포)**:
+- 11 DB, D_max ∈ [3, 6], median=5, max=6, p95=6. D_max=6 DB: `european_football_2`, `formula_1`, `student_club`, `superhero`. D_min=3: `debit_card_specializing`.
+- `D_max` 모드 최대 필요 깊이 = 6 → **Wave 2 Phase 1 L=6 ckpt 그대로 재사용 가능** (재학습 불필요).
+- `D_max_plus1` 모드 최대 필요 깊이 = 7 → **Wave 2 Phase 1 L=7 ckpt 그대로 재사용 가능**.
+- 따라서 H2 측정은 추가 학습 0회. inference config 2개만 새로 정의.
+
+**H2 전용 실험 ID (재학습 없음, Wave 2 Phase 1 ckpt 재사용)**:
+| ID | 체크포인트 | num_layers_mode | 비교 대상 |
+|----|-----------|-----------------|----------|
+| `abl_sel_diameter_layers_nl_dmax_infer_L6ckpt` | `best_gat_enriched_nl_fixed6.pt` (Wave 2 Phase 1 L=6) | `D_max` (fallback=6) | 동일 ckpt + mode=fixed |
+| `abl_sel_diameter_layers_nl_dmax_plus1_infer_L7ckpt` | `best_gat_enriched_nl_fixed7.pt` (Wave 2 Phase 1 L=7) | `D_max_plus1` (fallback=7) | 동일 ckpt + mode=fixed |
+
+두 쌍(mode=fixed vs 해당 dynamic) per-DB R/P/F1 비교로 **D_max=6 DB 에서 dynamic cell 이 fixed 대비 peak shift 를 보이는지** 직접 검증. Wave 2 Phase 1 학습 완료 후 Phase 2 inference 배치에 병합.
+
+**Smoke test**: `scripts/smoke_test_per_db_dynamic.py` — (1) diameter 분포 로그, (2) forward early-exit/clamp 동작, (3) `_resolve_active_depth` 정책표 (체크포인트 로드 없이 stub 으로). **Pass 확인 2026-04-22**.
+
+**Wave 2.5 mini-sweep 과의 관계**: 본 subtask 는 inference 경로 (ckpt 재사용). Phase 2 결과에 따라 필요 시 per-DB dynamic 전용 재학습(batch sampler + per-sample depth resolve, 본 V-1 §구현) 으로 승격. 현 시점엔 그 비용을 치르지 않고 H2 가설만 먼저 측정.
+
+---
+
+### V-2. SuperNode Edge Direction Flag (의견 3)
+
+#### 동기
+- 현행 bidirectional SN ↔ schema: GAT 메시지 전파로 SN embedding 이 schema 정보에 희석 (dilution).
+- Proposal D: 단방향 (SN → schema only) → SN 을 query 신호 anchor 로 보존, schema node 만 수신.
+
+#### Config 스펙
+```yaml
+selector:
+  supernode_edge_direction: directed_from_sn   # {bidirectional, directed_from_sn}
+  # directed_from_sn 의미:
+  #   - ('query', '*', 'table'|'column') edge 유지
+  #   - ('table'|'column', '*', 'query') edge 제거 (schema→SN 차단)
+  #   - ('query', 'self', 'query') self-loop 유지 (SN query feature 보존)
+```
+
+#### 구현
+- **파일**: `src/models/gat_network.py` (+ `gat_network_v2.py` v2 SN 지원 시).
+- **edge_index_dict 빌드 분기**:
+  ```python
+  class SchemaHeteroGATv2(...):
+      def __init__(self, ..., supernode_edge_direction: str = "bidirectional"):
+          assert supernode_edge_direction in {"bidirectional", "directed_from_sn"}
+          self.supernode_edge_direction = supernode_edge_direction
+
+      def _build_supernode_edges(self) -> List[Tuple[str, str, str]]:
+          fwd       = [('query', 'to_t', 'table'), ('query', 'to_c', 'column')]
+          rev       = [('table', 't_to', 'query'), ('column', 'c_to', 'query')]
+          self_loop = [('query', 'self', 'query')]
+          if self.supernode_edge_direction == "directed_from_sn":
+              return fwd + self_loop                      # schema→SN 제거
+          return fwd + rev + self_loop                    # bidirectional (기존)
+  ```
+- **Builder 측**: 기존 SuperNode builder 의 edge 구성에서 역방향을 flag 로 생략 (`supernode_edge_direction` forward propagation).
+- **학습 재필요**: T7 (`best_gat_query_supernode.pt`) · T9 (`best_gat_query_supernode_direct.pt`) 모두 양방향 전제 → directed 계열 from scratch.
+
+#### 예상 실험 ID
+| ID | variant | checkpoint |
+|----|---------|-----------|
+| `abl_sel_supernode_bidir_a0` (재라벨) | bidirectional | T7 (재사용) |
+| `abl_sel_supernode_directed_proj` | directed + Projector (BCE+InfoNCE) | `best_gat_enriched_sn_directed_proj.pt` |
+| `abl_sel_supernode_directed_bce`  | directed + Direct (BCE only)       | `best_gat_enriched_sn_directed_bce.pt`  |
+
+#### 검증
+- **SN embedding drift**: 학습 epoch 별 SN 노드 embedding L2 norm 추이 (bidir 감소 vs directed 유지 예상).
+- **Distant-node signal**: `node_distance_to_SN × recall` 분포 — directed 에서 distant node 신호 단절 여부 (§7.4 리스크, **V-1 D_max 와 교호** — Proposal D §2 H2).
+- **Val R@15 vs T7/T9**: directed 가 상승 시 over-smoothing 완화 근거.
+
+---
+
+### V-3. SuperNode Top-k Selective Connection (의견 4, Q2: Raw Score)
+
+#### 동기
+- SN 을 모든 schema node 에 연결 → attention 분산. **pre-GAT raw score 상위 k 개 에만** SN edge → attention 집중 + noisy node gradient 희석 감소.
+- Phase 1 `criterion=raw` 만 — Ensemble selector 의 cosine 경로 재사용, BCE/CE 는 현재 bottleneck 분석 대상이라 기준축 부적절.
+
+#### Config 스펙
+```yaml
+selector:
+  supernode_topk: 10                          # {null, 3, 5, 10, 20}; null = 기존 all-node
+  supernode_topk_criterion: raw               # {raw, ce, cosine}; Phase 1 = raw
+  supernode_edge_direction: directed_from_sn  # 권장 default — V-2 와 조합
+```
+
+#### 구현
+- **Pre-GAT raw score 추출**:
+  - `EnsembleSelector` 의 기존 cosine 경로 재사용 → `get_raw_scores(query_emb, node_emb)` utility 분리/노출.
+  - `raw_score(v) = cos(e_Q, e_v)` (encoder output, GAT 미통과).
+- **Top-k 인덱스 추출**: `torch.topk(raw_scores, k=supernode_topk, dim=-1)` — per node_type 별 (table/column 따로) 또는 global mix — 초기 구현은 **node_type 내부 top-k 후 합집합** (type 별 최소 대표권 보장).
+- **Edge 구성** (`src/models/gat_network.py`):
+  ```python
+  class SchemaHeteroGATv2(...):
+      def __init__(self, ...,
+                   supernode_topk: Optional[int] = None,
+                   supernode_topk_criterion: str = "raw"):
+          self.supernode_topk = supernode_topk
+          assert supernode_topk_criterion in {"raw", "ce", "cosine"}
+          self.supernode_topk_criterion = supernode_topk_criterion
+
+      def _compute_topk_nodes(self, query_emb, node_emb_dict):
+          """criterion 분기:
+          - raw   : cos(query_emb, node_emb) via EnsembleSelector.get_raw_scores
+          - cosine: 동일 수식이나 Ensemble α blending 경로 제외 (non-Ensemble)
+          - ce    : pre-GAT classifier head logit (학습된 head 필요 — Phase 2)
+          반환: {"table": idx_tensor, "column": idx_tensor} (node_type 내 global indices)
+          """
+
+      def _build_supernode_edges_topk(self, topk_dict):
+          # query→{table,column} edge_index 를 top-k idx subset 으로만 구성.
+          # supernode_edge_direction=directed_from_sn 조합 시 역방향 edge 는 이미 제외.
+  ```
+- **Phase 1 default combo**: `supernode_edge_direction=directed_from_sn` + `supernode_topk ∈ {3,5,10,20}` + `supernode_topk_criterion=raw`.
+- **Phase 2 트리거 (조건부)**: Phase 1 peak F1 > D baseline +0.5% → `criterion ∈ {ce, cosine}` × best k 확장.
+
+#### 예상 실험 ID — Phase 1 (Raw × k)
+| ID | k | criterion | direction | checkpoint |
+|----|---|-----------|-----------|-----------|
+| `abl_sel_supernode_topk_raw_k3`  | 3  | raw | directed_from_sn | `best_gat_enriched_sn_topk_raw_k3.pt`  |
+| `abl_sel_supernode_topk_raw_k5`  | 5  | raw | directed_from_sn | `best_gat_enriched_sn_topk_raw_k5.pt`  |
+| `abl_sel_supernode_topk_raw_k10` | 10 | raw | directed_from_sn | `best_gat_enriched_sn_topk_raw_k10.pt` |
+| `abl_sel_supernode_topk_raw_k20` | 20 | raw | directed_from_sn | `best_gat_enriched_sn_topk_raw_k20.pt` |
+
+#### Phase 2 (조건부, 별도 승인 필요)
+| ID | k | criterion | 비고 |
+|----|---|-----------|-----|
+| `abl_sel_supernode_topk_cos_kbest` | best (P1) | cosine (non-Ensemble) | α blending 제외 |
+| `abl_sel_supernode_topk_ce_kbest`  | best (P1) | ce | 학습된 classifier head 필요 |
+
+#### 검증
+- **Gold coverage within top-k**: dev gold schema node 가 top-k mask 에 포함되는 비율 — k=3 에서 급락 예상 (희소화 상한 진단).
+- **Recall curve over k**: k ∈ {3,5,10,20} 의 Selector-stage / pipeline-final recall.
+- **Over-smoothing 재등장**: directed + 작은 k 조합에서 distant node SN 신호 단절 — intra-table cosine trajectory (s06 bottleneck v2 재활용).
+
+---
+
+### V-1/V-2/V-3 통합 default ("SuperNode v2")
+
+- **int_05 전제 default combo**:
+  - `selector.num_layers_mode = D_max` (V-1)
+  - `selector.supernode_edge_direction = directed_from_sn` (V-2)
+  - `selector.supernode_topk = 10` + `supernode_topk_criterion = raw` (V-3, Phase 1 peak 확정 후)
+- **Cross-effect**: V-2 단방향은 distant node 가 SN 신호를 1-hop 만 받으므로 V-1 `D_max`(+1) 과 교호 (Proposal D §2 H2). V-3 top-k 는 attention 집중을 강화하지만 과소 k 에서 V-1 depth 가 더 필요해질 수 있음.
+- **S-V (Neurosymbolic L1) 와 호환**: V-2/V-3 의 "구조적 희소 라우팅" ≡ S-V 의 "symbolic mask 가산 boost" 와 동형 — 조합 가능 (후속 `abl_sel_ns_l1_sn_v2_*`).
+
+### 변경될 파일 (V-track 한정)
+
+| 파일 | 변경 |
+|------|------|
+| `src/data/bird_dataset.py` (or graph loader) | `diameter_path` 로드, per-DB `num_layers` resolve, DB-grouped batch sampler (V-1) |
+| `src/models/gat_network.py` / `gat_network_v2.py` | `supernode_edge_direction`, `supernode_topk`, `supernode_topk_criterion` 파라미터 + edge 구성 분기 (V-2, V-3) |
+| `src/modules/selectors/ensemble_selector.py` | `get_raw_scores(query_emb, node_emb)` utility 노출 — V-3 가 재사용 |
+| `src/train_gat_s06.py` (or 후속 trainer) | 신규 flag 노출 + 체크포인트 저장 path 를 NAS 로 라우팅 (symlink step 포함) |
+| `configs/experiments/abl/sel/diameter/abl_sel_diameter_layers_nl_{fixed3,dmax,dmax_plus1}.yaml` | 신규 3 개 (V-1) |
+| `configs/experiments/abl/sel/sn_v2/abl_sel_supernode_directed_{proj,bce}.yaml` | 신규 2 개 (V-2) |
+| `configs/experiments/abl/sel/sn_v2/abl_sel_supernode_topk_raw_k{3,5,10,20}.yaml` | 신규 4 개 (V-3 Phase 1) |
+| `data/processed/train_diameter.pt`, `data/processed/dev_diameter.pt` | Builder B-III 산출 (V-1 선결, 1-패스 공유) |
+
+### 재학습 비용 / 일정
+
+| Track | 실험 수 (Phase 1) | 학습 | per-exp ≈ | 총 GPU |
+|-------|------------------|------|-----------|--------|
+| V-1 | 3 | 3× from scratch | ~9h (batched dual_stream) | ~27h |
+| V-2 | 2 | 2× from scratch | ~9h | ~18h |
+| V-3 | 4 | 4× from scratch | ~9h | ~36h |
+| **합계** | **9** | | | **~81h** (직렬 ~3.4일) |
+
+- 순서: **V-2 → V-3** (V-3 가 V-2 directed 결과 의존). **V-1 은 독립** (병렬 실행 가능, GPU 여유 시).
+- 2026-04-28 발표: V-1 + V-2 최소 2 cell 확보 목표 (minimum narrative).
+
+### 리스크
+
+- **V-1 batch 이질성**: per-DB `num_layers` 가 서로 다르면 단일 배치 내 동질성 깨짐 → DB-grouped sampler 필수. 누락 시 성능 측정 신뢰도 급락.
+- **V-2 distant-node 단절** (§7.4): 단방향 SN 은 distant schema node 를 1-hop 으로만 도달. **V-1 (`D_max`) 와 조합 권장** — 단독 V-2 는 깊이 부족으로 실패 가능.
+- **V-3 gold coverage 상한**: k=3 에서 gold 누락 급증. k=3 은 **진단용**, 실전 default 은 k=10 전후.
+- **공통**: 9 개 체크포인트 × ~300 MB → NAS ~3 GB 추가 점유 (여유 1.1 TB 영향 無). 학습 script 에 **NAS 저장 + symlink 스텝 명시** 필수 — 누락 시 로컬 디스크 터짐 위험.
+
+---
+
 ## 통합 실험 로드맵 (Selector 관점)
 
 | Phase | 실험 | 의존 | 비고 |
 |-------|------|------|-----|
 | **QC-A** | `abl_sel_raw_ens_01` + 기존 s04_04/05 재집계 | 없음 (Selector 단독) | **2026-04-21 지도교수 의견 1 대응, core** |
-| **QC-D** | `abl_sel_sn_directed_{bce,proj}` | 재학습 | **의견 3, directed SN** |
-| **QC-E** | `abl_sel_sn_topk_raw_k{3,5,10,20}_01` | 재학습 + Q2 Raw 선별 | **의견 4, Phase 1 raw 만** |
+| **V-1** | `abl_sel_diameter_layers_nl_{fixed3,dmax,dmax_plus1}` | **Builder Diameter precompute** + 재학습 | **의견 2 (Q1: D_max), per-DB dynamic `num_layers`** |
+| **V-2** | `abl_sel_supernode_directed_{proj,bce}` | 재학습 (canonical `supernode_edge_direction=directed_from_sn`) | **의견 3 — 앞 QC-D rename 수렴** |
+| **V-3** | `abl_sel_supernode_topk_raw_k{3,5,10,20}` | V-2 directed 의존 + 재학습 | **의견 4 (Q2: Raw), 앞 QC-E rename 수렴** |
 | S1 | `abl_s06_ns1_*` | Builder B-III | 가장 저비용, 먼저 실행 |
 | S2 | `abl_s06_rfm_01` (BGE-M3) | Builder B-I | Encoder 교체 단독 효과 |
 | S3 | `abl_s06_ehgat_*` | Builder B-II | Line graph 학습 재생성 필요 |
 | S4 | `abl_s06_xllm_*` | Filter와 조율 | LLM 공유 자원 |
 | S5 | `abl_s06_rl_*` | Warm-start ckpt | 가장 복잡, 마지막 |
 
-**발표 우선순위 (2026-04-28 15~20분)**: **QC-A** (core) → F (SteinerBackbone, 루트) → C (Diameter, 루트) → **QC-D** → **QC-E** → B (T2T, Builder). QC-D/QC-E 는 시간 여유 시만.
+**발표 우선순위 (2026-04-28 15~20분)**: **QC-A** (core) → F (SteinerBackbone, 루트) → **V-1** (Diameter, Selector/Builder 공동) → **V-2** (directed SN) → **V-3** (top-k) → B (T2T, Builder). V-2/V-3 는 시간 여유 시, V-1 은 Builder Diameter precompute 완료 조건부. (명명 rename: 앞 QC-D→V-2, QC-E→V-3)
 
 ## 변경될 파일
 

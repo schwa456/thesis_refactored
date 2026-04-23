@@ -8,14 +8,14 @@
 
 ## 0. 현 리더보드 스냅샷
 
-| 지표 | 실험 ID | Recall | Precision | F1 |
-|------|---------|--------|-----------|-----|
-| **Best F1** | `abl_ens_basic_xiyan` (구 2×2×2 #6, Ens+Basic+XiYan) | 0.8149 | 0.7597 | **0.7863** |
-| Best P (Enriched) | Enriched builder + XiYan | — | **0.8147** | — |
-| Best P (EdgePrize) | EdgePrize PCST + XiYan | — | 0.8139 | — |
-| Recall 최고 (w/ filter) | `a05_02` ReflectionFilter 1iter | **0.7320** | 0.6833 | 0.7068 |
-| Recall 최고 (no filter) | `a10` FKBackboneSteiner θ_r=0.5 | **0.8565** | 0.0732 | 0.1348 |
-| GAT Val R@15 | `s06_a01_06` B5 (2-layer, Dual-Stream) | **0.6073** | — | — |
+| 지표                    | 실험 ID                                               | Recall     | Precision  | F1         |
+| --------------------- | --------------------------------------------------- | ---------- | ---------- | ---------- |
+| **Best F1**           | `abl_ens_basic_xiyan` (구 2×2×2 #6, Ens+Basic+XiYan) | 0.8149     | 0.7597     | **0.7863** |
+| Best P (Enriched)     | Enriched builder + XiYan                            | —          | **0.8147** | —          |
+| Best P (EdgePrize)    | EdgePrize PCST + XiYan                              | —          | 0.8139     | —          |
+| Recall 최고 (w/ filter) | `a05_02` ReflectionFilter 1iter                     | **0.7320** | 0.6833     | 0.7068     |
+| Recall 최고 (no filter) | `a10` FKBackboneSteiner θ_r=0.5                     | **0.8565** | 0.0732     | 0.1348     |
+| GAT Val R@15          | `s06_a01_06` B5 (2-layer, Dual-Stream)              | **0.6073** | —          | —          |
 
 **관찰 1**: 최고 F1 0.7863 이후 2×2×2 8셀 기본 매트릭스는 포화. 추가 개선은 "기본 매트릭스 밖"에서 나올 수밖에 없음.
 **관찰 2**: Reflection은 XiYan 대비 **Recall +0.0559 / Precision −0.0295 / F1 +0.0128** 변화를 실측했으나 (`a03_17 vs a05_02`), 아직 **최상위 anchor에 적용되지 않았음**.

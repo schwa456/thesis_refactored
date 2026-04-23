@@ -22,13 +22,13 @@ class HeteroGraphBuilder(BaseGraphBuilder):
     def __init__(
         self,
         plm_model_name: str = 'sentence-transformers/all-MiniLM-L6-v2',
-        include_table_to_table: bool = True,
+        add_t2t_edges: bool = True,
         **kwargs,
     ):
         super().__init__()
         logger.info(f"Loading PLM for initial node features: {plm_model_name}...")
         self.encoder = SentenceTransformer(plm_model_name)
-        self.include_table_to_table = include_table_to_table
+        self.add_t2t_edges = add_t2t_edges
         self.last_info: Dict[str, Any] = {}
 
     @staticmethod
@@ -415,7 +415,7 @@ class HeteroGraphBuilder(BaseGraphBuilder):
 
             f_t = fk['from_table']
             t_t = fk['to_table']
-            if self.include_table_to_table and f_t in table_to_id and t_t in table_to_id:
+            if self.add_t2t_edges and f_t in table_to_id and t_t in table_to_id:
                 t_fk_src.extend([table_to_id[f_t], table_to_id[t_t]])
                 t_fk_dst.extend([table_to_id[t_t], table_to_id[f_t]])
 
@@ -455,7 +455,7 @@ class HeteroGraphBuilder(BaseGraphBuilder):
             'node_metadata': node_meta,
             'edges': pcst_edges,
             'edge_types': pcst_edge_types,
-            'include_table_to_table': bool(self.include_table_to_table),
+            'add_t2t_edges': bool(self.add_t2t_edges),
         }
         t = time.perf_counter()
         metadata.update(self._compute_fk_reachability(schema_info, table_to_id))
@@ -485,7 +485,7 @@ class HeteroGraphBuilder(BaseGraphBuilder):
                 "total_s": float(time.perf_counter() - t_total),
             },
             extra={
-                "include_table_to_table": bool(self.include_table_to_table),
+                "add_t2t_edges": bool(self.add_t2t_edges),
                 "schema_diameter": int(metadata.get("schema_diameter", 0) or 0),
             },
         )
@@ -675,7 +675,7 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
                 r_src.append(fid); r_dst.append(cid2)
             f_t = fk['from_table']
             t_t = fk['to_table']
-            if self.include_table_to_table and f_t in table_to_id and t_t in table_to_id:
+            if self.add_t2t_edges and f_t in table_to_id and t_t in table_to_id:
                 t_fk_src.extend([table_to_id[f_t], table_to_id[t_t]])
                 t_fk_dst.extend([table_to_id[t_t], table_to_id[f_t]])
 
@@ -712,7 +712,7 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
             'node_metadata': node_meta,
             'edges': pcst_edges,
             'edge_types': pcst_edge_types,
-            'include_table_to_table': bool(self.include_table_to_table),
+            'add_t2t_edges': bool(self.add_t2t_edges),
         }
         t = time.perf_counter()
         metadata.update(self._compute_fk_reachability(schema_info, table_to_id))
@@ -750,7 +750,7 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
                 "enrich_col_desc_rows": len(col_descriptions),
                 "enrich_tbl_nl_available": len(table_nl),
                 "enrich_col_nl_available": len(col_nl),
-                "include_table_to_table": bool(self.include_table_to_table),
+                "add_t2t_edges": bool(self.add_t2t_edges),
                 "schema_diameter": int(metadata.get("schema_diameter", 0) or 0),
             },
         )

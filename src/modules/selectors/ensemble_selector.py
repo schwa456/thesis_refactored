@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn.functional as F
 from typing import List, Dict, Any, Optional, Union
@@ -12,6 +13,9 @@ from modules.encoders.local_encoder import LocalPLMEncoder
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+NUM_LAYERS_MODES = {"fixed", "per_db_dynamic", "D_max", "D_max_plus1"}
 
 
 @register("selector", "EnsembleSelector")
@@ -31,9 +35,13 @@ class EnsembleSelector(BaseSelector):
                  in_channels: int = 384,
                  hidden_channels: int = 256,
                  out_channels: int = 256,
+                 num_layers: int = 3,
                  query_conditioned: bool = False,
                  query_supernode: bool = False,
                  encoder_type: str = "token",
+                 num_layers_mode: str = "fixed",
+                 diameter_cache_path: Optional[str] = None,
+                 num_layers_fallback: Optional[int] = None,
                  **kwargs):
         super().__init__()
         self.alpha = alpha
@@ -43,11 +51,37 @@ class EnsembleSelector(BaseSelector):
         self.encoder_type = encoder_type
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        # Proposal C H2: per-DB dynamic num_layers (inference-time early-exit).
+        if num_layers_mode not in NUM_LAYERS_MODES:
+            raise ValueError(f"num_layers_mode must be in {NUM_LAYERS_MODES}, got {num_layers_mode}")
+        self.num_layers_mode = num_layers_mode
+        self.num_layers_fallback = num_layers_fallback if num_layers_fallback is not None else num_layers
+        self.diameter_dict: Dict[str, int] = {}
+        if num_layers_mode != "fixed":
+            if not diameter_cache_path:
+                raise ValueError(
+                    f"num_layers_mode={num_layers_mode} requires diameter_cache_path")
+            if not os.path.exists(diameter_cache_path):
+                raise FileNotFoundError(
+                    f"diameter_cache_path not found: {diameter_cache_path}")
+            loaded = torch.load(diameter_cache_path, map_location="cpu")
+            if isinstance(loaded, dict) and "diameters" in loaded:
+                loaded = loaded["diameters"]
+            if not isinstance(loaded, dict):
+                raise ValueError(
+                    f"diameter cache at {diameter_cache_path} must be dict[db_name, int]")
+            self.diameter_dict = {str(k): int(v) for k, v in loaded.items()}
+            logger.info(
+                f"[EnsembleSelector] num_layers_mode={num_layers_mode} | "
+                f"loaded {len(self.diameter_dict)} DB diameters from {diameter_cache_path} | "
+                f"fallback depth={self.num_layers_fallback}")
+
         # GAT + Projector 로드 (GATClassifierSelector와 동일)
         self.gat_model = SchemaHeteroGAT(
             in_channels=in_channels,
             hidden_channels=hidden_channels,
             out_channels=out_channels,
+            num_layers=num_layers,
             query_conditioned=query_conditioned,
             query_supernode=query_supernode
         ).to(self.device)
@@ -73,7 +107,60 @@ class EnsembleSelector(BaseSelector):
         self.projector.eval()
 
         self.latest_scores = []
-        logger.info(f"Initialized EnsembleSelector (alpha={alpha}, top_k={top_k})")
+        logger.info(
+            f"Initialized EnsembleSelector (alpha={alpha}, top_k={top_k}, "
+            f"num_layers={num_layers}, num_layers_mode={num_layers_mode})")
+
+    def _resolve_active_depth(self, metadata: Dict[str, Any]) -> Optional[int]:
+        """Proposal C H2: resolve per-query forward depth from metadata['db_id'].
+
+        Returns None when mode=='fixed' (caller then uses self.gat_model.num_layers).
+        Otherwise returns an int in [1, self.gat_model.num_layers]:
+          - D_max:          depth = min(D_max, num_layers)
+          - D_max_plus1:    depth = min(D_max + 1, num_layers)
+          - per_db_dynamic: alias for D_max (policy fixed; reserved for future mix).
+        Missing db_id or unknown DB → self.num_layers_fallback (clamped).
+        """
+        if self.num_layers_mode == "fixed":
+            return None
+        max_depth = self.gat_model.num_layers
+        db_id = metadata.get("db_id") if isinstance(metadata, dict) else None
+        d_max = self.diameter_dict.get(str(db_id)) if db_id is not None else None
+
+        if d_max is None:
+            depth = self.num_layers_fallback
+            logger.debug(
+                f"[EnsembleSelector] db_id={db_id!r} missing from diameter dict; "
+                f"fallback depth={depth}")
+        elif self.num_layers_mode in ("D_max", "per_db_dynamic"):
+            depth = d_max
+        elif self.num_layers_mode == "D_max_plus1":
+            depth = d_max + 1
+        else:
+            depth = self.num_layers_fallback
+        return max(1, min(int(depth), max_depth))
+
+    @staticmethod
+    def get_raw_scores(query_emb: torch.Tensor, node_embs: torch.Tensor) -> torch.Tensor:
+        """Pre-GAT raw cosine scores between a query and schema nodes.
+
+        V-3 (SuperNode Top-k) 에서 재사용되는 utility. Encoder 출력 (pre-GAT) 에
+        직접 cosine similarity 를 계산한다. Ensemble α-blend 를 거치지 않는 순수 raw 경로.
+
+        Args:
+            query_emb: [d] or [1, d] — single query embedding.
+            node_embs: [N, d] — schema node embeddings (pre-GAT encoder output).
+
+        Returns:
+            [N] tensor of cosine similarities in [-1, 1].
+        """
+        if query_emb.dim() == 1:
+            query_emb = query_emb.unsqueeze(0)
+        elif query_emb.dim() == 2 and query_emb.size(0) > 1:
+            query_emb = query_emb.mean(dim=0, keepdim=True)
+        q_norm = F.normalize(query_emb, dim=-1)
+        n_norm = F.normalize(node_embs, dim=-1)
+        return (n_norm @ q_norm.t()).squeeze(-1)
 
     def _post_ensemble_hook(
         self,
@@ -105,6 +192,8 @@ class EnsembleSelector(BaseSelector):
             elif q_emb.dim() == 1:
                 q_emb = q_emb.unsqueeze(0)
 
+            active_depth = self._resolve_active_depth(metadata)
+
             if self.query_supernode:
                 # Super Node 모드: query_node를 그래프에 동적 주입
                 graph_data['query_node'].x = q_emb  # [1, 384]
@@ -122,12 +211,17 @@ class EnsembleSelector(BaseSelector):
                         torch.stack([src, dst], dim=0)
                     graph_data[schema_nt, f'attended_by_{schema_nt}', 'query_node'].edge_index = \
                         torch.stack([dst, src], dim=0)
-                node_embs_dict = self.gat_model(graph_data.x_dict, graph_data.edge_index_dict)
+                node_embs_dict = self.gat_model(
+                    graph_data.x_dict, graph_data.edge_index_dict,
+                    active_num_layers=active_depth)
             elif self.query_conditioned:
                 node_embs_dict = self.gat_model(
-                    graph_data.x_dict, graph_data.edge_index_dict, query_emb=q_emb)
+                    graph_data.x_dict, graph_data.edge_index_dict,
+                    query_emb=q_emb, active_num_layers=active_depth)
             else:
-                node_embs_dict = self.gat_model(graph_data.x_dict, graph_data.edge_index_dict)
+                node_embs_dict = self.gat_model(
+                    graph_data.x_dict, graph_data.edge_index_dict,
+                    active_num_layers=active_depth)
 
             num_nodes = len(metadata.get('node_metadata', {}))
             gat_scores = torch.zeros(num_nodes, device=self.device)

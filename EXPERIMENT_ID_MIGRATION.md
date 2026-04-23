@@ -122,6 +122,16 @@ configs/experiments/  (outputs/experiments/, logs/experiments/ 동일 구조)
 | `s04_04_qcond_a0_xiyan` | `experiment_qcond_idea24_a0_xiyan` (Q4) |
 | `s04_05_supernode_a0_xiyan` | `experiment_supernode_idea24_a0_xiyan` (Q5) |
 
+### s04_ablation/stagewise/
+
+**Motivation**: Wave 1.5 backfill — Extractor 축을 `PCSTExtractor(Basic)` 로 통일해 Selector 축 순수 기여 분리. 2026-04-22, 지도교수 advisor input §9 Root 행 + stagewise_qcond_ablation.md §1.1 Extractor 불일치 caveat 근거. HISTORY §8 참조.
+
+| 신규 ID | 설명 |
+|---------|------|
+| `s04_stagewise_ensemble_raw_a0` | (신규, 2026-04-22 W1) Legacy cosine-only EnsembleSelector α=0 + Basic PCST + XiYan — R=0.6676 P=0.7236 F1=0.6944 |
+| `s04_stagewise_qcond_raw_basic` | (신규, 2026-04-22 W2) QCond encoder + EnsembleSelector α=0 + Basic PCST + XiYan — R=0.6622 P=0.7539 F1=0.7051 |
+| `s04_stagewise_qcond_gat_basic` | (신규, 2026-04-22 W3) ★ QCond + GAT blend α=0.85 + Basic PCST + XiYan — **R=0.8169 P=0.7605 F1=0.7877 (new top)** |
+
 ### s05_gat_direct/a01_full_pipeline/
 
 | 신규 ID | 기존 |
@@ -292,6 +302,8 @@ Spec: [src/modules/builders/EXPERIMENT_PLAN_builders.md](src/modules/builders/EX
 | `abl_build_01_fk_reach` | EnrichedHeteroGraphBuilder + auto-injected FK reachability metadata (B-III) | 기존 Ensemble + AdaptivePCST + XiYan (Selector S-V / Extractor E-III / Filter FL-III 미합류) | ✅ Builder smoke 통과 (california_schools T=3, FK=2, reach=1.000, comps=1; dev pair coverage 93.53%, query coverage 94.45%). End-to-end run pending — Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
 | `abl_build_02_linegraph` | LineGraphBuilder(base=EnrichedHeteroGraphBuilder) (B-II) | 하류 Selector S-III(EHGAT) 미구현 | ✅ Builder smoke 통과 (california_schools edge_nodes=97, line_edges=3856, feat_dim=772). End-to-end pending S-III. |
 | `abl_build_03_rfm_tokens` | RFMCompatibleBuilder (B-I) — Enriched 위에 RFM 호환 special-token serialization 부착 | 하류 Selector S-II(RFM encoder) 미구현 — 현 stack 에서는 Enriched 와 동일 동작 | ✅ Builder smoke 통과 (dev 11 DB token median 1041 / max 2578). End-to-end pending S-II. Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
+| `abl_build_05_no_t2t` | EnrichedHeteroGraphBuilder + `add_t2t_edges=False` (B-II.b, advisor 2026-04-21 의견 2) | 기존 Ensemble + AdaptivePCST + XiYan. Anchor checkpoint 가 T2T 포함 그래프로 학습 → distribution shift 가능, recall 하락 시 GAT 재학습 필요 | ✅ Builder smoke 통과 (california_schools: T2T 4→0, FK reachability 동일, schema_diameter 4→8). End-to-end pending. Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
+| `abl_build_06_diameter_meta` | EnrichedHeteroGraphBuilder + auto-injected `schema_diameter`/`schema_eccentricity` (B-III.b, advisor 2026-04-21 의견 2) | 기존 Ensemble + AdaptivePCST + XiYan (메타키 무시). 후속 QCondGAT `num_layers ∈ {1,2,3,D_max,D_max+1}` 스윕(advisor proposal C) 인프라 | ✅ Builder smoke 통과 (BIRD-Dev 11 DB D_max profile: min=3, median=5, mean=4.91, max=6 — 현 GAT default `num_layers=3` 은 1/11 DB 만 충분). End-to-end regression marker. Anchor: `s03_a07_01_enriched_gat` (E1, F1=0.7327) |
 
 ### GAT Checkpoints (별도 네임스페이스)
 

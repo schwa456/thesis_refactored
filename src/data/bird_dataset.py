@@ -30,7 +30,7 @@ class BIRDGraphDataset(Dataset):
         builder_suffix = "_enriched" if isinstance(builder, _EHB) else ""
         # B-II.b — base T2T edge toggle (advisor 2026-04-21 의견 2). Distinct
         # cache when macro edges are stripped at build time.
-        if getattr(builder, "include_table_to_table", True) is False:
+        if getattr(builder, "add_t2t_edges", True) is False:
             builder_suffix += "_no_t2t"
         # PLMEncoder produces sentence-level [1, 384], TokenEncoder produces token-level [seq_len, 384]
         encoder_name = type(encoder).__name__

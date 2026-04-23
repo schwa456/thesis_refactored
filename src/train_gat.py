@@ -211,15 +211,29 @@ def run_train(config_path: str):
         builder = HeteroGraphBuilder()
     encoder = LocalPLMEncoder()
 
+    # 모델 준비 — supernode wrap 은 split 이전에 수행되어야 train/val loader 가 래핑된 데이터셋을 참조.
+    query_conditioned = cfg['model'].get('query_conditioned', False)
+    query_supernode = cfg['model'].get('query_supernode', False)
+
+    # V-2/V-3 SuperNode ablation (2026-04-21)
+    supernode_edge_direction = cfg['model'].get('supernode_edge_direction', 'bidirectional')
+    supernode_topk = cfg['model'].get('supernode_topk', None)
+    supernode_topk_criterion = cfg['model'].get('supernode_topk_criterion', 'raw')
+
     # 데이터셋 로드 (학습용)
     logger.info("🚀 Loading Training Dataset from NAS...")
     full_train_dataset = BIRDGraphDataset(
-        json_path=cfg['paths']["train_json"], 
-        db_dir=cfg['paths']["train_db_dir"], 
-        builder=builder, 
+        json_path=cfg['paths']["train_json"],
+        db_dir=cfg['paths']["train_db_dir"],
+        builder=builder,
         encoder=encoder
     )
-    
+
+    # Super Node 모드: split 이전에 래핑해야 random_split 이 래핑된 데이터셋에 대한 Subset 을 반환한다.
+    if query_supernode:
+        logger.info("Query Super Node mode: injecting query nodes into graphs...")
+        full_train_dataset = BIRDSuperNodeDataset(full_train_dataset)
+
     # 9:1 분할 (내부 Validation 생성)
     train_size = int(0.9 * len(full_train_dataset))
     val_size = len(full_train_dataset) - train_size
@@ -227,15 +241,6 @@ def run_train(config_path: str):
 
     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=8, shuffle=False)
-
-    # 모델 준비
-    query_conditioned = cfg['model'].get('query_conditioned', False)
-    query_supernode = cfg['model'].get('query_supernode', False)
-
-    # Super Node 모드: base dataset을 BIRDSuperNodeDataset으로 래핑
-    if query_supernode:
-        logger.info("Query Super Node mode: injecting query nodes into graphs...")
-        full_train_dataset = BIRDSuperNodeDataset(full_train_dataset)
 
     train_log_cfg = cfg.get('training', {}).get('logging', {})
     enable_layer_stats = bool(train_log_cfg.get('enable_layer_stats', True))
@@ -252,6 +257,9 @@ def run_train(config_path: str):
         query_conditioned=query_conditioned,
         query_supernode=query_supernode,
         enable_stats=enable_layer_stats,
+        supernode_edge_direction=supernode_edge_direction,
+        supernode_topk=supernode_topk,
+        supernode_topk_criterion=supernode_topk_criterion,
         ).to(device)
     if query_conditioned:
         logger.info("Query-Conditioned GAT enabled (Concatenation mode)")

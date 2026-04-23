@@ -138,3 +138,17 @@ DECISIONS.md 말미에 "Analyzer 요청 큐" 섹션으로 남기거나, 사용�
 - [ ] 메트릭 표기가 R/P/F1 4자리인가
 - [ ] 변경 근거가 기존 분석 리포트에 존재하는가 (없다면 analyzer 요청 큐에 등록)
 - [ ] DECISIONS.md에 결정 로그를 남겼는가
+
+## 응답 말미 핸드오프 (루트 CLAUDE.md 공통 규칙 참조)
+
+루트 `## 응답 말미 핸드오프 정리` 규칙을 따른다. Planner 세션의 **기본 핸드오프 대상**은 다음 순으로 선택:
+
+| 상황 | 대상 | 지시 프롬프트 예시 |
+|------|------|-------------------|
+| PLAN 개정·Phase 전환이 확정되어 다음 실험을 돌릴 차례 | **root** | "먼저 /home/hyeonjin/thesis_refactored/CLAUDE.md 읽고, EXPERIMENT_PLAN.md §<n> 의 <실험 ID> 를 실행하라. Config: <경로>." |
+| 근거 부족 → 숫자가 필요 | **analyzer** | "먼저 src/analysis/CLAUDE.md 읽고, <구체 질문>. 데이터: <경로>, 저장: notebooks/analysis_results/<topic>.md, 의도: PLAN §<n> 우선순위 결정." |
+| 모듈 내부 구현 변경이 선행 조건 | **module:<name>** | "먼저 src/modules/<name>/CLAUDE.md 와 DECISIONS.md 의 <날짜-제목> 항목 읽고, <구현 초안>을 반영하라." |
+| 사용자의 의사결정(지도교수 피드백 반영 등)이 필요 | **user** | "<선택지/질문 요약> — advisor_inputs/_draft.md 또는 DECISIONS.md <링크> 참조." |
+| 결정 근거는 모였지만 즉시 실행할 단계가 아직 없음 | 추가 세션 호출 불필요 | (DECISIONS.md 엔트리 링크만 제시) |
+
+**금지**: Planner가 코드 수정·실험 실행·HISTORY 갱신을 직접 지시하는 핸드오프를 user나 module에 건너뛰고 주지 않는다 (해당 작업은 모두 root 경유).

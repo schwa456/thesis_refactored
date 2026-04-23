@@ -280,7 +280,13 @@
 - [x] `EXPERIMENT_PLAN.md` 갱신 — **approved (2026-04-21)**, 루트 세션 에스컬레이션 프롬프트 §9 준비 완료
 - [x] `planning/DECISIONS.md` 엔트리 추가 (초기본 + 답변 수렴 후속본)
 - [ ] 모듈 PLAN 에스컬레이션 — Selector / Builder 세션 (§9 프롬프트 준비 완료, 사용자 실행)
-- [ ] 신규 실험 제안서 — Proposal A~F, `planning/proposals/` 에 별도 작성 필요 (A/F/C 우선)
+- [x] 신규 실험 제안서 — Proposal A~F, [`planning/proposals/`](../proposals/) 작성 완료 (2026-04-21)
+  - [abl_sel_rawscore_stagewise.md](../proposals/abl_sel_rawscore_stagewise.md) — 우선순위 1
+  - [abl_ext_steiner_backbone_report.md](../proposals/abl_ext_steiner_backbone_report.md) — 우선순위 2
+  - [abl_sel_diameter_layers.md](../proposals/abl_sel_diameter_layers.md) — 우선순위 3
+  - [abl_sel_supernode_directed.md](../proposals/abl_sel_supernode_directed.md) — 우선순위 4
+  - [abl_sel_supernode_topk.md](../proposals/abl_sel_supernode_topk.md) — 우선순위 5
+  - [abl_bld_t2t_edge.md](../proposals/abl_bld_t2t_edge.md) — 우선순위 6 (시간 여유 시)
 - [x] HISTORY/CATALOG/ID_MIGRATION — 실험 실행 시점에 루트 세션이 갱신 (memory rule)
 - [ ] 논문 초안 수정 — 의견 1 의 α-ablation 축을 §IV Experiments 에 추가 (approved, 루트 세션 위임)
 - [x] Analyzer 요청 — §9 에 등록 (cumulative 정의 Q3 반영)

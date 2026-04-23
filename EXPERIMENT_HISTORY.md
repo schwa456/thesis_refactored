@@ -635,6 +635,91 @@ Builder 모듈 세션에서 3개 인프라 제안을 일괄 구현. 모두 **인
 
 ---
 
+### 6-20.b. Builder Phase A 보강 — B-II.b T2T toggle / B-III.b Schema diameter — 2026-04-21
+
+지도교수 2026-04-21 미팅 §4 의견 2 처방을 Builder 인프라에 흡수. 두 항목 모두 빌더 단독 인프라 (downstream consumer 가 추후 활용).
+
+#### B-II.b — Base heterograph T2T edge toggle
+
+**구현**: `HeteroGraphBuilder.__init__(add_t2t_edges: bool = True)` 추가. False 시 base graph 와 PCST flat 표현 모두에서 `(table, table_to_table, table)` macro edges 가 제거됨. `EnrichedHeteroGraphBuilder` / `TripletGraphBuilder` / `RFMCompatibleBuilder` 모두 super().__init__(**kwargs) 통해 자동 전파. `LineGraphBuilder.skip_macro_edges` 와 **직교** (base on/off × line-graph on/off → 4 조합).
+
+**캐시 라우팅**: `bird_dataset.py` 가 `getattr(builder, "add_t2t_edges", True) is False` 시 cache suffix `_no_t2t` 추가 → 기존 cache 와 충돌 없음.
+
+**스모크 결과** (`scripts/smoke_test_b2b_no_t2t.py`, california_schools):
+- `HeteroGraphBuilder`: T2T edges 4 → 0, total PCST 97 → 93, FK reachability 동일, schema_diameter 4 → 8 (FK→column→FK 우회 거리)
+- `EnrichedHeteroGraphBuilder`: 동일 결과
+- HeteroData T2T edge type properly absent when off
+- `metadata['add_t2t_edges']` 가 사용 중인 값 그대로 노출
+
+**해석**: schema_diameter 가 4→8 로 정확히 두 배 증가하는 것이 핵심 신호. T2T 가 짧은 경로를 제공해 메시지 패싱이 빠르게 over-smoothing 으로 수렴할 가능성 시사. QCondGAT 재학습 시 num_layers 효과 분리 가능.
+
+**ID**: `abl_build_05_no_t2t` — anchor `s03_a07_01_enriched_gat` (E1, F1 0.7327). **주의**: anchor checkpoint 는 T2T 포함 그래프로 학습됨 → distribution shift 가능, recall 하락 시 GAT 재학습 필요.
+
+#### B-III.b — Full-hetero Schema Graph Diameter precompute
+
+**구현**: `HeteroGraphBuilder._compute_schema_diameter(table_to_id, col_to_id, fk_to_id, pcst_edges)` 추가. PCST flat indexing 의 모든 edge 를 무방향 sparse matrix 로 구성 → `scipy.sparse.csgraph.shortest_path(directed=False, unweighted=True)` 로 all-pairs 거리 계산 → per-node eccentricity (최대 finite 거리) 계산 → `schema_diameter = max(eccentricity)`. Disconnected component 자연스럽게 처리 (component 별 max 의 max).
+
+**메타키 (모든 빌더 공통)**:
+| 키 | 타입 | 설명 |
+|----|------|------|
+| `schema_diameter` | int | 전체 hetero graph 무방향 D_max |
+| `schema_eccentricity` | `Dict[flat_idx, int]` | 노드별 max finite shortest-path |
+
+**Table-only FK subgraph diameter** 는 의미가 다르므로 (join-path receptive field vs GAT depth) 별도 sub-task 로 분리, 본 라운드 미포함.
+
+**스모크 결과** (`scripts/smoke_test_b3b_diameter.py`): BIRD-Dev 11 DB D_max 프로파일링 완료.
+
+| db_id | T | C | FK | D_max | ecc_med | ecc_max |
+|-------|---|----|----|------|---------|---------|
+| debit_card_specializing | 5 | 21 | 1 | **3** | 2 | 3 |
+| california_schools | 3 | 89 | 2 | **4** | 3 | 4 |
+| card_games | 6 | 115 | 4 | **4** | 3 | 4 |
+| thrombosis_prediction | 3 | 64 | 2 | **4** | 4 | 4 |
+| financial | 8 | 55 | 8 | **5** | 5 | 5 |
+| toxicology | 4 | 11 | 5 | **5** | 4 | 5 |
+| codebase_community | 8 | 71 | 13 | **5** | 4 | 5 |
+| formula_1 | 13 | 94 | 19 | **6** | 5 | 6 |
+| european_football_2 | 7 | 199 | 31 | **6** | 4 | 6 |
+| student_club | 8 | 48 | 8 | **6** | 5 | 6 |
+| superhero | 10 | 31 | 11 | **6** | 5 | 6 |
+
+**D_max 분포**: min=3 / median=5 / mean=4.91 / max=6.
+
+**핵심 시사점**:
+- 현재 GAT default `num_layers=3` 은 11 DB 중 **debit_card_specializing 단 1개** 에만 충분 (D_max=3). 나머지 10 개 DB 에서 distant gold 노드의 NLQ 신호 흐름이 차단될 수 있음. QCondGAT 의 over-smoothing 진단(s06)과 별개로, **shallow-bias** 도 동시 작용 가능성.
+- 분포가 [3, 6] 구간으로 좁음 → advisor proposal C 의 `num_layers ∈ {1, 2, 3, D_max, D_max+1}` 스윕은 사실상 [1, 7] 범위로 한정됨. DB 별 자동 튜닝 효과를 측정하기 위해 fixed-vs-adaptive 비교 셀 필요.
+- ecc_med ≈ ecc_max 인 DB (financial, thrombosis_prediction, toxicology) 은 그래프가 길쭉(linear-like) → adaptive depth 효과 제한적. 반면 superhero (T=10, ecc_med=5, ecc_max=6) 처럼 wide 구조에서는 eccentricity 기반 per-node depth control 가능성.
+
+**활용 (하류)**: Selector QCondGAT 의 `num_layers ∈ {1, 2, 3, D_max, D_max+1}` 자동 스윕 (advisor proposal C). 큰 D_max DB 에서는 over-smoothing 재등장 위험 → Selector 세션이 별도 ablation.
+
+**ID**: `abl_build_06_diameter_meta` — anchor `s03_a07_01_enriched_gat` (E1, F1 0.7327). 메타키 추가만, 파이프라인은 무시 → behavioral identical to E1 (regression marker).
+
+#### 공통
+
+- 인터페이스 계약 유지: 두 항목 모두 metadata 키 추가만, 기존 키 변경 없음.
+- 1 패스 원칙: `_compute_fk_reachability` 와 `_compute_schema_diameter` 가 build() 종료 직전 연속 호출. 비용 microsec 단위 (BIRD T<20).
+- LineGraphBuilder / RFMCompatibleBuilder 는 super().build() 통해 두 메타키 모두 자동 forward.
+
+#### 산출물
+
+- 코드: [src/modules/builders/graph_builder.py](src/modules/builders/graph_builder.py) (`add_t2t_edges` 인자 + `_compute_schema_diameter`), [src/data/bird_dataset.py](src/data/bird_dataset.py) (cache suffix `_no_t2t`)
+- 스모크: [scripts/smoke_test_b2b_no_t2t.py](scripts/smoke_test_b2b_no_t2t.py), [scripts/smoke_test_b3b_diameter.py](scripts/smoke_test_b3b_diameter.py)
+- Configs: [configs/experiments/abl/build/no_t2t/abl_build_05_no_t2t.yaml](configs/experiments/abl/build/no_t2t/abl_build_05_no_t2t.yaml), [configs/experiments/abl/build/diameter_meta/abl_build_06_diameter_meta.yaml](configs/experiments/abl/build/diameter_meta/abl_build_06_diameter_meta.yaml)
+- Selector 편의 캐시 writer: [scripts/build_diameter_cache.py](scripts/build_diameter_cache.py) → `data/processed/<split>_diameter.pt` (NAS symlink)
+- PLAN: [src/modules/builders/EXPERIMENT_PLAN_builders.md](src/modules/builders/EXPERIMENT_PLAN_builders.md) §B-II.b / §B-III.b
+- Advisor 근거: [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §4 의견 2
+
+#### Naming alignment (2026-04-21 사용자 결정)
+- B-II.b flag: `include_table_to_table` → **`add_t2t_edges`** (proposal `abl_bld_t2t_edge` §4.1 명칭 정합). default `True` 유지, 시맨틱 동일.
+- B-III.b: 기존 metadata 주입 + **별도 selector 편의 캐시** `data/processed/<split>_diameter.pt` (`{db_id: D_max}` dict). Enriched/triplet cache 와 동일 NAS-symlink 패턴.
+
+#### Cache writer scope (2026-04-21 사용자 결정)
+- **전체 11 DB build 는 GAT 학습 trigger 시점에 수행** (NAS 경합으로 첫 실행 시 7 min+ Dl wait, vLLM serve 와 충돌). 
+- 본 라운드 verification 은 **1-DB 미니멀 smoke** ([scripts/smoke_test_diameter_cache.py](scripts/smoke_test_diameter_cache.py)) 로 writer 로직만 검증 (california_schools D_max=4, payload 직렬화/symlink 왕복 OK).
+- `scripts/build_diameter_cache.py` 는 idempotent (캐시 존재 시 skip, `--force` 로 재빌드). GAT 학습 스크립트 (혹은 launcher) 가 학습 시작 시 한 번 호출하도록 분리 — root 세션에서 후속 정리.
+
+---
+
 ### 6-21. Selector S-V — Neurosymbolic Layer 1 (FK-reachability prior) — 2026-04-20
 
 Builder B-III (`metadata['fk_reachability']`) 직후 착수한 Selector 축 첫 구현. EnsembleSelector 에 **최소 침습**(single hook override) 으로 symbolic prior 를 주입.
@@ -1138,3 +1223,94 @@ LDBO oracle best_dev: B 0.6980@1 / C 0.6722@4 / D 0.7029@1 / E 0.6877@10.
 - 3축 분석 결과: `outputs/analysis/s06_bottleneck_b5_enriched/` (B5E 단독), `outputs/analysis/s06_bottleneck_merged/` (B0~B5+B5E cross-model 플롯)
 - 분석 문서: [notebooks/analysis_results/s06_bottleneck_b5_enriched_extension.md](notebooks/analysis_results/s06_bottleneck_b5_enriched_extension.md)
 - 스크립트: `src/analysis/gat_bottleneck_analysis_v2.py` (+ `--models` filter), `src/analysis/merge_b5e_bottleneck.py`
+
+---
+
+## 8. Wave 1.5 Stagewise Backfill — Extractor 축 통일 (2026-04-22)
+
+**Motivation**: Proposal A stagewise ablation matrix ([`notebooks/analysis_results/stagewise_qcond_ablation.md`](notebooks/analysis_results/stagewise_qcond_ablation.md) §1.1) 에서 EnsembleSelector (legacy cosine-only) vs QCond Projector GAT 대조 시 Extractor 축이 `ComponentAwareProductCostPCSTExtractor`(s04 원본) 와 `PCSTExtractor(Basic)`(legacy baseline) 사이에서 섞여 있어 **순수 Selector 축 기여 분리 불가**. 지도교수 피드백 ([`planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md`](planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §9 Root 행) 에 따라 Extractor 를 `PCSTExtractor(Basic)` 로 통일한 3 개 실험을 번들로 재실행.
+
+**Setup** (3 실험 공통):
+- Connectivity Extractor: `PCSTExtractor(Basic)` — `base_cost`=0.05, `belongs_to_cost`=0.01, `fk_cost`=0.05, `macro_cost`=0.5, `node_threshold`=0.1
+- Filter: `XiYanFilter` — `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8`, `max_iteration`=1, `temperature`=0.0, vLLM serving
+- Post-processing: `auto_join_keys=True`
+- BIRD-Dev 1,534 queries
+
+| # | Config ID | Selector | α | Recall | Precision | F1 | filter_mean |
+|---|-----------|----------|---|--------|-----------|------|-------------|
+| W1 | `s04_stagewise_ensemble_raw_a0` | EnsembleSelector (legacy cosine-only) | 0 | **0.6676** | **0.7236** | **0.6944** | 7.6959s |
+| W2 | `s04_stagewise_qcond_raw_basic` | EnsembleSelector (QCond encoder) | 0 | **0.6622** | **0.7539** | **0.7051** | 8.6349s |
+| W3 | `s04_stagewise_qcond_gat_basic` ★ | EnsembleSelector (QCond + GAT blend) | 0.85 | **0.8169** | **0.7605** | **0.7877** | 1.3908s |
+
+**Stagewise cumulative R/P/F1** (memory rule §4 G2):
+
+| Stage | ensemble_raw_a0 | qcond_raw_basic | qcond_gat_basic |
+|-------|-----------------|------------------|------------------|
+| Selector only | pending (analyzer reconstruction) | pending (analyzer reconstruction) | pending (analyzer reconstruction) |
+| + Extractor (no filter) | R=0.7785 P=0.1330 F1=0.2272 | R=0.7813 P=0.1752 F1=0.2862 | R=0.9651 P=0.1287 F1=0.2271 |
+| + Filter (final) | R=0.6676 P=0.7236 F1=0.6944 | R=0.6622 P=0.7539 F1=0.7051 | R=0.8169 P=0.7605 F1=0.7877 |
+
+**No-filter cell backfill (2026-04-22 16:29~17:04)**: NoneFilter 를 pass-through 로 세 config 를 재실행하여 Extractor 직후 상태 측정. W2 (GPU 0) 와 W3 (GPU 1) 은 vLLM 종료 후 병렬 실행 (약 7 분 단축). Config: `configs/experiments/s04_ablation/stagewise/no_filter/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}_no_filter.yaml`, Script: `scripts/run_wave15_no_filter.sh` (CUDA_VISIBLE_DEVICES=0,1). Output: `outputs/experiments/s04_ablation/stagewise/no_filter/<config>/metrics.txt`.
+
+**Filter 가 stage 에 기여한 Δ(F1)**:
+- W1: 0.2272 → 0.6944 (**+0.4672**)
+- W2: 0.2862 → 0.7051 (**+0.4189**)
+- W3: 0.2272 → 0.7877 (**+0.5605**) — 최대. XiYan Filter 가 Precision 0.1287 → 0.7605 (**+0.6318**) 끌어올리며 Recall 0.9651 → 0.8169 (−0.1482) 로만 손실. Selector+Extractor 단계에서 Recall ceiling 이 높을수록 Filter 의 Precision 정제 폭이 커진다는 관찰.
+
+Selector-only stage (W1/W2/W3 raw_seeds 행 3 cell) 는 `notebooks/analysis_results/stagewise_qcond_ablation.md` §4.2 **Open queue** 로 이관됨 (analyzer 3차 개정 2026-04-22 기준 §1.1 15 cell 중 **14 확정**, Selector-only 1 행만 pending). 재구성 방법: `output_*.jsonl` 의 `raw_seeds` 필드에서 gold 대비 R/P/F1 집계. 2026-04-28 발표 전에는 deferred — §5 3-stage 점진 gain 서사에 영향 없음. 발표 후 analyzer 다음 턴으로 지시 시 완성 가능.
+
+**핵심 관찰**:
+1. **QCond GAT (W3, α=0.85) F1=0.7877 — 현 시점 최고 tied** (abl_ens_basic_xiyan F1=0.7863 대비 +0.0014). Recall 이 **0.8169** 로 급등 (W1/W2 0.66대 → **+0.15**) 하면서 Precision 은 유지 (0.7605).
+2. **α=0 축 순수 QCond encoder 효과** (W1→W2): **F1 +0.0107** (0.6944→0.7051). Extractor 통일 조건에서 QCond encoder 가 Legacy cosine-only 대비 Precision +0.0303 개선 (0.7236→0.7539), Recall 동등 (0.6676→0.6622, −0.005).
+3. **GAT blend 기여** (W2→W3): α=0→α=0.85 로 **F1 +0.0826** (0.7051→0.7877). GAT score 블렌드가 Recall 증폭 — Basic PCST 가 noise 노드도 넓게 포함하는 상황에서 GAT positive 신호 노드가 seed 로 승격되어 downstream subgraph 에 올바른 노드 더 많이 포함.
+4. **W3 Filter 호출 감소 (91.6%)**: `filter_llm_calls_mean`=0.9159 vs W1/W2 ~1.0 (100%). `extractor_selected_nodes_mean`=83.84 (W1 51.25, W2 43.45) — Subgraph 자체는 크지만 일부 쿼리에서 filter skip (추가 분석 필요 — 조건 확인 후 §1.1 재작성에 반영).
+
+**Operational note — NAS folio wait stall (2026-04-22 01:17 ~ 13:25)**:
+- W3 첫 실행 시 쿼리 #505 부터 **filtering time 3800~3900s/query** 폭증, NAS (96% 포화, 1.1 TB 여유) `folio_wait_bit_common` 커널 대기로 1534 중 508 개에서 정체. vLLM 은 HTTP 200 정상.
+- 원인: `data/raw/BIRD_dev/` 가 `/SSL_NAS/peoples/khj/thesis/dev/` symlink. XiYan filter 의 `_build_mschema_with_values` 가 쿼리마다 NAS sqlite 읽기 → NFS folio 대기.
+- **해결**: symlink 제거 후 NAS → 로컬 `/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/` rsync 1.4 GB 복사 (~62 분). 재시작 후 `filter_mean` 7.70s → **1.39s** (5.5× 가속), `filter_max` 1908s → **7.15s**. 전체 실험 **46m 39s** (14:38:01 → 15:24:40) 에 완료.
+- 교훈: dev sqlite 가 NAS 에 있으면 NFS 포화 상태에서 XiYan filter 심각 stall. 향후 BIRD dev 는 로컬에 유지 (SSD `/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/` 1.4 GB).
+
+**논문 기여 매핑**:
+- "α=0 축 순수 Selector encoder 교체 효과 정량화" — §IV-B ablation 표에 W1 vs W2 cell 추가 근거.
+- "QCond + GAT blend (α=0.85) + Basic PCST + XiYan — **new top F1=0.7877**" — §IV-A main results 상단 수치 업데이트.
+- "Extractor 축 통일 후에도 QCond+GAT 의 Recall dominance (0.82 vs α=0 series 0.66)" — §V discussion 에서 "GAT 가 Filter recall floor 를 끌어올리는 메커니즘" 근거.
+
+**산출물**:
+- Configs: `configs/experiments/s04_ablation/stagewise/ensemble_raw_a0.yaml`, `qcond_raw_basic.yaml`, `qcond_gat_basic.yaml`
+- Script: `scripts/run_wave15_backfill.sh` (2026-04-22 audit 에서 `CUDA_VISIBLE_DEVICES` 2,3 → 0,1 정정 완료)
+- No-filter 변형: `configs/experiments/s04_ablation/stagewise/no_filter/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}_no_filter.yaml`, `scripts/run_wave15_no_filter.sh`
+- Metrics: `outputs/experiments/s04_ablation/stagewise/<config>/metrics.txt`, `outputs/experiments/s04_ablation/stagewise/no_filter/<config>/metrics.txt`
+- Logs: `logs/experiments/s04_ablation/stagewise/<config>/`, `logs/experiments/s04_ablation/stagewise/no_filter/<config>/`
+- Partial run backup (W3 stall 시점): `/tmp/qcond_gat_basic_partial_backup_20260422/` (508 쿼리, NAS stall 검증용)
+
+---
+
+## 9. Bug Fixes & Reproducibility Notes
+
+### §8-1. BIRDSuperNodeDataset split-order bug (fixed 2026-04-21)
+
+**요약**: `src/train_gat.py` 에서 `BIRDSuperNodeDataset(...)` 래핑이 `random_split(...)` **이후** 적용되어, train/val DataLoader 가 실제로는 **래핑되지 않은 원본** dataset (query_node 미주입, supernode edges 없음) 을 순회했음. `query_supernode=True` config 로 학습된 체크포인트는 SuperNode 경로를 학습 단계에서 전혀 exercise 하지 않은 상태.
+
+**원인**: PyTorch `torch.utils.data.random_split` 은 `Subset` 객체를 반환하며 생성 시점의 dataset reference 를 캡처한다. 따라서 `full_train_dataset = BIRDSuperNodeDataset(full_train_dataset)` 으로 변수에 재바인딩해도 이미 생성된 `Subset.dataset` 참조에는 전파되지 않는다. Dummy batch 는 wrap 직후 생성되어 모델 초기화만 SuperNode 구조로 수행, 정작 학습 루프는 vanilla GAT 로 흘렀다.
+
+**증상**: 학습 로그에 `Query Super Node mode` 가 찍히고 체크포인트도 `SN=True` 플래그로 저장되지만, 실제 파라미터는 SuperNode 유도 signal 을 학습하지 못함. Post-hoc inference 시 SuperNode 경로를 타더라도 해당 파라미터는 "초기화 상태 + vanilla GAT gradient 로만 간접 영향" 수준.
+
+**수정 (2026-04-21)**: wrap 블록을 split 이전으로 이동, flag 추출도 dataset load 이전으로 끌어올림. `src/train_gat.py` 라인 214~243 참고. s06 라인 학습 스크립트인 `src/train_gat_s06.py` 는 설계 당시부터 wrap-before-split 순서가 올바랐음 → **s06 a01_* 시리즈 (B0~B5/B5E) 는 영향 없음**.
+
+**재현성 의심 (suspect) 체크포인트 / 실험**:
+- **GAT 학습**: `T7` (`best_gat_query_supernode.pt`), `T9` (`best_gat_query_supernode_direct.pt`) — 둘 다 `src/train_gat.py` + `query_supernode=True` 로 학습.
+- **Enriched 라인의 SuperNode 변형**: `configs/training/train_gat_enriched_query_supernode.yaml` 기반 체크포인트가 존재한다면 동일 조건 — 재학습 필요.
+- **Downstream eval 파생 실험**: 위 체크포인트를 그대로 사용한 Q2 (`supernode_idea24_xiyan`), Q3 (`supernode_idea24_a085_xiyan`), Q5 (`supernode_idea24_a0_xiyan`), Q7 (`supernode_direct_idea24_xiyan`) — Selector/Extractor/Filter 수치는 버그 있는 weights 위에서 측정된 값이므로 수정본으로 재실행 전까지 "reproducibility suspect" 로 표기.
+
+**영향 없음 (unaffected)**:
+- s06 시리즈 전체 (`s06_a01_01` ~ `s06_a01_07` B0/B1/B2/B3/B4/B5/B5E) — `train_gat_s06.py` 로 학습.
+- `query_supernode=False` 계열 (T1~T6, T8, s06 B0~B5E 등).
+- V-2 smoke 체크포인트 `best_gat_enriched_v2_smoke.pt` (2026-04-21 재학습, 수정본 train_gat.py 사용) — `Val R@15=0.4471`, query_node stats 가 train 단계 로그에 찍혀 정상 동작 확인.
+
+**후속 조치**:
+1. V-2 `directed_from_sn` full-epoch 재학습 (수정본 코드, 20 epoch) → `best_gat_enriched_v2_directed.pt` 생성 후 과거 T7/T9 를 대체.
+2. V-3 `supernode_topk∈{3,5,10,20}` 실험은 수정본 코드 + top-k 기준 `raw` 로 새로 학습.
+3. Q2/Q3/Q5/Q7 결과는 V-2 full / V-3 peak 확정 이후 해당 체크포인트로 재실행하여 덮어쓸 예정. 그 전까지 논문 표/그래프에서 SuperNode 계열 수치는 인용 자제.
+
+**커밋 검증**: `src/train_gat.py` (line 214~243) wrap-before-split 순서 + flag 선추출 반영. Validation 로그 `logs/gat_enriched_v2_smoke/train/train_step.jsonl` 의 step 0~1060 query_node 항목(skip_ratio=0.5647, out_norm_mean, last_layer_delta=2.039 등) 이 실제 학습 step 동안 갱신되었음을 확인.

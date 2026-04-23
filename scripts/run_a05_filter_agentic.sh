@@ -48,7 +48,7 @@ for name in "${CONFIGS[@]}"; do
     echo "========================================"
     echo "  Running ${name}"
     echo "========================================"
-    PYTHONPATH=src CUDA_VISIBLE_DEVICES=2,3 python src/main.py --config "experiments/${BASE}/${name}"
+    PYTHONPATH=src CUDA_VISIBLE_DEVICES=0,1 python src/main.py --config "experiments/${BASE}/${name}"
     echo ""
 done
 

@@ -8,6 +8,82 @@
 
 ---
 
+## 2026-04-22 17:05 — Wave 1.5 no-filter backfill 완료 + Wave 2 Proposal C Option B (global D_max fixed sweep) 채택 + 병렬 실행 패턴 관찰
+
+- **결정**:
+  1. **(a) Wave 1.5 no-filter backfill 완료** — W1/W2/W3 3 config 의 `+Extractor (no filter)` 셀을 `NoneFilter` pass-through (LLM 호출 0) 로 실측 확정. HISTORY §8 stagewise cumulative 표 갱신 완료 — W1 F1=0.2272 / W2 F1=0.2862 / W3 F1=0.2271. **Filter Δ F1**: W1 +0.4672, W2 +0.4189, **W3 +0.5605 (최대)**. 운영: vLLM 종료 + 기존 sequential script kill (사용자 승인 완료) 후 GPU 0/1 병렬 실행으로 sequential 가정 대비 약 7 분 단축 (16:29→17:04, 총 35 분 소요).
+  2. **(b) Wave 2 Proposal C 실행 경로 = Option B (global D_max fixed sweep) 채택** — 제안서 [abl_sel_diameter_layers.md](proposals/abl_sel_diameter_layers.md) §4.2 의 "혹은 global fixed num_layers = max(D_max over all DBs) 로 먼저 스윕" 경로. **num_layers ∈ {1, 2, 3, 6, 7}** (6 = global D_max across BIRD dev 11 DBs per `data/processed/dev_diameter.pt`, 7 = D_max+1). H1 (global peak 존재) 만 본 wave 에서 검증하고 **H2 (per-DB dynamic peak shift) 는 deferred**.
+  3. **(c) 운영 패턴 관찰 채택** — Wave 1.5 no-filter 에서 관찰한 "LLM 미사용 + 서로 다른 GPU 배치 가능" 실험의 **GPU 0/1 병렬 실행 패턴** 을 향후 동일 조건 실험에 적용 고려. 제약: kill permission memory rule 상 script bash kill 은 사용자 명시 승인 필요 → permission prompt 사전 안내가 운영상 효율적.
+
+- **근거**:
+  - (a) 메트릭 출처: `outputs/experiments/s04_ablation/stagewise/no_filter/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}_no_filter/metrics.txt`. Cumulative 표: [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md#L1250). Analyzer 요청 맥락: [notebooks/analysis_results/stagewise_qcond_ablation.md](../notebooks/analysis_results/stagewise_qcond_ablation.md) §4 pending cells. 지도교수 G2 단계별 분해 규범: [advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §4 G2 + 2026-04-21 Q3 답변.
+  - (b) **Option A (per-DB dynamic) 를 채택하지 않은 이유**:
+    - `EnsembleSelector` 가 v1 `SchemaHeteroGAT` 를 하드코딩 ([src/modules/selectors/ensemble_selector.py:8,47-53](../src/modules/selectors/ensemble_selector.py)), v2 분기 부재.
+    - `select()` signature / 내부 경로에 `db_name` threading 없음 → runtime `resolve_num_layers(db_name)` hook 경로 미존재.
+    - `train_gat_s06.py` 도 v2 flag (`num_layers_mode`, `diameter_path`, `diameter_dict`) 를 config 로부터 forward 하지 않음.
+    - ⚠ 제안서 §5 Dependency 에 "planner 가 전제 인프라 완료로 표기" 한 것은 **실측 결과 선언이 앞섰다** — 선택자 세션 작업 필요 (하단 에스컬레이션 프롬프트 참조).
+  - (c) Wave 1.5 no-filter 운영 로그: HISTORY §8 L1253 "W2 (GPU 0) 와 W3 (GPU 1) 은 vLLM 종료 후 병렬 실행 (약 7 분 단축)".
+
+- **영향 범위**:
+  - **산출물 (root 세션 선제 작업 완료)**:
+    - Training configs (5): `configs/training/diameter_layers/train_qcond_nl{1,2,3,6,7}.yaml` — v1 `train_gat.py` 호환, `projector_state_dict` 동반 생성.
+    - Inference configs (5): `configs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}.yaml` — anchor `s04_04_qcond_a0_xiyan`, `weight_path` 만 변경.
+    - Scripts: `scripts/run_wave2_proposal_c.sh` (Phase 1 training, `VLLM_AUTOKILL=1` 지원), `scripts/run_wave2_proposal_c_phase2.sh` (Phase 2 inference, vLLM 재기동 선행).
+  - **예상 소요**: Phase 1 ~25h (5 × 5h) + Phase 2 ~3-4h (5 × 45min) = **~28-30h** → 2026-04-25 deadline 내 여유.
+  - **문서 반영**:
+    - [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md) — Stagewise cumulative 표 갱신 완료 (루트 세션).
+    - [EXPERIMENT_PLAN.md §4 Phase 0 Wave 2](../EXPERIMENT_PLAN.md#L116) — 본 엔트리에서 Option B 채택을 Proposal C 행에 명시 (L117 "num_layers ∈ {1,2,3,D_max,D_max+1} sweep" → 구체 셋 `{1,2,3,6,7}` 및 Option B 명기).
+    - [notebooks/analysis_results/stagewise_qcond_ablation.md](../notebooks/analysis_results/stagewise_qcond_ablation.md) §1.1 / §4 / §5 — analyzer 작업 중 (병렬 진행).
+  - **Scope 분리**: 본 결정으로 Wave 2 Proposal C 는 H1 만 검증, H2 는 Wave 2.5 또는 별도 mini-wave 로 분리 (Selector 인프라 완료 후).
+
+- **에스컬레이션 필요 여부**:
+  1. **Selector 세션 — per-DB dynamic num_layers 인프라 확장** (H2 해금 조건):
+     ```
+     먼저 /home/hyeonjin/thesis_refactored/src/modules/selectors/CLAUDE.md 를 읽어라.
+     작업: EnsembleSelector 에 SchemaHeteroGATv2 지원 분기를 추가하고, select() signature 또는 내부 경로에 db_name 을 통과시켜 런타임에 resolve_num_layers(db_name, active_num_layers) 가 호출되도록 한다.
+     근거: planning/proposals/abl_sel_diameter_layers.md §4.3, planning/DECISIONS.md 2026-04-22 17:05 (b) 항목.
+     성공 기준: Mode="D_max" 및 "D_max_plus1" 로 설정된 config 에서 inference 시 DB 별로 다른 depth 가 resolve 되어 forward pass 에서 사용되는지를 단위 테스트로 검증.
+     블로커: train_gat_s06.py 역시 v2 flag forward 가 누락 — 루트에 escalate 필요 시 노트.
+     ```
+  2. **Analyzer 세션 (Phase 2 완료 후 예정)** — 5-cell F1/R/P curve + peak 위치 식별 + DB 별 D_max 대비 peak alignment 리포트. 대상: `outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}/metrics.txt` + `output_*.jsonl`. 저장: `notebooks/analysis_results/diameter_layers_sweep.md`. 의도: H1 검증 + Option A (H2 mini-wave) 재개 판단 근거.
+  3. **Root 세션** — Wave 2 Proposal C Phase 1/2 kickoff 실행 + 실행 후 HISTORY/CATALOG/ID_MIGRATION 3종 동기 갱신 (memory rule).
+
+- **추가 필요 분석**:
+  - Analyzer 큐 (기존 유지): `stagewise_qcond_ablation.md` §1.1 `Selector only` 행 reconstruction (`output_*.jsonl.raw_seeds` 기반). 직전 엔트리 이후 유효.
+  - Analyzer 큐 (예약, Phase 2 완료 후): 위 에스컬레이션 2번.
+
+---
+
+## 2026-04-22 — Wave 1.5 closed, 새 전체 최고 F1=0.7877 / Wave 2 Selector ablation 큐 개시 / a05_filter_agentic 순연
+
+- **결정**:
+  1. Wave 1.5 stagewise Extractor 통일 backfill 종료 (2026-04-22 15:24). 3 셀 모두 완료, `s04_stagewise_qcond_gat_basic` F1=0.7877 이 **새 전체 최고** (기존 `abl_ens_basic_xiyan` F1=0.7863 대비 +0.0014). `EXPERIMENT_PLAN.md` §0 anchor 재지정, §4 Phase 0 Wave tracker 신설 및 Wave 1.5 closed 표시.
+  2. **Wave 2 개시 (Proposals C → D → E 순차)**. GPU 자원 경합 회피 + §8-1 SuperNode split-order bug 수정본 `train_gat.py` 기준으로 Proposal D/E 는 재학습 필수. Schedule ~2026-04-25 마감 목표.
+  3. **Wave 3 (Proposal F + Proposal A 확장)** 은 2026-04-26 ~ 28 발표 패키징 구간에 배치. Proposal F 는 analyzer 단독 (신규 실행 없음).
+  4. **Proposal B (T2T edge)** 는 Wave 3/4 로 순연. 스토리라인 우선순위 최하, 비용 (graph regen + GAT 재학습) ~11h, 2026-04-28 발표에 기여도 낮음.
+  5. **`a05_filter_agentic` 12 실험 전체 순연 (Wave 4, post-2026-04-28)**. 사유: (i) 2026-04-28 advisor forum scope = QCondGAT stagewise, filter agentic 은 별도 브리핑 대상. (ii) `~/.claude/plans/vivid-sprouting-sunbeam.md` anchor (`abl_ens_basic_xiyan`, F1=0.7863) 가 Wave 1.5 new top (`qcond_gat_basic`, F1=0.7877) 로 **outdated** → Wave 4 kickoff 전 filter 세션 에스컬레이션으로 plan anchor refresh 필수. (iii) Wave 2/3 와 GPU·vLLM 자원 동시 점유 불가.
+- **근거**:
+  - Wave 1.5 메트릭: `outputs/experiments/s04_ablation/stagewise/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}/metrics.txt`
+  - HISTORY 기록: [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md) (Wave 1.5 Stagewise Backfill)
+  - 발표 스토리라인 (A > F > C > D > E > B): [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §8 + 2026-04-21 Q4 답변
+  - 제안서 큐: `planning/proposals/abl_sel_{rawscore_stagewise,diameter_layers,supernode_directed,supernode_topk}.md` + `abl_ext_steiner_backbone_report.md` + `abl_bld_t2t_edge.md`
+  - SuperNode bug 범위: [EXPERIMENT_HISTORY.md §8-1](../EXPERIMENT_HISTORY.md) — T7/T9 checkpoint, Q2/Q3/Q5/Q7 재현성 의심. Proposal D/E anchor 재학습 전제.
+  - Filter agentic plan 전문: [~/.claude/plans/vivid-sprouting-sunbeam.md](/home/hyeonjin/.claude/plans/vivid-sprouting-sunbeam.md) 243 lines, 현재 anchor `abl_ens_basic_xiyan` F1=0.7863 (Wave 1.5 이전 기준).
+- **영향 범위**:
+  - `EXPERIMENT_PLAN.md` §0 anchor 테이블 + §4 "Phase 0 Active Waves" 신규 섹션 (본 커밋에서 반영).
+  - `EXPERIMENT_PLAN_selectors.md` — Wave 2 에서 소비. 선택자 세션이 Proposal C/D/E 구현 시 본 PLAN Phase 0 wave 스케줄 참조 필요 (모듈 PLAN 직접 수정은 해당 모듈 세션 책임).
+  - `~/.claude/plans/vivid-sprouting-sunbeam.md` — Wave 4 kickoff 전 anchor refresh 필요 (planner 는 초안만 제공, 실제 수정은 filter 모듈 세션).
+  - `notebooks/analysis_results/stagewise_qcond_ablation.md` — §1.1 5×3 매트릭스 재작성 (Wave 1.5 셀 주입 + caveat 제거 + new top 반영). Analyzer 큐에 등록.
+- **에스컬레이션 필요 여부**:
+  1. **analyzer 세션** — 본 DECISIONS 엔트리 §4번 세 번째 영향 범위 처리. 프롬프트 하단 (응답 말미 핸드오프) 참조.
+  2. **root 세션** — Wave 2 Proposal C 실행 kickoff (GAT 5 재학습 → 추론 평가 → HISTORY/CATALOG/ID_MIGRATION 갱신). 프롬프트 하단 참조.
+  3. **filter 모듈 세션 (지연 에스컬레이션)** — Wave 4 kickoff 시점 (2026-04-28 이후) 에 `vivid-sprouting-sunbeam.md` anchor refresh. 본 DECISIONS 엔트리가 대기 마커.
+- **추가 필요 분석**:
+  - Analyzer: Wave 1.5 3 셀의 cumulative Selector-only / +Extractor 단계 R/P/F1 재구성 (가능하면 `output_*.jsonl` `raw_seeds`/`extracted_subgraph` 필드로, 없으면 DEBUG 로그 경로). 이게 채워져야 5×3 매트릭스 전체가 고정됨.
+  - Selector 모듈: Proposal D/E 큐 진입 전 "§8-1 bug fix 적용된 `train_gat.py` 로 SuperNode anchor 재학습 후 inference 결과" 를 anchor 수치로 고정 (기존 s04_05 숫자 인용 금지).
+
+---
+
 ## 2026-04-21 — QCondGAT 피드백 Q1~Q4 수렴 + PLAN diff 4건 승인
 
 - **결정**: 직전 엔트리(QCondGAT 상세 ablation 지시) 의 4건 재확인 질문(§10) 에 대한 사용자 답변 수렴. §7 PLAN diff 4건 **모두 approved**. `EXPERIMENT_PLAN.md` 실제 수정을 루트 세션으로 위임.
