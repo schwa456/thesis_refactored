@@ -19,13 +19,12 @@ import json
 import os
 import sqlite3
 import time
-from typing import Dict, List, Any, Set, Iterable
+from typing import Dict, List, Any, Set, Iterable, Optional
 
 from modules.registry import register
 from modules.base import BaseFilter
 from modules.filters.agents import AgentUtils
 from modules.filters.tools.graph_tools import GraphTools
-from llm_client.api_handler import APIClient
 from prompts.prompt_manager import PromptManager
 from utils.logger import get_logger
 
@@ -40,19 +39,21 @@ class TieredBidirectionalAgentFilter(BaseFilter):
         temperature: float = 0.0,
         use_graph_context: bool = True,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = None,
-        base_url: str = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        provider: Optional[str] = None,
         **kwargs,
     ):
         self.model_name = model_name
         self.temperature = temperature
         self.use_graph_context = use_graph_context
         self.db_dir = db_dir
+        self.provider = provider
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key=api_key, base_url=base_url)
+        self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
         logger.info(
             f"Initialized TieredBidirectionalAgentFilter "
-            f"(tools={use_graph_context}, model={model_name})"
+            f"(tools={use_graph_context}, model={model_name}, provider={provider or 'auto'})"
         )
 
     def _schema_with_values(

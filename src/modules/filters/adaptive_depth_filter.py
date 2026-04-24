@@ -12,7 +12,7 @@ Inspired by adaptive computation (Graves 2016), ReFoRCE ambiguous deferral,
 and the uncertainty routing already present in AdaptiveMultiAgentFilter.
 """
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from modules.registry import register
 from modules.base import BaseFilter
@@ -36,13 +36,15 @@ class AdaptiveDepthFilter(BaseFilter):
         high_conf_threshold: float = 0.20,
         low_conf_threshold: float = 0.05,
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
-        api_key: str = None,
-        base_url: str = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        provider: Optional[str] = None,
         reflection_max_iteration: int = 1,
         **kwargs,
     ):
         self.high_conf_threshold = high_conf_threshold
         self.low_conf_threshold = low_conf_threshold
+        self.provider = provider
 
         self._fast = XiYanFilter(
             model_name=model_name,
@@ -51,6 +53,7 @@ class AdaptiveDepthFilter(BaseFilter):
             db_dir=db_dir,
             api_key=api_key,
             base_url=base_url,
+            provider=provider,
         )
         self._medium = ReflectionFilter(
             model_name=model_name,
@@ -59,6 +62,7 @@ class AdaptiveDepthFilter(BaseFilter):
             db_dir=db_dir,
             api_key=api_key,
             base_url=base_url,
+            provider=provider,
         )
         self._deep = TieredBidirectionalAgentFilter(
             model_name=model_name,
@@ -67,10 +71,11 @@ class AdaptiveDepthFilter(BaseFilter):
             db_dir=db_dir,
             api_key=api_key,
             base_url=base_url,
+            provider=provider,
         )
         logger.info(
             f"Initialized AdaptiveDepthFilter "
-            f"(high>={high_conf_threshold}, low<={low_conf_threshold})"
+            f"(high>={high_conf_threshold}, low<={low_conf_threshold}, provider={provider or 'auto'})"
         )
 
     def _estimate_confidence(

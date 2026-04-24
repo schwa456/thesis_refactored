@@ -8,6 +8,96 @@
 
 ---
 
+## 2026-04-24 — LLM 백엔드 vLLM Qwen3-Coder-30B → Live API GLM-4.7 (OpenAI 호환) 전환 + Anchor 전체 재정렬 (시즌 2 개시)
+
+- **결정**:
+  1. **(a) Filter 단 LLM 백엔드 교체** — vLLM `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` → **GLM-4.7 (Live API, OpenAI 호환)**. 사유: vLLM 콜드스타트 8~10h 소요 (HuggingFace 모델 캐시가 NAS 에 위치, NAS folio_wait_bit_common stall 동일 원인 — CLAUDE.md NAS 규칙 BIRD dev 로컬 SSD 예외와 같은 카테고리).
+  2. **(b) Anchor 전체 재정렬 (전략 A — 시즌 2 개시)** — vLLM era baseline (`s04_stagewise_qcond_gat_basic` F1=0.7877 등 8 cells) freeze, GLM era 로 단일 LLM 일관성 갖춘 새 baseline 시리즈 시작. 2026-04-28 발표 우선순위:
+     - ① **Sanity check** = `s04_04_qcond_a0_xiyan_glm` 1 cell (1534 queries) — GLM ↔ Qwen3 격차 정량화
+     - ② **Wave 2 Proposal C** 5 cell GLM 일괄 (`layers_L{1,2,3,6,7}_glm`)
+     - ③ `s04_stagewise_qcond_gat_basic_glm` 재실행 — §0 anchor 갱신
+  3. **(c) Wave 2 Proposal C sweep 도 GLM-4.7 로 처음부터 실행**. Phase 1 GAT 학습 (vLLM 무관, GPU 0/1) 완료 후 Phase 2 inference 즉시 시작 — **vLLM 재기동 8~10h 대기 완전 제거**.
+  4. **(d) ID 명명 규칙** = 기존 ID 에 `_glm` suffix (`s04_04_qcond_a0_xiyan_glm`, `layers_L{1,2,3,6,7}_glm`, `s04_stagewise_qcond_gat_basic_glm`). HISTORY 에 `LLM era` 컬럼 신설 (root 갱신).
+
+- **근거**:
+  - vLLM 콜드스타트 8~10h: 사용자 보고 (2026-04-24). HuggingFace cache 위치 = NAS, weight load 시 NAS 통신 stall. 이는 2026-04-22 관측된 BIRD dev XiYan filter 의 `folio_wait_bit_common` 커널 스톨과 동일 카테고리 (CLAUDE.md NAS 규칙 BIRD dev 로컬 예외 사유 참조).
+  - api_handler 호환성: [`src/llm_client/api_handler.py:15-20`](../src/llm_client/api_handler.py) `_PROVIDER_ENV_MAP` 에 `"glm": ("GLM_BASE_URL", "GLM_API_KEY")` + `"zhipu"` alias 이미 포함. OpenAI SDK chat.completions 호출 (`api_handler.py:141-150`) 그대로 작동 → **코드 변경 거의 없음**. config 의 provider/model 필드 + env 설정만 필요.
+  - 모델 동질성: GLM-4.7 ≠ Qwen3-Coder-30B → 기존 anchor 와의 직접 비교 무의미. 일관된 단일 LLM baseline 으로 시즌 2 시작이 논문 서사상 깔끔 (vLLM era 결과는 historical reference 보존).
+  - 운영 효율: Live API 전환 시 Phase 1 GAT 학습 (GPU 0/1) 과 Phase 2 inference (GPU 미사용) 가 자원 분리 → vLLM 메모리 경합 / 재기동 비용 / GPU 점유 모두 동시 해소.
+
+- **영향 범위**:
+  - **변경 산출물 (root 작업)**:
+    - `.env`: `GLM_BASE_URL`, `GLM_API_KEY` 추가 (사용자 값 제공 필요). git status 에 `.env.example` modified 표기 → 사용자 작업 중 가능성.
+    - Phase 2 configs 신규 (5 + sanity check + new anchor) — `_glm` suffix 별도 파일로 생성, 기존 configs 보존: `configs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}_glm.yaml`, `configs/experiments/s04_ablation/s04_04_qcond_a0_xiyan_glm.yaml`, `configs/experiments/s04_ablation/stagewise/qcond_gat_basic_glm.yaml`. 변경 항목: xiyan_filter `provider: glm` + `model: <glm-4.7 model id>`.
+    - `scripts/run_wave2_proposal_c_phase2.sh`: vLLM 헬스체크 (L11-14) → GLM endpoint 헬스체크 (간단한 `/v1/models` GET) 교체.
+    - `scripts/run_wave2_proposal_c.sh`: Phase 2 안내 (L100-108 vLLM 재기동) 제거.
+  - **문서 갱신 (root)**:
+    - `EXPERIMENT_PLAN.md` §0 anchor 표 — `vLLM era` / `GLM era` 분리 (vLLM era 는 historical archive). §4 Phase 0 Wave 2 — Phase 2 LLM = GLM 명시, "vLLM 재기동 필요" 표기 제거.
+    - `EXPERIMENT_HISTORY.md` — 신규 entries LLM era 컬럼, 기존 entries 는 `[vLLM era]` annotation.
+    - `EXPERIMENT_ID_MIGRATION.md` — `_glm` suffix 명명 규칙 등재.
+    - 루트 `CLAUDE.md` 의 vLLM 명시 구절 (XiYan = Qwen3-Coder-30B 표기 등) 갱신 — root 결정.
+  - **Wave 파급**:
+    - Wave 2: Phase 2 LLM 전환 (즉시 적용).
+    - Wave 3 Proposal F (analyzer 단독): LLM 영향 없음.
+    - Wave 3 Proposal A 확장: configs GLM 갱신 필요.
+    - Wave 4 a05_filter_agentic (post-2026-04-28): 다중 agent 호출 → GLM token cost 가장 큰 영향, budget 사전 추정 필수.
+  - **Scope 분리**: GLM era vs vLLM era 정량 비교는 sanity check 결과 기반 별첨 부록 (analyzer 작성). 본 wave sweep 은 GLM era 단독 시리즈.
+
+- **에스컬레이션 필요 여부**:
+  1. **Root 세션 (최우선)** — `.env` 설정 + configs/scripts 갱신 + Phase 1 nl7 종료 후 GLM 기반 sanity → sweep → anchor 재실행 + HISTORY 3종 갱신. 프롬프트:
+     ```
+     먼저 /home/hyeonjin/thesis_refactored/CLAUDE.md 와 planning/DECISIONS.md 2026-04-24 엔트리 읽어라.
+     작업 (순서):
+       (1) `.env` 에 GLM_BASE_URL + GLM_API_KEY 추가 (사용자에게 값 확인). `.env.example` 도 항목만 placeholder 로 동기화.
+       (2) 신규 configs 7 개 생성 (`_glm` suffix, 기존 보존):
+            - configs/experiments/s04_ablation/s04_04_qcond_a0_xiyan_glm.yaml (sanity check)
+            - configs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}_glm.yaml (5 cell sweep)
+            - configs/experiments/s04_ablation/stagewise/qcond_gat_basic_glm.yaml (new anchor 재실행)
+            xiyan_filter 섹션: provider="glm" + model="<glm-4.7 model id, 사용자 확인>".
+       (3) scripts/run_wave2_proposal_c_phase2.sh 의 vLLM 헬스체크 → GLM /v1/models 헬스체크. scripts/run_wave2_proposal_c.sh L100-108 vLLM 재기동 안내 제거.
+       (4) Phase 1 nl7 종료 확인 후, **Sanity check 우선 실행**: s04_04_qcond_a0_xiyan_glm 1 cell → outputs/.../metrics.txt 확인.
+            - 합격 (F1 ≥ 0.70): (5) 진행
+            - 불합격 (F1 < 0.70 or 큰 격차): planner 에스컬레이션 (prompt tuning 검토)
+       (5) Wave 2 Proposal C 5-cell sweep (layers_L{1,2,3,6,7}_glm) 실행.
+       (6) s04_stagewise_qcond_gat_basic_glm 재실행 → §0 anchor 후보 산출.
+       (7) HISTORY/CATALOG/ID_MIGRATION 3종 동기 갱신 — LLM era 컬럼 신설 + `_glm` suffix 등재. EXPERIMENT_PLAN.md §0 anchor 표 분리. 루트 CLAUDE.md vLLM 구절 갱신.
+     성공 기준: sanity + 5 cell + new anchor 재실행 모두 R/P/F1 (4자리) 측정.
+     리스크: GLM-4.7 token cost — sanity 결과 후 5 cell sweep 비용 추정 → 초과 시 planner 즉시 에스컬레이션.
+     ```
+  2. **Filter 모듈 세션 (조건부)** — Sanity check F1 < 0.70 시 XiYan filter prompt 가 Qwen3-Coder 에 over-fit 됐을 가능성 → GLM-4.7 용 prompt 조정. api_handler 자체는 변경 불필요.
+  3. **Analyzer 세션 (Phase 2 완료 후)** — `notebooks/analysis_results/diameter_layers_sweep.md` 작성 시 vLLM era ↔ GLM era 비교 부록 동반 (s04_04 anchor 동일 setup 의 LLM 만 다른 비교).
+
+- **추가 필요 분석**:
+  - GLM token cost 추정: XiYan prompt ~3k token × 1534 queries × 5 cell + sanity 1 + anchor 1 = 7 셀 × 1534 = ~10.7K calls × ~3K tokens = 약 32M input tokens. GLM-4.7 가격 사용자 확인 필요.
+  - Sanity check 후 LLM era 차이 정량 (s04_04_glm F1 vs vLLM era 동 anchor F1) — 발표 슬라이드 필요시.
+
+- **사용자에게 확인 필요 항목** (root 세션이 진행 전 받아야 할 정보):
+  - GLM-4.7 정확한 model id (예: `glm-4-flash` / `glm-4-plus` / `glm-4-air` / `GLM-4.7` 등 — Zhipu API 공식 모델명)
+  - `GLM_BASE_URL` 값 (Zhipu 표준은 `https://open.bigmodel.cn/api/paas/v4`)
+  - `GLM_API_KEY` (root 에서 .env 직접 작성 시 사용자 직접 입력)
+  - Sanity check 우선 수행 동의 여부 (default: 권장. 사용자가 "5 cell 일괄 실행" 명시 시 skip 가능)
+
+- **사용자 답변 (2026-04-24 후속 수렴)**:
+  1. **Model id** = `zai-org/glm-4.7` (HuggingFace 스타일 vendor-namespace 식별자). configs 의 `model` 필드 + API 호출 시 `model="zai-org/glm-4.7"` 그대로 전달.
+  2. **Base URL** = `https://mlapi.run/abc-1234-xyz/v1/chat/completions` (사용자 보고 raw 값). ⚠ **OpenAI SDK 동작 caveat**: SDK 는 `base_url` 에 자동으로 `/chat/completions` 를 append ([api_handler.py:106-109](../src/llm_client/api_handler.py)). 표준 사용 형식은 `GLM_BASE_URL="https://mlapi.run/abc-1234-xyz/v1"` (SDK 가 `POST /v1/chat/completions` 자동 호출). Root 세션 sanity check 시:
+     - 1차 시도: `GLM_BASE_URL=https://mlapi.run/abc-1234-xyz/v1` (표준)
+     - 404 시 2차 시도: 사용자 raw 값 그대로 (mlapi.run 가 비표준일 가능성)
+     - 결과 planner 에 보고 → DECISIONS 후속 보강
+  3. **API key** = 사용자가 `.env` 에 직접 편집. Root 는 `os.getenv("GLM_API_KEY")` 로딩 여부만 검증, `.env` 직접 수정 금지.
+  4. **Sanity check** = 진행 승인. 1 cell (`s04_04_qcond_a0_xiyan_glm`, 1534 queries) → F1 ≥ 0.70 합격 시 sweep, 그 미만이면 planner 에스컬레이션.
+  5. **GLM token cost**:
+     - Input: ₩630 / 1M tokens, Output: ₩3,000 / 1M tokens
+     - 추정 (XiYan avg ~3K input + ~200 output tokens / query):
+       | 구간 | Queries | Input | Output | 합계 |
+       |------|---------|-------|--------|------|
+       | Sanity 1 cell | 1,534 | ₩2,899 | ₩921 | ~₩3,820 |
+       | Sweep 5 cell | 7,670 | ₩14,497 | ₩4,602 | ~₩19,100 |
+       | New anchor 1 cell | 1,534 | ₩2,899 | ₩921 | ~₩3,820 |
+       | **총 7 cell** | **10,738** | **₩20,295** | **₩6,444** | **~₩26,740 (≈$19 USD)** |
+     - **Budget 안전**. Wave 4 a05_filter_agentic (multi-agent 3-5× LLM call/query) 은 별도 추정 (post-2026-04-28, filter 모듈 세션 작업).
+
+---
+
 ## 2026-04-22 17:05 — Wave 1.5 no-filter backfill 완료 + Wave 2 Proposal C Option B (global D_max fixed sweep) 채택 + 병렬 실행 패턴 관찰
 
 - **결정**:

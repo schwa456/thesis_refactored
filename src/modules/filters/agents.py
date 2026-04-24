@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional, Set
 from modules.registry import register
 from modules.base import BaseFilter
 from prompts.prompt_manager import PromptManager
+# APIClient 는 AgentUtils.token_snapshot() 에서 TOKEN_USAGE 조회용으로만 참조;
+# 필터 인스턴스의 client 생성은 BaseFilter._make_llm_client 로 위임.
 from llm_client.api_handler import APIClient
 from utils.logger import get_logger
 
@@ -120,12 +122,13 @@ class AgentUtils:
 # ==========================================
 @register("filter", "SingleAgentFilter")
 class SingleAgentFilter(BaseFilter):
-    def __init__(self, model_name: str, temperature: float, api_key: str = None, base_url: str = None, **kwargs):
+    def __init__(self, model_name: str, temperature: float, api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, **kwargs):
         self.model_name = model_name
         self.temperature = temperature
+        self.provider = provider
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key=api_key, base_url=base_url)
-        logger.info(f"Initialized SingleAgentFilter (Model: {model_name})")
+        self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
+        logger.info(f"Initialized SingleAgentFilter (Model: {model_name}, Provider: {provider or 'auto'})")
 
     def refine(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> Dict[str, Any]:
         t_start = time.perf_counter()
@@ -170,12 +173,13 @@ class SingleAgentFilter(BaseFilter):
 # ==========================================
 @register("filter", "AdaptiveMultiAgentFilter")
 class AdaptiveMultiAgentFilter(BaseFilter):
-    def __init__(self, model_name: str, uncertainty_threshold: float = 0.6, api_key: str = None, base_url: str = None, **kwargs):
+    def __init__(self, model_name: str, uncertainty_threshold: float = 0.6, api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, **kwargs):
         self.model_name = model_name
         self.threshold = uncertainty_threshold
+        self.provider = provider
         self.prompt_manager = PromptManager()
-        self.client = APIClient(api_key=api_key, base_url=base_url)
-        logger.info(f"Initialized AdaptiveMultiAgentFilter (Threshold: {self.threshold})")
+        self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
+        logger.info(f"Initialized AdaptiveMultiAgentFilter (Threshold: {self.threshold}, Provider: {provider or 'auto'})")
 
     def _call_agent(self, prompt: str) -> dict:
         response = self.client.generate_text(prompt=prompt, model=self.model_name, temperature=0.1)

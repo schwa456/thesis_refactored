@@ -108,6 +108,21 @@ class BaseFilter(ABC):
         """
         pass
 
+    @staticmethod
+    def _make_llm_client(
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        provider: Optional[str] = None,
+    ):
+        """LLM-backbone provider 스위치를 일관되게 처리하는 APIClient 팩토리.
+
+        provider: "vllm" | "openai" | "glm" | "zhipu" | None.
+        None 이면 기존 VLLM/OPENAI env fallback 을 그대로 따른다.
+        caller 가 api_key/base_url 을 명시하면 provider 의 env pair 를 override.
+        """
+        from llm_client.api_handler import APIClient
+        return APIClient(api_key=api_key, base_url=base_url, provider=provider)
+
 # ==========================================
 # 7. SQL Generator
 # ==========================================

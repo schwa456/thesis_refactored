@@ -10,10 +10,20 @@ def _empty_usage() -> Dict[str, int]:
     return {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "calls": 0}
 
 
+# Provider → (BASE_URL env var, API_KEY env var)
+# base_url env 가 None 이면 OpenAI SDK 기본 endpoint 사용 (OpenAI 공식 API).
+_PROVIDER_ENV_MAP: Dict[str, tuple] = {
+    "vllm":   ("VLLM_BASE_URL",  "VLLM_API_KEY"),
+    "openai": (None,             "OPENAI_API_KEY"),
+    "glm":    ("GLM_BASE_URL",   "GLM_API_KEY"),
+    "zhipu":  ("GLM_BASE_URL",   "GLM_API_KEY"),  # alias
+}
+
+
 class APIClient:
     """
     LLM (텍스트 생성) 및 PLM (텍스트 임베딩) 호출을 전담하는 통신 클라이언트입니다.
-    OpenAI 표준 규격을 따르므로 vLLM, Ollama, OpenAI, DeepSeek API 모두에 호환됩니다.
+    OpenAI 표준 규격을 따르므로 vLLM, Ollama, OpenAI, Zhipu GLM 등에 호환됩니다.
     """
 
     # 모든 인스턴스에서 공유되는 누적 토큰 사용량 (파이프라인 종료 시 요약용)
@@ -56,11 +66,24 @@ class APIClient:
             f"[LLM usage] model={model} input={prompt} cached={cached} output={completion}"
         )
 
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        # If caller passes an explicit base_url, we're talking to a non-default
-        # endpoint — don't mix in VLLM credentials (local setup convenience).
-        # Otherwise VLLM env takes priority for backward-compatible local runs.
-        if base_url is not None:
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None):
+        # 우선순위:
+        #   1. provider 가 지정되면 _PROVIDER_ENV_MAP 에서 env pair 를 로드
+        #      (caller 가 api_key/base_url 을 같이 넘기면 그것이 override)
+        #   2. base_url 만 지정되면 외부 endpoint 직접 지정 — OPENAI_API_KEY 로 붙음
+        #   3. 그 외엔 기존 fallback: VLLM env 우선 → OPENAI env
+        if provider is not None:
+            key = provider.lower()
+            if key not in _PROVIDER_ENV_MAP:
+                raise ValueError(
+                    f"Unknown LLM provider '{provider}'. Valid: {list(_PROVIDER_ENV_MAP)}"
+                )
+            url_env, key_env = _PROVIDER_ENV_MAP[key]
+            resolved_url = os.getenv(url_env) if url_env else None
+            resolved_key = os.getenv(key_env)
+            self.base_url = base_url or resolved_url
+            self.api_key = api_key or resolved_key or "sk-missing"
+        elif base_url is not None:
             self.api_key = api_key or os.getenv("OPENAI_API_KEY") or "sk-missing"
             self.base_url = base_url
         else:
@@ -74,8 +97,11 @@ class APIClient:
                 os.getenv("VLLM_BASE_URL")
                 or os.getenv("OPENAI_BASE_URL")
             )
-        
-        logger.info(f"Initializing API Client... (Base URL: {self.base_url if self.base_url else 'Default OpenAI'})")
+
+        logger.info(
+            f"Initializing API Client... (Provider: {provider or 'auto'}, "
+            f"Base URL: {self.base_url if self.base_url else 'Default OpenAI'})"
+        )
         
         self.client = OpenAI(
             api_key=self.api_key,
