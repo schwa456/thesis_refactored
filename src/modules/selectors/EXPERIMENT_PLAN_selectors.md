@@ -485,6 +485,8 @@ selector:
 
 #### H2 subtask — inference-only per-DB dynamic (2026-04-22 추가)
 
+> **Status: closed (2026-04-26).** Selector impl truncate forward 2 cell 실측 결과 partial neutral + nl=7 truncate training mismatch 확인. 2026-04-25 H2 원래 가설 (naive resolve(db)=D_max) 기각 결정 유지, truncate mechanism 도 anchor 갱신 임계 미달. 본 selector 세션이 구축한 인프라 (EnsembleSelector v2 분기 + db_name threading + truncate forward) 는 **H3 (schema feature → optimal depth predictor, future work)** 의 inference 단에 그대로 재활용 가능. 결과 표·H3 가이드는 본 H2 블록 마지막 §"2026-04-26 closure" 참조.
+
 **동기**: Wave 2 Phase 1 에서 `L ∈ {1, 2, 3, 6, 7}` 전역 고정 깊이 5-cell sweep 을 재학습. 동일 체크포인트를 재사용하여 재학습 없이 H2 ("극단 D_max DB 에서 per-DB 맞춤 깊이가 전역 고정보다 높은가") 를 측정하기 위한 **inference-time early-exit** 경로를 구현.
 
 **구현 (2026-04-22)**:
@@ -516,6 +518,46 @@ selector:
 **Smoke test**: `scripts/smoke_test_per_db_dynamic.py` — (1) diameter 분포 로그, (2) forward early-exit/clamp 동작, (3) `_resolve_active_depth` 정책표 (체크포인트 로드 없이 stub 으로). **Pass 확인 2026-04-22**.
 
 **Wave 2.5 mini-sweep 과의 관계**: 본 subtask 는 inference 경로 (ckpt 재사용). Phase 2 결과에 따라 필요 시 per-DB dynamic 전용 재학습(batch sampler + per-sample depth resolve, 본 V-1 §구현) 으로 승격. 현 시점엔 그 비용을 치르지 않고 H2 가설만 먼저 측정.
+
+**2026-04-24 추가 (Phase 전환 §결정 (c) 에스컬레이션 수행)**:
+- `EnsembleSelector` 에 `gat_version: str = "v1"` 스위치 + `gat_v2_kwargs: dict | None` 주입 경로 추가. `v2` 선택 시 `SchemaHeteroGATv2` 를 instantiate 하며 기본값은 `num_layers_mode="fixed"` 로 두어 selector 쪽 `_resolve_active_depth` 가 단일 depth 소스로 유지됨 (model 내부 lookup 비활성).
+- **체크포인트 호환 확인**: v1 과 v2 의 state_dict 는 default option (`pairnorm='none'`, `jumping_knowledge='none'`, `dual_stream=False`, `initial_residual_alpha=0.0`) 하에서 **bit-wise 동일 key 198개**. 즉 `best_gat_qcond_nl{1,2,3,6,7}.pt` 5개 ckpt 를 v2 branch 에 그대로 로드 가능 → **신규 학습 0**.
+- `train_gat_s06.py` 에 `num_layers_mode`, `num_layers_fallback`, `diameter_path`, `diameter_dict` 4개 flag forward. 학습 기본은 `fixed` (global num_layers 로 훈련), 재학습이 필요하면 per-DB curriculum 도 가능하도록 hook 만 열어둠.
+- 새 smoke test: `src/modules/selectors/tests/test_h2_per_db_dynamic.py` — v1/v2 양쪽 branch 에서 실제 `best_gat_qcond_nl6.pt` 로드 후 `D_max` 모드로 3개 DB (D_max=3/5/6) 를 통과시켜 `last_resolved_depth` 가 **서로 다른 int** 로 분리되는지 + forward pass 가 에러 없이 완료되는지 검증. Fixed/Unknown-DB fallback branch 도 동시 커버. Pass 확인 2026-04-25.
+- H2 inference config 신규 2개 (root 세션 실행 대기):
+  - [layers_Ldbmax_glm.yaml](/home/hyeonjin/thesis_refactored/configs/experiments/s04_ablation/diameter_layers/layers_Ldbmax_glm.yaml) — `D_max` + nl=6 ckpt (primary H2 cell)
+  - [layers_Ldbmax_plus1_glm.yaml](/home/hyeonjin/thesis_refactored/configs/experiments/s04_ablation/diameter_layers/layers_Ldbmax_plus1_glm.yaml) — `D_max_plus1` + nl=7 ckpt (over-capacity-per-DB 회복 probe)
+
+**2026-04-26 closure — H2 작업 종료 + H3 future work 인계**:
+
+근거: planning/DECISIONS.md 2026-04-26 (후속) 엔트리 §결정 (a)~(c).
+
+실측 결과 (root 세션 2026-04-25 01:36~02:33, scripts/run_h2_truncate.sh):
+
+| Cell | R | P | F1 | ΔF1 vs L6_glm | ΔF1 vs analyzer recon | 분기 판정 |
+|------|---|---|---|---|---|------|
+| L6_glm (anchor, global fixed nl=6) | 0.5018 | 0.6939 | 0.5824 | — | +0.0019 | — |
+| analyzer recon (sweep 5-cell 재조합) | — | — | 0.5805 | -0.0019 | — | (보고용) |
+| **Ldbmax_glm** (D_max truncate, nl=6 ckpt) | 0.5036 | 0.7031 | **0.5869** | **+0.0045** | **+0.0064** | partial neutral (anchor 갱신 임계 미달) |
+| **Ldbmax_plus1_glm** (D_max+1 truncate, nl=7 ckpt) | 0.4778 | 0.6776 | **0.5604** | **-0.0220** | -0.0201 | 기각 확고 (training mismatch) |
+
+해석:
+- Ldbmax_glm: D_max=3/4/5 DB (944 q, 61.5%) 에서 selector impl truncate 가 analyzer recon (ckpt 부재 fallback) 대비 +0.0064 partial positive — H2 spirit 의 mechanism 자체는 fallback 보다 약간 낫지만, **anchor 갱신 임계 +0.005 미달** → 실용적 개선 한계.
+- Ldbmax_plus1_glm: 동일 truncate mechanism 인데 ckpt 만 nl=7 로 바꿨더니 sign 반전 (-0.0220). nl=7 ckpt 자체 over-smoothing 영향 (sweep 에서 nl=6 대비 ΔF1=-0.0062) 을 빼도 truncate mismatch 순효과 ~-0.0158 추정. **Over-smoothing 영향권 ckpt 의 truncate 는 추가 손실** — H3 ckpt 선정 가이드 근거.
+- 두 cell 모두 2026-04-25 H2 기각 결정 유지 (변경 없음).
+
+**H3 future work — schema feature → optimal depth predictor**:
+- 동기: H1 (global fixed) sweep peak = nl=D_max global=6, H2 (per-DB D_max) 는 partial neutral. 학술적 다음 step 은 학습된 predictor 가 schema feature (V/E/D_max/연결 패턴) 로부터 optimal depth 를 예측 → 단순 D_max 휴리스틱 대비 추가 이득 가능.
+- **본 H2 인프라 재활용 경로**:
+  - `EnsembleSelector` 의 `gat_version`/`gat_v2_kwargs` 분기 + `_resolve_active_depth(metadata)` hook → predictor 출력값을 `metadata['active_num_layers']` 또는 `metadata['db_id']` → 학습된 lookup 으로 주입하는 단계만 추가.
+  - `metadata['db_id']` threading (`pipeline/schema_linking.py:82`) 은 이미 `db_id` 이상 임의 schema feature 로 확장 가능 (e.g., `metadata['schema_features']`).
+  - Truncate forward mechanism (v1·v2 의 `active_num_layers` 인자) 은 이미 검증됨 (smoke test pass 2026-04-25).
+  - 즉 H3 의 inference 단은 **추가 인프라 0**, predictor 학습 (별도 head 또는 외부 MLP) 만 신규 작업.
+- **H3 ckpt 선정 가이드 (2026-04-26 nl=7 truncate 결과 근거)**:
+  - **Over-smoothing 영향권 ckpt (nl > D_max global = 6) 회피**. nl=7 ckpt 의 truncate mismatch 순효과 ~-0.0158 (over-smoothing 효과 분리 후) 가 직접 증거.
+  - 권장: nl=D_max global (BIRD dev: nl=6) 학습 ckpt 를 backbone 으로 두고, predictor 출력으로 `active_num_layers ∈ [1, D_max global]` 만 truncate.
+  - 학습 시 per-DB depth curriculum 은 본 selector 세션이 `train_gat_s06.py` 에 forward 한 `num_layers_mode` flag 로 선택지 제공됨 (현 시점엔 미사용).
+- 우선순위: H3 는 발표 후 작업 (post-2026-04-28). 본 PLAN §V-1 의 retraining 경로 (batch sampler 등) 와 통합하여 별도 mini-wave (Wave 2.5 또는 Wave 5) 로 승격 시 planner 에스컬레이션.
 
 ---
 

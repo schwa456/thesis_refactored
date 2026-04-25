@@ -7,6 +7,7 @@ from torch_geometric.data import HeteroData
 from modules.registry import register
 from modules.base import BaseSelector
 from models.gat_network import SchemaHeteroGAT
+from models.gat_network_v2 import SchemaHeteroGATv2
 from modules.projectors.dual_tower import DualTowerProjector
 from modules.encoders.token_encoder import TokenEncoder
 from modules.encoders.local_encoder import LocalPLMEncoder
@@ -16,6 +17,7 @@ logger = get_logger(__name__)
 
 
 NUM_LAYERS_MODES = {"fixed", "per_db_dynamic", "D_max", "D_max_plus1"}
+GAT_VERSIONS = {"v1", "v2"}
 
 
 @register("selector", "EnsembleSelector")
@@ -42,6 +44,8 @@ class EnsembleSelector(BaseSelector):
                  num_layers_mode: str = "fixed",
                  diameter_cache_path: Optional[str] = None,
                  num_layers_fallback: Optional[int] = None,
+                 gat_version: str = "v1",
+                 gat_v2_kwargs: Optional[Dict[str, Any]] = None,
                  **kwargs):
         super().__init__()
         self.alpha = alpha
@@ -54,6 +58,9 @@ class EnsembleSelector(BaseSelector):
         # Proposal C H2: per-DB dynamic num_layers (inference-time early-exit).
         if num_layers_mode not in NUM_LAYERS_MODES:
             raise ValueError(f"num_layers_mode must be in {NUM_LAYERS_MODES}, got {num_layers_mode}")
+        if gat_version not in GAT_VERSIONS:
+            raise ValueError(f"gat_version must be in {GAT_VERSIONS}, got {gat_version}")
+        self.gat_version = gat_version
         self.num_layers_mode = num_layers_mode
         self.num_layers_fallback = num_layers_fallback if num_layers_fallback is not None else num_layers
         self.diameter_dict: Dict[str, int] = {}
@@ -76,15 +83,32 @@ class EnsembleSelector(BaseSelector):
                 f"loaded {len(self.diameter_dict)} DB diameters from {diameter_cache_path} | "
                 f"fallback depth={self.num_layers_fallback}")
 
-        # GAT + Projector 로드 (GATClassifierSelector와 동일)
-        self.gat_model = SchemaHeteroGAT(
-            in_channels=in_channels,
-            hidden_channels=hidden_channels,
-            out_channels=out_channels,
-            num_layers=num_layers,
-            query_conditioned=query_conditioned,
-            query_supernode=query_supernode
-        ).to(self.device)
+        # GAT backbone — v1 (default) or v2 (Proposal C H2 와 s06 계열 확장 기능 공유).
+        # v1 과 v2 는 default options (pairnorm='none', JK='none', dual_stream=False, etc.)
+        # 하에서 state_dict key 가 동일하므로 기존 checkpoint 재활용 가능. 재학습 불요.
+        if gat_version == "v2":
+            v2_kwargs = dict(gat_v2_kwargs) if gat_v2_kwargs else {}
+            # Selector 가 depth resolution 을 단일 책임으로 가지므로 v2 모델 내부의 lookup 은 비활성.
+            # num_layers_mode="fixed" + active_num_layers override 로 동작 (v1 과 동일 경로).
+            v2_kwargs.setdefault("num_layers_mode", "fixed")
+            self.gat_model = SchemaHeteroGATv2(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=num_layers,
+                query_conditioned=query_conditioned,
+                query_supernode=query_supernode,
+                **v2_kwargs,
+            ).to(self.device)
+        else:
+            self.gat_model = SchemaHeteroGAT(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=num_layers,
+                query_conditioned=query_conditioned,
+                query_supernode=query_supernode
+            ).to(self.device)
 
         self.projector = DualTowerProjector(
             text_dim=in_channels,
@@ -107,9 +131,10 @@ class EnsembleSelector(BaseSelector):
         self.projector.eval()
 
         self.latest_scores = []
+        self.last_resolved_depth: Optional[int] = None
         logger.info(
             f"Initialized EnsembleSelector (alpha={alpha}, top_k={top_k}, "
-            f"num_layers={num_layers}, num_layers_mode={num_layers_mode})")
+            f"num_layers={num_layers}, num_layers_mode={num_layers_mode}, gat_version={gat_version})")
 
     def _resolve_active_depth(self, metadata: Dict[str, Any]) -> Optional[int]:
         """Proposal C H2: resolve per-query forward depth from metadata['db_id'].
@@ -193,6 +218,8 @@ class EnsembleSelector(BaseSelector):
                 q_emb = q_emb.unsqueeze(0)
 
             active_depth = self._resolve_active_depth(metadata)
+            # Proposal C H2 smoke / analysis hook — last resolved depth per forward pass.
+            self.last_resolved_depth = active_depth
 
             if self.query_supernode:
                 # Super Node 모드: query_node를 그래프에 동적 주입

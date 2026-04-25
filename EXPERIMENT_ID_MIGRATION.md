@@ -323,3 +323,36 @@ Spec: [src/modules/builders/EXPERIMENT_PLAN_builders.md](src/modules/builders/EX
 
 - `outputs/experiments/qcond_idea24_a0_xiyan/`, `outputs/experiments/supernode_idea24_a0_xiyan/`:
   더 이른 run. `experiment_` 접두사 버전이 canonical. 아카이브 → `outputs/archive/legacy_base_runs/`
+
+---
+
+## GLM era `_glm` suffix 규칙 (2026-04-24)
+
+LLM backbone 교체 (vLLM `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` → GLM-4.7 (`zai-org/glm-4.7`) via Elice ML API, OpenAI-compatible) 로 발생한 실험 시리즈. 기존 ID 에 **`_glm` suffix** 를 붙여 vLLM era 원본과 구분.
+
+### 명명 규칙
+- vLLM era anchor 가 존재하는 경우: `<original_id>_glm` (예: `s04_04_qcond_a0_xiyan` → `s04_04_qcond_a0_xiyan_glm`)
+- 새 sweep cell: 원본 명명 규칙 + `_glm` (예: `abl_sel_diameter_layers_nl{1,2,3,6,7}_glm`)
+- 파일 경로도 `_glm` suffix: `configs/.../layers_L{1,2,3,6,7}_glm.yaml`
+
+### GLM era 실험 목록 (2026-04-24 kickoff)
+
+| 신규 ID | vLLM era 대응 | 역할 | F1 |
+|---------|--------------|------|---:|
+| `s04_04_qcond_a0_xiyan_glm` | `s04_04_qcond_a0_xiyan` | GLM backbone sanity | 0.5768 |
+| `abl_sel_diameter_layers_nl1_glm` | — (new) | diameter sweep nl=1 | 0.5785 |
+| `abl_sel_diameter_layers_nl2_glm` | — (new) | diameter sweep nl=2 | 0.5510 |
+| `abl_sel_diameter_layers_nl3_glm` | — (new) | diameter sweep nl=3 | 0.5752 |
+| `abl_sel_diameter_layers_nl6_glm` | — (new) | diameter sweep nl=6 = D_max (peak) | **0.5824** |
+| `abl_sel_diameter_layers_nl7_glm` | — (new) | diameter sweep nl=7 = D_max+1 | 0.5762 |
+| `s04_stagewise_qcond_gat_basic_glm` | `s04_stagewise_qcond_gat_basic` | GLM era new anchor (전체 최고) | **0.8383** 🚀 |
+| `layers_Ldbmax_glm` (H2, 2026-04-25) | — (new, selector v2 `_resolve_active_depth`) | H2 truncate: nl=6 ckpt + D_max mode | 0.5869 |
+| `layers_Ldbmax_plus1_glm` (H2, 2026-04-25) | — (new, selector v2 `_resolve_active_depth`) | H2 truncate: nl=7 ckpt + D_max_plus1 mode | 0.5604 |
+
+### 경로 변경
+- Sanity (`s04_04_qcond_a0_xiyan_glm`) 와 new anchor (`s04_stagewise_qcond_gat_basic_glm`) 의 `_glm` variant 는 **`configs/experiments/s04_ablation/` 하위** 로 배치. 원본 `s04_gat_qcond_projector/` (sanity) / `s04_ablation/stagewise/` (anchor) 와 달리 GLM era 를 `s04_ablation` 클러스터로 통합 관리 (변경 전 원본 경로는 historical reference 로 보존).
+
+### Config 주의사항 (재현 필수)
+- diameter_layers 계열 yaml 은 반드시 `seed_selector.params.num_layers: N` 명시 (N∈{1,2,3,6,7}). `EnsembleSelector` default `num_layers=3` 이라 누락 시 N≠3 체크포인트에서 weight shape mismatch RuntimeError (2026-04-24 1회 full failure 원인).
+- `.env` 에 `GLM_BASE_URL=https://mlapi.run/<api_id>/v1` (SDK 표준 `/v1` suffix) + `GLM_API_KEY=<bearer>` 필수. Endpoint 는 `POST {GLM_BASE_URL}/chat/completions` (OpenAI SDK auto-append).
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 2 Proposal C GLM era kickoff (2026-04-24)](EXPERIMENT_HISTORY.md).

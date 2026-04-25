@@ -1,23 +1,33 @@
 #!/bin/bash
-# Wave 2 Proposal C — Phase 2 inference (XiYan filter, vLLM 필요)
-# 선행: Phase 1 (학습) 완료 + vLLM 재기동 완료
-# 출력: outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}/metrics.txt
+# Wave 2 Proposal C GLM era — Phase 2 inference (XiYan filter on GLM-4.7 Live API)
+# 선행: Phase 1 (학습) 완료 + .env 에 GLM_BASE_URL / GLM_API_KEY 설정
+# 출력: outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}_glm/metrics.txt
+# 근거: planning/DECISIONS.md 2026-04-24 LLM era transition
 
 set -u
 cd "$(dirname "$0")/.."
 
-# vLLM health check
-if ! pgrep -f "vllm.entrypoints.openai.api_server" > /dev/null; then
-    echo "[!] vLLM 서버가 실행 중이 아닙니다. 먼저 vLLM 기동 후 다시 실행하세요."
+# GLM endpoint health check (.env 의 GLM_BASE_URL / GLM_API_KEY 사용)
+set -a; source .env 2>/dev/null; set +a
+if [ -z "${GLM_BASE_URL:-}" ] || [ -z "${GLM_API_KEY:-}" ]; then
+    echo "[!] .env 에 GLM_BASE_URL / GLM_API_KEY 미설정."
     exit 1
 fi
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+    -H "Authorization: Bearer ${GLM_API_KEY}" "${GLM_BASE_URL}/models")
+if [ "${HTTP_STATUS}" != "200" ]; then
+    echo "[!] GLM endpoint ${GLM_BASE_URL}/models 응답 ${HTTP_STATUS}."
+    echo "    endpoint 형식(표준 /v1) 또는 api key 를 .env 에서 재확인하세요."
+    exit 1
+fi
+echo "[OK] GLM endpoint ready (${GLM_BASE_URL})"
 
 INFER_CFGS=(
-    "experiments/s04_ablation/diameter_layers/layers_L1"
-    "experiments/s04_ablation/diameter_layers/layers_L2"
-    "experiments/s04_ablation/diameter_layers/layers_L3"
-    "experiments/s04_ablation/diameter_layers/layers_L6"
-    "experiments/s04_ablation/diameter_layers/layers_L7"
+    "experiments/s04_ablation/diameter_layers/layers_L1_glm"
+    "experiments/s04_ablation/diameter_layers/layers_L2_glm"
+    "experiments/s04_ablation/diameter_layers/layers_L3_glm"
+    "experiments/s04_ablation/diameter_layers/layers_L6_glm"
+    "experiments/s04_ablation/diameter_layers/layers_L7_glm"
 )
 
 echo "========================================"

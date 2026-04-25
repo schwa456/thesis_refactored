@@ -94,10 +94,11 @@ outputs/experiments/s03_gat_ensemble/a09_topology_cost/s03_a09_01_topology_no_fi
 ## 실험 체계 (2×2×2 Ablation)
 - 축 1: Seed Scoring — Cosine vs Ensemble (α·cos + (1−α)·GAT, α=0.85)
 - 축 2: PCST — Basic (fixed θ=0.1) vs Adaptive (per-query P80)
-- 축 3: Filter — None vs XiYan (Qwen3-Coder-30B)
-- 8 cells 중 최고: **#6 E+Basic+X `abl_ens_basic_xiyan` (R=0.8149, P=0.7597, F1=0.7863)** — Basic PCST가 넓게 포함 → XiYan이 정밀 pruning. Adaptive PCST+XiYan(#8)은 F1=0.6987로 낮음.
+- 축 3: Filter — None vs XiYan (LLM backbone: vLLM era `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` / **GLM era (2026-04-24~)** `zai-org/glm-4.7` via Elice ML API, OpenAI-compatible)
+- 8 cells 중 vLLM era 최고: **#6 E+Basic+X `abl_ens_basic_xiyan` (R=0.8149, P=0.7597, F1=0.7863)** — Basic PCST가 넓게 포함 → XiYan이 정밀 pruning. Adaptive PCST+XiYan(#8)은 F1=0.6987로 낮음.
+- **GLM era 전체 최고** (2026-04-24): `s04_stagewise_qcond_gat_basic_glm` (R=0.8438, P=0.8329, F1=0.8383) — vLLM era best 대비 ΔF1=+0.0506. [EXPERIMENT_HISTORY.md Wave 2 Proposal C GLM era kickoff](EXPERIMENT_HISTORY.md) 참조.
 
-ID 체계 재정리 (2026-04-14): b0/s01-s05/abl 접두어는 [EXPERIMENT_ID_MIGRATION.md](EXPERIMENT_ID_MIGRATION.md) 참조
+ID 체계: 2026-04-14 재정리 (b0/s01-s05/abl 접두어) + 2026-04-24 `_glm` suffix (GLM era backbone 전환). [EXPERIMENT_ID_MIGRATION.md](EXPERIMENT_ID_MIGRATION.md) 참조.
 
 ## 논문
 - **학회**: 한국지능정보시스템학회 2026 춘계 학술대회 (Extended Abstract, cover + 3p)

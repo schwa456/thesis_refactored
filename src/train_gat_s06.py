@@ -186,6 +186,14 @@ def run_train(config_path: str):
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
     # Model
+    # Proposal C H2 (V-1 per-DB dynamic num_layers) config forward.
+    # 기본값 'fixed' 에서는 v1 SchemaHeteroGAT 과 bit-wise 동일 경로로 학습. 'D_max' /
+    # 'D_max_plus1' 은 diameter_dict 를 model 에 전달하여 runtime resolve. 학습 시에는 일반적으로
+    # 'fixed' (= global num_layers) 로 두고, inference 단계에서 selector/config 가 per-DB depth 를
+    # 해제하는 경로 (EnsembleSelector.num_layers_mode) 를 쓰는 것을 권장. 필요 시 학습 시에도
+    # per-DB depth curriculum 을 돌릴 수 있도록 forward 만 해 둔다.
+    diameter_path_cfg = cfg["model"].get("diameter_path")
+    diameter_dict_cfg = cfg["model"].get("diameter_dict")
     gat_model = SchemaHeteroGATv2(
         in_channels=cfg["model"]["in_channels"],
         hidden_channels=cfg["model"]["hidden_channels"],
@@ -199,13 +207,21 @@ def run_train(config_path: str):
         initial_residual_alpha=cfg["model"].get("initial_residual_alpha", 0.0),
         jumping_knowledge=cfg["model"].get("jumping_knowledge", "none"),
         dual_stream=dual_stream,
+        num_layers_mode=cfg["model"].get("num_layers_mode", "fixed"),
+        num_layers_fallback=cfg["model"].get(
+            "num_layers_fallback", cfg["model"]["num_layers"]
+        ),
+        diameter_path=diameter_path_cfg,
+        diameter_dict=diameter_dict_cfg,
     ).to(device)
 
     logger.info(
         f"[s06] model: QC={query_conditioned}, SN={query_supernode}, DS={dual_stream}, "
         f"PN={cfg['model'].get('pairnorm_mode', 'none')}, "
         f"α={cfg['model'].get('initial_residual_alpha', 0.0)}, "
-        f"JK={cfg['model'].get('jumping_knowledge', 'none')}"
+        f"JK={cfg['model'].get('jumping_knowledge', 'none')}, "
+        f"nl_mode={cfg['model'].get('num_layers_mode', 'fixed')}, "
+        f"|diameter_dict|={len(gat_model.diameter_dict)}"
     )
 
     classifier_types = ["table", "column", "fk_node"]

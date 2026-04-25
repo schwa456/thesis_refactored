@@ -16,7 +16,8 @@ ID 체계 및 폴더 구조: [`EXPERIMENT_ID_MIGRATION.md`](EXPERIMENT_ID_MIGRAT
 `base_cost=0.05, belongs_to_cost=0.01, fk_cost=0.05, macro_cost=0.5, percentile=80.0, min/max_prize_nodes=3/25, node_threshold=0.0`
 
 **Filter 공통** (XiYan):
-`model_name=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, max_iteration=1, temperature=0.0`
+- **vLLM era**: `model_name=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, max_iteration=1, temperature=0.0`
+- **GLM era** (2026-04-24~): `provider=glm, model_name=zai-org/glm-4.7, max_iteration=1, temperature=0.0` (Elice ML API via `GLM_BASE_URL`)
 
 ---
 
@@ -1076,4 +1077,36 @@ Frozen L_out (학습된 B5 GAT 의 마지막 layer 출력) 캐시 위에서 head
 - **결과**: LDBO val R@15 여전히 0.99+ (홀드아웃 train DB 가 "unseen" 역할 못 함). val-ES Dev AUC gap (LDBO vs query-random): B −0.003 / C −0.030 / D −0.006 / E +0.007.
 - **진단**: BIRD train DB 간 domain 다양성 ≪ train↔dev domain gap → **train 내부 LDBO 로는 realistic shift simulate 불가**.
 - Script: `src/analysis/b5_head_retrain.py --ldbo_frac 0.16 --train_json ...` / Runner: `scripts/run_b5_ldbo_diagnostic.sh`
+
+---
+
+## s04_ablation GLM era (2026-04-24)
+
+LLM backbone 전환 series — XiYan Filter 는 `provider=glm, model_name=zai-org/glm-4.7` (Elice ML API, OpenAI-compatible). Selector/Extractor hyperparameter 는 vLLM era 원본과 동일.
+
+#### `s04_04_qcond_a0_xiyan_glm` (sanity)
+- **Seed Selector**: `EnsembleSelector` — `weight_path`=outputs/checkpoints/best_gat_query_conditioned.pt, `alpha`=0.0, `top_k`=20, `query_conditioned`=true, `encoder_type`=plm
+- **Connectivity Extractor**: `ComponentAwareProductCostPCSTExtractor` — 기본 (bt=0.1, fk=0.2, macro=0.5, percentile=80, min/max_prize_nodes=3/25, node_threshold=0.0)
+- **Filter**: `XiYanFilter(provider=glm, model_name=zai-org/glm-4.7, max_iteration=1, temperature=0.0)`
+
+#### `abl_sel_diameter_layers_nl{1,2,3,6,7}_glm`
+- **Seed Selector**: `EnsembleSelector(alpha=0.0, num_layers=N, weight_path=outputs/checkpoints/best_gat_qcond_nl{N}.pt, top_k=20, query_conditioned=true, encoder_type=plm)` (N∈{1,2,3,6,7})
+- **Connectivity Extractor**: `ComponentAwareProductCostPCSTExtractor` (sanity 와 동일)
+- **Filter**: `XiYanFilter(provider=glm, model_name=zai-org/glm-4.7, max_iteration=1, temperature=0.0)`
+- **주의**: yaml 에 `num_layers: N` 명시 필수 (default=3 이면 N≠3 체크포인트에서 weight shape mismatch)
+
+#### `s04_stagewise_qcond_gat_basic_glm` (GLM era new anchor — 전체 최고 F1=0.8383)
+- **Seed Selector**: `EnsembleSelector(alpha=0.85, weight_path=best_gat_query_conditioned.pt, top_k=20, query_conditioned=true, encoder_type=plm)` (Wave 1.5 vLLM anchor 와 동일)
+- **Connectivity Extractor**: `PCSTExtractor` (Basic) — `base_cost=0.05, belongs_to_cost=0.01, fk_cost=0.05, macro_cost=0.5, node_threshold=0.1`
+- **Filter**: `XiYanFilter(provider=glm, model_name=zai-org/glm-4.7, max_iteration=1, temperature=0.0)`
+- **Post-processing**: `auto_join_keys=True`
+
+#### `layers_Ldbmax_glm` / `layers_Ldbmax_plus1_glm` (H2 truncate, 2026-04-25)
+- **Seed Selector**: `EnsembleSelector(alpha=0.0, num_layers=6|7, num_layers_mode=D_max|D_max_plus1, diameter_cache_path=data/processed/dev_diameter.pt, weight_path=best_gat_qcond_nl{6|7}.pt, query_conditioned=true, encoder_type=plm)` — v2 `_resolve_active_depth` hook 활성
+- **Connectivity Extractor**: `ComponentAwareProductCostPCSTExtractor` (sweep cell 과 동일)
+- **Filter**: `XiYanFilter(provider=glm, model_name=zai-org/glm-4.7, max_iteration=1, temperature=0.0)`
+- **Mechanism**: nl=6/7 ckpt 의 layer 수 per-DB 동적 truncate forward (D_max<N ckpt DB 도 동적 depth 로 inference — v2 분기 + `_resolve_active_depth` 사용)
+- **결과 (2026-04-25)**:
+  - `Ldbmax_glm` (D_max mode, nl=6 ckpt): R=0.5036 / P=0.7031 / **F1=0.5869** (ΔF1 vs L6_glm=+0.0045 partial neutral)
+  - `Ldbmax_plus1_glm` (D_max+1 mode, nl=7 ckpt): R=0.4778 / P=0.6776 / **F1=0.5604** (ΔF1 vs L6_glm=−0.0220, training-inference depth mismatch 로 H2 기각 확고)
 

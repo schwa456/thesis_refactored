@@ -1314,3 +1314,89 @@ Selector-only stage (W1/W2/W3 raw_seeds 행 3 cell) 는 `notebooks/analysis_resu
 3. Q2/Q3/Q5/Q7 결과는 V-2 full / V-3 peak 확정 이후 해당 체크포인트로 재실행하여 덮어쓸 예정. 그 전까지 논문 표/그래프에서 SuperNode 계열 수치는 인용 자제.
 
 **커밋 검증**: `src/train_gat.py` (line 214~243) wrap-before-split 순서 + flag 선추출 반영. Validation 로그 `logs/gat_enriched_v2_smoke/train/train_step.jsonl` 의 step 0~1060 query_node 항목(skip_ratio=0.5647, out_norm_mean, last_layer_delta=2.039 등) 이 실제 학습 step 동안 갱신되었음을 확인.
+
+---
+
+## Wave 2 Proposal C GLM era kickoff (2026-04-24)
+
+**LLM backbone 전환**: vLLM `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` → **GLM-4.7 (`zai-org/glm-4.7`) via Elice ML API (OpenAI-compatible)**.
+근거: [planning/DECISIONS.md](planning/DECISIONS.md) 2026-04-24 엔트리들 (LLM 전환 + Sanity 합격 기준 재정의).
+합격 기준 (재정의): vLLM era 동일 anchor 대비 **ΔF1 ≥ −0.02**.
+
+### 7 cells 최종 결과 (R / P / F1, 4자리)
+
+| 실험 ID | num_layers | Recall | Precision | F1 | vLLM era 대응 F1 | ΔF1 |
+|---------|-----------:|-------:|----------:|---:|----------------:|----:|
+| `s04_04_qcond_a0_xiyan_glm` (sanity) | 3 | 0.4922 | 0.6965 | 0.5768 | 0.5866 | **−0.0098** ✅ |
+| `abl_sel_diameter_layers_nl1_glm` | 1 | 0.4897 | 0.7067 | 0.5785 | — (new sweep) | — |
+| `abl_sel_diameter_layers_nl2_glm` | 2 | 0.4632 | 0.6800 | 0.5510 | — (new sweep) | — |
+| `abl_sel_diameter_layers_nl3_glm` | 3 | 0.4901 | 0.6961 | 0.5752 | — (new sweep) | — |
+| **`abl_sel_diameter_layers_nl6_glm` (= D_max)** | **6** | **0.5018** | **0.6939** | **0.5824 ← sweep peak** | — (new sweep) | — |
+| `abl_sel_diameter_layers_nl7_glm` (= D_max+1) | 7 | 0.4920 | 0.6952 | 0.5762 | — (new sweep) | — |
+| **🚀 `s04_stagewise_qcond_gat_basic_glm`** (new anchor) | 3 | **0.8438** | **0.8329** | **0.8383** | **0.7877** | **+0.0506** |
+| `layers_Ldbmax_glm` (H2 truncate, 2026-04-25) | 6 (truncate) | 0.5036 | 0.7031 | **0.5869** | — (new) | vs L6_glm: **+0.0045** partial neutral |
+| `layers_Ldbmax_plus1_glm` (H2 truncate, 2026-04-25) | 7 (truncate) | 0.4778 | 0.6776 | **0.5604** | — (new) | vs L6_glm: **−0.0220** 기각 확고 |
+
+**3단계 Selector/+Extractor/+Filter cumulative R/P/F1**: pending — `notebooks/analysis_results/diameter_layers_sweep.md` GLM era 작성 시 analyzer 재집계 (memory rule G2 적용).
+
+### 주요 발견
+1. **🚀 GLM era 새 전체 최고**: `s04_stagewise_qcond_gat_basic_glm` F1=0.8383 — Wave 1.5 vLLM best (F1=0.7877) 대비 **ΔF1=+0.0506** (ΔR=+0.0269, ΔP=+0.0724). Precision 주 개선축.
+2. **H1 peak 가설 검증 완료**: diameter_layers sweep 에서 nl=D_max(6) 이 peak (F1=0.5824), nl=D_max+1(7) 에서 0.5762 로 **over-smoothing 재등장 관측** (ΔF1=−0.0062).
+3. **α=0 anchor (sanity) ΔF1=−0.0098**: LLM backbone 교체로 인한 미세 하락, planner 재정의 기준 ΔF1 ≥ −0.02 통과 → sweep 진행 승인.
+4. **L2 dip 이상치**: nl=2 에서 F1=0.5510 으로 nl=1(0.5785), nl=3(0.5752) 보다 낮음 — GAT 2-layer 특이 패턴 (analyzer 후속 분석 대상).
+
+### 비용
+- 7 cells 실제 token: input ≈ 7.3M + output ≈ 0.24M = **~₩5,350 (~$3.8 USD)**.
+- 초기 추정 ₩26,740 의 약 **1/5** (실제 input/query ≈ 683 tokens, 추정 3K/query 의 1/5). Extractor 평균 18.58 nodes 선택 → M-Schema 간결.
+
+### 운영 기록
+- **Phase 2 1회 full failure** (17:05~17:24): (a) `num_layers` 파라미터 yaml 미지정 → L1/L2/L6/L7 체크포인트 weight shape mismatch (`EnsembleSelector` default `num_layers=3` vs nl=1/2/6/7 ckpt); (b) `/home` 파티션 100% full → `card_games.sqlite` WAL write 불가 → I/O error 전파.
+- **복구 (17:24~17:36)**:
+  - `api_handler.py` + `base.py` + 7 filter classes provider 분기 (filter 세션 완료)
+  - `.env.example` + 7개 GLM yaml configs + scripts vLLM→GLM 헬스체크 (root, 2026-04-24 이전 turn)
+  - `scripts/run_vllm_server.sh` nohup + setsid + disown 강화 (SSH 끊김 대비, 향후 vLLM 재사용 시)
+  - **disk cleanup**: `outputs/archive/` 582 MB → NAS 이동 (`/SSL_NAS/peoples/khj/thesis/outputs_archive_20260424`) + symlink, `layers_L3_partial_*` 19 MB 삭제, `card_games.sqlite-{shm,wal}` 재생성용 제거
+  - **5 yaml 수정**: `configs/.../layers_L{1,2,3,6,7}_glm.yaml` 에 `num_layers: N` 파라미터 추가 (N=1/2/3/6/7)
+- **Sweep 재실행 (17:36~23:00) 정상 완료** — 다른 user 의 `/home` 사용량 변동에 의한 일시적 disk 급감 (486 MB → 168 MB) 도 자동 복구 (→ 7.6 GB).
+
+### 산출물
+- **Configs (7)**: `configs/experiments/s04_ablation/{s04_04_qcond_a0_xiyan_glm.yaml, diameter_layers/layers_L{1,2,3,6,7}_glm.yaml, stagewise/qcond_gat_basic_glm.yaml}`
+- **Script**: `scripts/run_glm_era_kickoff.sh` (sanity 합격 후 6 cells sequential runner, setsid+nohup+disown)
+- **Logs**: `logs/experiments/s04_ablation/{.../layers_L{1,2,3,6,7}_glm/, stagewise/qcond_gat_basic_glm/, s04_04_qcond_a0_xiyan_glm/}`
+- **Outputs**: 동일 경로 미러 (metrics.txt, predictions.jsonl, output_*.jsonl, profiling_*.jsonl, score_analysis_*.jsonl, stage_aggregates.json, token_usage.json)
+- **이전 실패 백업**: `outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3}_glm_failed_20260424_1724/`, `stagewise/qcond_gat_basic_glm_failed_20260424_1724/`
+
+### 2026-04-25 H2 truncate 검증 (analyzer recon ≠ selector impl mechanism 실측)
+
+**근거**: [planning/DECISIONS.md](planning/DECISIONS.md) 2026-04-26 "Selector H2 inference 2 cell 실측 승인" 엔트리 + 2026-04-25 "H2 원래 가설 기각" 엔트리.
+
+**Mechanism 차이**:
+- **Analyzer reconstruction** (F1=0.5805, sweep 5 cell 재조합): D_max=4/5 query (95.8%) 가 nl=6 cell 결과 그대로 fallback (nl=4/5 ckpt 부재).
+- **Selector impl** (이번 실측, EnsembleSelector v2 + `_resolve_active_depth` hook): nl=6/7 ckpt 의 layer 수 **동적 truncate forward** (D_max<6 DB 도 per-DB 동적 depth).
+
+**2 cells 결과**:
+
+| Cell | num_layers_mode | ckpt | R | P | F1 | ΔF1 vs L6_glm (0.5824) | 4-way 분기 |
+|------|-----------------|------|---|---|---|---|---|
+| `layers_Ldbmax_glm` | `D_max` | nl=6 | 0.5036 | 0.7031 | **0.5869** | **+0.0045** | **(3) partial neutral** |
+| `layers_Ldbmax_plus1_glm` | `D_max_plus1` | nl=7 | 0.4778 | 0.6776 | **0.5604** | **−0.0220** | **(1) 기각 확고 (training mismatch)** |
+
+**판정** (2026-04-26 DECISIONS §영향 범위 표 사전 합의 기준):
+- **Ldbmax**: 분기 (3) −0.002 ~ +0.005 — partial neutral. 발표 슬라이드 C-3 minor mention 권장. nl=6 ckpt truncate 가 analyzer recon (0.5805) 대비 +0.0064 로 mechanism 차이가 **미세 positive** 효과는 확인되나 global fixed nl=6 (0.5824) 대비는 noise 범위.
+- **Ldbmax_plus1**: 분기 (1) < −0.005 — H2 기각 확고. nl=7 ckpt 이 7-layer 로 학습됐는데 D_max<7 DB 에서 4~6 layer 로 truncate → training-inference depth mismatch 가 분기 (1) 예측대로 큰 손실 발생.
+- **종합**: H2 truncate mechanism 은 nl=6 ckpt 에서만 미미한 positive (+0.0064 vs analyzer recon). 2026-04-25 "H2 원래 가설 기각" 결정 **유지**, 발표 슬라이드 C-3 narrative 분기 불필요 (minor mention 수준).
+
+**Mechanism 비교 (analyzer recon 대비)**:
+- Ldbmax (F1=0.5869 vs recon 0.5805, +0.0064) = per-DB 동적 depth 가 nl=6 fallback 대비 약간 유리. D_max<6 버킷 (62%) 에서 truncate forward 가 효과.
+- Ldbmax_plus1 (F1=0.5604 vs recon 0.5805, −0.0201) = nl=7 ckpt 의 7-layer training 과 truncate forward 의 depth mismatch 가 negative dominates.
+
+**비용**: 2 cell × ~₩780 = **~₩1,560** (병렬 ~55min wall clock, wrapper PID 1074671, 01:36:06~02:33:12).
+**산출물**:
+- Configs (selector 세션 산출, 2026-04-25 01:05/01:06): `configs/experiments/s04_ablation/diameter_layers/layers_Ldbmax{,_plus1}_glm.yaml`
+- Script: `scripts/run_h2_truncate.sh` (GLM health check + 2 cell 병렬 launch + wait + metrics summary)
+- Logs: `logs/experiments/s04_ablation/diameter_layers/layers_Ldbmax{,_plus1}_glm/`
+- Outputs: `outputs/experiments/s04_ablation/diameter_layers/layers_Ldbmax{,_plus1}_glm/` (metrics.txt 포함 전체 5종)
+
+### 후속 (핸드오프)
+- **Planner**: analyzer 큐 추가 — `notebooks/analysis_results/diameter_layers_sweep.md` (H1 검증 곡선 + vLLM era ↔ GLM era 비교 부록 + L2 dip 진단)
+- **추후**: Wave 3 Proposal F (analyzer 단독 — SteinerBackbone 재조직), Wave 4 `a05_filter_agentic` (post-2026-04-28) — 모두 GLM era backbone 유지 가능 (합격 기준 ΔF1 ≥ −0.02 적용).

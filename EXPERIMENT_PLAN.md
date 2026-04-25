@@ -13,20 +13,33 @@
 
 ## 0. 현재 베이스라인 (모든 실험의 출발점)
 
+### GLM era (2026-04-24 ~) — XiYan backbone = `zai-org/glm-4.7` via Elice ML API (OpenAI-compatible)
+
 | 범주 | Anchor | R | P | F1 |
 |------|--------|---|---|-----|
-| **전체 최고 (Wave 1.5, 2026-04-22)** | `s04_stagewise_qcond_gat_basic` (QCond encoder + GAT α=0.85 + Basic PCST + XiYan) | **0.8169** | 0.7605 | **0.7877** |
-| Ensemble (legacy, 2×2×2 anchor) | `abl_ens_basic_xiyan` (Cosine+GAT α=0.85 + Basic PCST + XiYan) | 0.8149 | 0.7597 | 0.7863 |
+| **🚀 전체 최고 (GLM era, 2026-04-24)** | `s04_stagewise_qcond_gat_basic_glm` (QCond + GAT α=0.85 + Basic PCST + XiYan GLM-4.7) | **0.8438** | **0.8329** | **0.8383** |
+| diameter_layers sweep peak | `abl_sel_diameter_layers_nl6_glm` (nl=6=global D_max) | 0.5018 | 0.6939 | 0.5824 |
+| GLM sanity (α=0 GAT-only) | `s04_04_qcond_a0_xiyan_glm` | 0.4922 | 0.6965 | 0.5768 |
+
+### vLLM era (2026-02 ~ 04-24) — XiYan backbone = `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` [archive]
+
+| 범주 | Anchor | R | P | F1 |
+|------|--------|---|---|-----|
+| **Wave 1.5 최고** | `s04_stagewise_qcond_gat_basic` (QCond encoder + GAT α=0.85 + Basic PCST + XiYan) | **0.8169** | 0.7605 | **0.7877** |
+| Ensemble (2×2×2 anchor) | `abl_ens_basic_xiyan` (Cosine+GAT α=0.85 + Basic PCST + XiYan) | 0.8149 | 0.7597 | 0.7863 |
 | Ensemble + Enriched Builder | `abl_ens_enriched_xiyan` (E1, Enriched Builder) | 0.6658 | 0.8147 | 0.7327 |
 | Ensemble + Triplet | `abl_ens_triplet_xiyan` (E2) | 0.6823 | 0.8139 | 0.7424 |
 | Direct variant 최고 | `abl_a03_17` (SuperNode-Direct + Fixed PCST + XiYan) | 0.6761 | 0.7128 | 0.6940 |
 | Filter 최고 | `abl_a05_02` (Reflection, anchor=a03_17) | 0.7320 | 0.6833 | 0.7068 |
+| α=0 GAT-only (GLM sanity baseline) | `s04_04_qcond_a0_xiyan` | 0.5015 | 0.7065 | 0.5866 |
 
 **핵심 관찰**:
-- **새 전체 최고** (2026-04-22 Wave 1.5): QCond encoder + GAT α=0.85 + Basic PCST + XiYan 이 `abl_ens_basic_xiyan` 대비 Recall **+0.0020**, F1 **+0.0014** 로 소폭 상회. 주력 결과 anchor 재지정.
-- **Precision 상한(≈0.81)은 Builder가 결정** (Enriched/Triplet) — Wave 1.5 는 Basic Heterograph 기반이라 precision 0.76 대에 멈춤. Enriched × QCond 결합은 미검증.
-- **Recall 상한은 Filter의 restore path가 결정** (Reflection이 prune-only 한계 돌파) — QCond+GAT 는 restore 없이도 R=0.82 돌파.
-- 두 상한의 **교차 결합이 아직 미검증** (E1/E2 × QCond+GAT × Reflection).
+- **🚀 GLM era 새 전체 최고** (2026-04-24): `s04_stagewise_qcond_gat_basic_glm` F1=0.8383 이 Wave 1.5 vLLM best 대비 **ΔF1=+0.0506** (ΔR=+0.0269, ΔP=+0.0724). **Precision 주 개선축** — LLM backbone 단독 교체만으로 R/P/F1 전반 개선.
+- **Diameter layers peak 검증 (H1)**: nl=D_max(6) 에서 sweep peak (F1=0.5824), nl=D_max+1(7) 에서 소폭 하락 (ΔF1=−0.0062 over-smoothing 재등장).
+- **합격 기준 (2026-04-24 planner 확정)**: GLM era 실험은 vLLM era 동일 anchor 대비 **ΔF1 ≥ −0.02** (sanity 가 ΔF1=−0.0098 로 통과).
+- **Precision 상한(≈0.81)은 Builder가 결정** (Enriched/Triplet) — Wave 1.5 는 Basic Heterograph 기반이라 precision 0.76 대에 멈춤. GLM era new anchor 에서 P=0.8329 로 벽 돌파 — **LLM backbone 이 Builder-driven precision ceiling 에도 영향**.
+- **Recall 상한은 Filter의 restore path가 결정** (Reflection이 prune-only 한계 돌파) — QCond+GAT + GLM-4.7 은 restore 없이도 R=0.8438 돌파.
+- 두 상한의 **교차 결합이 아직 미검증** (E1/E2 × QCond+GAT × Reflection × GLM-4.7).
 
 ---
 
@@ -114,12 +127,16 @@ Pipeline PL-II (Neurosymbolic 3-layer 루프)
   - ✅ no-filter 3 config (`*_no_filter.yaml`) — +Extractor cell 확정 (W1 F1=0.2272 / W2 F1=0.2862 / W3 F1=0.2271, Raw pair Δ F1=+0.0590 encoder 축 효과)
   - 세부: [EXPERIMENT_HISTORY.md §8](EXPERIMENT_HISTORY.md#L1229) (L1250 stagewise cumulative 표)
   - 후속: analyzer 2차 리포트 — `notebooks/analysis_results/stagewise_qcond_ablation.md` §1.1 / §5 슬라이드 3 에 +Extractor Δ 1 문단 보강 (Wave 2 실행과 병행 가능)
-- **Wave 2 (active — 자산 준비 완료, Phase 1/2 실행 승인 대기, 2026-04-22 ~ 25)**: Selector ablation 축 심화 (Proposals C → D → E).
-  - 🔧 **Proposal C** `abl_sel_diameter_layers` — num_layers ∈ {L1, L2, L3, L6, L7} 5-cell **global fixed sweep** (L6 = max(D_max over BIRD dev 11 DB), L7 = D_max+1). Anchor `s04_04_qcond_a0_xiyan` (QCond Raw). Configs `configs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}.yaml` + `scripts/run_wave2_proposal_c.sh` 준비 완료. 실행 구조: **Phase 1 (5× GAT 학습 ~25h, `VLLM_AUTOKILL=1`) → Phase 2 (vLLM 재기동 + 5× inference)**. vLLM kill / sequential script kill 모두 승인 완료, **user 최종 착수 승인 대기**.
-  - ⏸ **Proposal C H2 (per-DB dynamic num_layers)** — §4.2 H2 (DB 별 D_max 맞춤 층수) 는 `src/modules/selectors/ensemble_selector.py` v1 에 `db_name` threading 부재로 **측정 불가**. Selector 세션에 래퍼 구현 에스컬레이션 (`DECISIONS.md` 2026-04-22 17:05 엔트리 (b) + 에스컬레이션 #1). Wave 2.5 또는 별도 mini-wave 로 분리, H1 global fixed 와 병행 개발 가능.
-  - 🔜 **Proposal D** `abl_sel_supernode_directed` — SN↔node bidirectional → SN→node directed (1 재학습). Anchor `s04_05_sn_qcond_xiyan` 계 (주의: §8-1 SuperNode split-order bug 수정된 `train_gat.py` 기준 재학습 필요).
-  - 🔜 **Proposal E** `abl_sel_supernode_topk` — Raw Score k ∈ {3,5,10,20} Phase 1 (4 재학습). Phase 2 (CE/Cosine 확장) 는 Phase 1 성공 시 승격.
-  - ⏳ 순차 실행 이유: GPU 자원 (CUDA_VISIBLE_DEVICES=0,1) 경합 방지 + Anchor 의 재학습 의존 (§8-1 bug fix 적용 후 SuperNode 라인 재학습 필수).
+- **Wave 2 (closed, 2026-04-24 — GLM era kickoff 완료)**: Proposal C `abl_sel_diameter_layers` 5-cell sweep + GLM era new anchor 재실행. **LLM backbone** vLLM `Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8` → **GLM-4.7 (`zai-org/glm-4.7`) via Elice ML API (OpenAI-compatible)** 전환.
+  - ✅ Phase 1 — 5× GAT 학습 (num_layers ∈ {1,2,3,6,7}) 완료 (2026-04-22 ~ 23, `best_gat_qcond_nl{1,2,3,6,7}.pt`)
+  - ✅ Phase 2 — GLM era 7 cells 완료 (2026-04-24: sanity + 5 sweep + new anchor)
+    - `s04_04_qcond_a0_xiyan_glm` (sanity): ΔF1=−0.0098 vs vLLM anchor — planner 재정의 기준 ΔF1≥−0.02 통과.
+    - `abl_sel_diameter_layers_nl{1,2,3,6,7}_glm` — **peak at nl=6 (F1=0.5824, D_max)**, nl=7(D_max+1) ΔF1=−0.0062 over-smoothing 재등장. **H1 (global fixed peak at D_max) 검증 완료**.
+    - `s04_stagewise_qcond_gat_basic_glm` — **F1=0.8383 (새 전체 최고)**, Wave 1.5 vLLM best (F1=0.7877) 대비 **ΔF1=+0.0506** (ΔR=+0.0269, ΔP=+0.0724).
+  - 세부: [EXPERIMENT_HISTORY.md Wave 2 Proposal C GLM era kickoff (2026-04-24)](EXPERIMENT_HISTORY.md)
+  - 후속: analyzer — `notebooks/analysis_results/diameter_layers_sweep.md` GLM era sweep 분석 + vLLM era 비교 부록
+  - ⏸ **Proposal C H2 (per-DB dynamic num_layers)** — selector 세션 인프라 (`db_name` threading in `EnsembleSelector`) 미완료로 deferred. [`DECISIONS.md`](planning/DECISIONS.md) 2026-04-22 17:05 엔트리 §에스컬레이션 #1 유효.
+  - 🔜 **Proposal D** `abl_sel_supernode_directed` / **Proposal E** `abl_sel_supernode_topk` — Wave 3 이후 재검토 (§8-1 SuperNode bug fix 후 재학습 필요).
 - **Wave 3 (planned, 2026-04-26 ~ 28)**: 발표 패키징.
   - 🔜 **Proposal F** `abl_ext_steiner_backbone_report` — 기존 a03_15/18 데이터 재조직 리포트 (신규 실행 없음, analyzer 단독 큐).
   - 🔜 **Proposal A 확장 셀** (시간 여유 시) — Ensemble Raw 축의 stagewise cumulative 가 cosine 대비 reportable gap 을 보이면 추가 셀 확보.
