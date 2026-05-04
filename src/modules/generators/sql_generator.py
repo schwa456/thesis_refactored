@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from modules.registry import register
 from modules.base import BaseGenerator
 from prompts.prompt_manager import PromptManager
@@ -11,12 +11,12 @@ logger = get_logger(__name__)
 
 @register("generator", "LLMSQLGenerator")
 class LLMSQLGenerator(BaseGenerator):
-    def __init__(self, llm_model: str, temperature: float, **kwargs):
+    def __init__(self, llm_model: str, temperature: float, provider: Optional[str] = None, **kwargs):
         self.llm_model = llm_model
         self.temperature = temperature
         self.prompt_manager = PromptManager()
-        self.client = APIClient()
-        logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model})")
+        self.client = APIClient(provider=provider)
+        logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model}, Provider: {provider or 'auto'})")
 
     def generate(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> str:
         schema_ddl = AgentUtils.generate_ddl(subgraph=subgraph)

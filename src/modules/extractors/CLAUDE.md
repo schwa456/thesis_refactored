@@ -37,7 +37,11 @@ Builder/Selector/Filter 내부는 가급적 언급하지 않고,
 - **ComponentAwareProductCostPCSTExtractor** — Idea 2+4 결합
 - **ScoreDrivenPCSTExtractor** — BO로 튜닝된 cost weights
 - **SteinerBackbonePCSTExtractor** — `backbone_bonus=0.5` bridge 강제 포함
-- **MSTExtractor** — Metric closure 기반 Steiner 2-근사 (단독 드묾)
+- **MSTExtractor** — Metric closure 기반 Steiner 2-근사 (Kou-Markowsky-Berman 1981, 단독 드묾). [2026-04-27] `seed_mode ∈ {"topk","threshold"}` 추가:
+  - `topk` (default, backward compatible) — 외부 전달 `seed_nodes` (Selector top-k) 사용
+  - `threshold` — `node_scores > score_threshold` (default 0.1) 인 노드를 자체 산출 → Basic PCST 와 동일 candidate pool. 발표 §14.3 narrative 정확성 (top-k 한정 vs score-threshold widening 의 R 영향 isolate) 위해 도입.
+- **MSTKruskalExtractor** [2026-04-27] — "진짜" MST. `node_scores > score_threshold` 인 노드의 induced subgraph 위 `networkx.minimum_spanning_tree` (Kruskal default). disconnected 시 minimum spanning forest 자동 반환. Steiner Tree 와 차이: terminal subset connecting + Steiner point 추가가 아니라 induced subgraph 의 모든 vertex spanning + Steiner point 없음. 발표 narrative 의 "MSTExtractor 명명 → 실제로 Steiner 2-approx" 정정 + 사용자 의도된 진짜 MST 측정용. 관련 configs: `abl/.../plain_ens_a05_mst_kruskal_*.yaml`.
+- **MSTPCSTUnionExtractor** [2026-04-27] — `MSTKruskalExtractor` (score_threshold=0.1) ∪ `PCSTExtractor` (node_threshold=0.1, default cost) union. set 합집합으로 노드/엣지 통합 후 sorted canonical tuple form 으로 반환. `last_info` 에 `mst_node_count`, `pcst_node_count`, `intersection_count`, `mst_only_count`, `pcst_only_count` 기록 → analyzer 가 union 의 추가 노드 비율 정량 가능. 의도: MST Kruskal anchor (F1=0.8642) 의 R 상한 검증 + Filter 의 union 처리 능력 정량 (시나리오 A: F1>anchor → multi-extractor union 우세, B: ≈anchor → MST 만으로 충분, C: <anchor → over-include noise). 관련 configs: `abl/.../plain_ens_a05_mst_pcst_union_*.yaml`.
 - **TopK / None** — utility
 - **HybridFKPriorPCSTExtractor** [E-III, 2026-04-20] — Adaptive PCST + FK topology prior. Top-k anchor 간 FK shortest-path 위 `table_to_table` edge 비용 `× fk_path_discount` (기본 0.3), 선택적 bridge (non-anchor) table prize boost (`bridge_bonus × max_prize`). `graph_data['fk_shortest_paths']` (Builder B-III 제공) 우선, 없으면 networkx on-the-fly fallback. 의도: PCST 의 prize-cost 스케일 불일치를 FK topology 기반으로 보정 (3-table JOIN bridge 포함율 개선 기대). 관련 configs: `abl/a06_ext_fkprior/a06_01~04`.
 - **PathfindingEnsemblePCSTExtractor** [E-II, 2026-04-20] — Base AdaptivePCST ⊕ Steiner 2-approx pathfinder. `mode ∈ {union, 2pass, intersection}` — union=PCST∪path, 2pass=path 노드 score boost 후 PCST 재실행, intersection=보수적. `k_anchors` (기본 5) 테이블 anchor 는 `node_scores[0:num_t]` top-k. MSTExtractor 의 `steiner_tree_2approx` 재활용. 의도: PCST 가 놓치는 bridge 노드를 pathfinder 로 결정론적 보완. 관련 configs: `abl/a07_ext_path_ensemble/a07_01~05`.
@@ -72,6 +76,9 @@ Builder/Selector/Filter 내부는 가급적 언급하지 않고,
 - 공통 cost: `base_cost=0.05`, `belongs_to_cost=0.01`, `fk_cost=0.05`, `macro_cost=0.5`
 - Basic PCST: `node_threshold=0.1`
 - Steiner: `backbone_bonus=0.5`
+- MSTExtractor: `seed_mode='topk'` (또는 `'threshold'`), `score_threshold=0.1` (threshold mode 시)
+- MSTKruskalExtractor: `score_threshold=0.1`
+- MSTPCSTUnionExtractor: `score_threshold=0.1` (양쪽 통일), PCST cost params 는 PCSTExtractor default (`base_cost=1.0, belongs_to_cost=0.01, fk_cost=0.05, macro_cost=0.5, hub_discount=0.2`)
 - ProductCost: `bt_weight=0.1, fk_weight=0.2, macro_weight=0.5, min_cost=0.0001, percentile=80`
 - ScoreDriven (BO2): `bt=1.955, fk=2.779, macro=3.439, ε=0.009`
 - HybridFKPrior (E-III): `k_anchors=5, fk_path_discount=0.3, bridge_bonus=0.0, max_anchor_pairs=20`

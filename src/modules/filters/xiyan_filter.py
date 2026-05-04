@@ -19,15 +19,17 @@ class XiYanFilter(BaseFilter):
     XiYanSQL의 Iterative Column Selection을 모사한 Filter 모듈.
     LLM 프롬프트 생성 시, 실제 DB에 쿼리를 날려 컬럼별 최대 3개의 예시 데이터(Example Values)를 삽입합니다.
     """
-    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, **kwargs):
+    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, num_examples: int = 3, **kwargs):
         self.model_name = model_name
         self.max_iteration = max_iteration
         self.temperature = temperature
         self.db_dir = db_dir
         self.provider = provider
+        # num_examples: column 별 example value 개수 (0 = 비활성, default 3)
+        self.num_examples = max(0, int(num_examples))
         self.prompt_manager = PromptManager()
         self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
-        logger.info(f"Initialized XiYanFilter with DB Value Example Injection (Iterations: {self.max_iteration}, Provider: {provider or 'auto'})")
+        logger.info(f"Initialized XiYanFilter (Iterations: {self.max_iteration}, num_examples: {self.num_examples}, Provider: {provider or 'auto'})")
 
     def _build_mschema_with_values(self, schema_dict: Dict[str, List[str]], db_id: str) -> str:
         """DB에 직접 접근하여 컬럼별 Example Value를 포함한 M-Schema 문자열을 생성합니다."""
@@ -48,17 +50,17 @@ class XiYanFilter(BaseFilter):
             col_details = []
             for col in cols:
                 col_str = f"{col}"
-                # DB에서 Example Value 추출 시도
-                if cursor:
+                # DB에서 Example Value 추출 시도 (num_examples=0 시 skip)
+                if cursor and self.num_examples > 0:
                     try:
                         # SQL Injection 및 구문 오류 방지를 위해 쌍따옴표(")로 식별자 감싸기
-                        cursor.execute(f'SELECT DISTINCT "{col}" FROM "{tbl}" WHERE "{col}" IS NOT NULL LIMIT 3')
+                        cursor.execute(f'SELECT DISTINCT "{col}" FROM "{tbl}" WHERE "{col}" IS NOT NULL LIMIT {self.num_examples}')
                         values = [str(row[0]) for row in cursor.fetchall()]
                         if values:
                             col_str += f" (Examples: {', '.join(values)})"
                     except Exception as e:
                         logger.debug(f"Could not fetch examples for {tbl}.{col}: {e}")
-                
+
                 col_details.append(col_str)
             table_lines.append("  Columns: " + " | ".join(col_details))
             schema_lines.append("\n".join(table_lines))

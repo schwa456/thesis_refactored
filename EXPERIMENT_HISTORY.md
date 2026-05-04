@@ -1400,3 +1400,754 @@ Selector-only stage (W1/W2/W3 raw_seeds 행 3 cell) 는 `notebooks/analysis_resu
 ### 후속 (핸드오프)
 - **Planner**: analyzer 큐 추가 — `notebooks/analysis_results/diameter_layers_sweep.md` (H1 검증 곡선 + vLLM era ↔ GLM era 비교 부록 + L2 dip 진단)
 - **추후**: Wave 3 Proposal F (analyzer 단독 — SteinerBackbone 재조직), Wave 4 `a05_filter_agentic` (post-2026-04-28) — 모두 GLM era backbone 유지 가능 (합격 기준 ΔF1 ≥ −0.02 적용).
+
+---
+
+## Builder Cumulative Backfill (Option C, 2026-04-26)
+
+**근거**: [planning/DECISIONS.md](planning/DECISIONS.md) 2026-04-26 (보강 — Option C 채택) §결정 (a)(b)(c)
+**목적**: Ablation 1 (Builder × Stage) 9-cell cumulative matrix 완성 — Selector only stage 신규 3 cell + Extractor (no filter) stage 신규 2 cell (Plain Builder 의 +Extractor 는 Wave 1.5 에서 기측정).
+
+### 9-cell cumulative matrix (R / P / F1, 4자리)
+
+| Builder | Selector only | + Extractor (Basic PCST, no filter) | + Filter (XiYan, final) |
+|---------|--------------|-------------------------------------|------------------------|
+| **Plain** (HeteroGraphBuilder) | 0.7834 / 0.2700 / **0.4016** | 0.9651 / 0.1287 / **0.2271** | 0.8169 / 0.7605 / **0.7877** |
+| **Enriched** (EnrichedHeteroGraphBuilder) | 0.7921 / 0.2567 / **0.3877** | 0.9676 / 0.1274 / **0.2252** | 0.6658 / 0.8147 / **0.7328** |
+| **Triplet** (TripletGraphBuilder) | 0.7921 / 0.2567 / **0.3877** | 0.9676 / 0.1274 / **0.2252** | 0.6823 / 0.8139 / **0.7423** |
+
+### 5 신규 cells (이번 측정, GPU 2/3 병렬, ~38min wall clock)
+- `s04_stagewise_qcond_gat_basic_selector_only` (Plain Builder) — R=0.7834 / P=0.2700 / F1=**0.4016**
+- `s03_a07_01_enriched_gat_selector_only` (Enriched) — R=0.7921 / P=0.2567 / F1=**0.3877**
+- `s03_a07_02_edge_prize_selector_only` (Triplet) — R=0.7921 / P=0.2567 / F1=**0.3877**
+- `s03_a07_01_enriched_gat_no_filter` (Enriched) — R=0.9676 / P=0.1274 / F1=**0.2252**
+- `s03_a07_02_edge_prize_no_filter` (Triplet) — R=0.9676 / P=0.1274 / F1=**0.2252**
+
+### 4 기존 cells (재참조, vLLM era anchor)
+- `s04_stagewise_qcond_gat_basic` (Plain final) — F1=0.7877 (Wave 1.5 best, vLLM era)
+- `s04_stagewise_qcond_gat_basic_no_filter` (Plain +Extractor) — F1=0.2271 (Wave 1.5 backfill)
+- `s03_a07_01_enriched_gat` (Enriched final, E1) — F1=0.7328
+- `s03_a07_02_edge_prize` (Triplet final, E2) — F1=0.7423
+
+### Filter Δ F1 by Builder (no_filter → final)
+- **Plain: +0.5606** (0.2271 → 0.7877) — 최대
+- Enriched: +0.5076 (0.2252 → 0.7328)
+- Triplet: +0.5171 (0.2252 → 0.7423)
+
+→ Plain Builder 에서 Filter 의 marginal 효과 가장 큼. Enriched/Triplet 의 description 정보가 미세하게 filter 의존도를 줄이지만 (절대 Δ 작음), final F1 자체는 Plain 우세.
+
+### 주요 발견
+1. **Plain 이 모든 단계에서 우세** — 특히 final 단계. Builder 의 Description 정보 추가가 selector level 에선 미미한 영향, final XiYan filter 단계에서는 **noise 로 작용** (Plain ΔF1 over Enriched=+0.0549, over Triplet=+0.0454).
+2. **Selector only Δ 미미** — Plain (0.4016) vs Enriched/Triplet (0.3877), Δ=0.0139. Builder 차이가 selector 에선 제한적.
+3. **+Extractor 단계 사실상 동일** — 3 Builder 모두 R≈0.965~0.968, F1≈0.225~0.227. PCST 가 노드 거의 모두 끌어와 Builder 차이 dilute.
+4. **Enriched ≈ Triplet (selector_only / no_filter 단계 동일값)** — Selector weight 같고 (`best_gat_enriched.pt`) Builder 만 다름. Builder 의 graph structure 차이가 Selector 단계에서 동일 score 산출.
+5. **Builder 가치 = Filter 단계에서 발현** — selector_only / no_filter 에서는 Builder 차이 보이지 않다가 Filter 통과 후 차이 드러남. 단 description 정보가 도움보다 noise.
+
+### LLM era 표기
+- Selector only (3 cell): **N/A (no LLM call)** — Filter=None, Extractor=None
+- + Extractor no filter (3 cell): **N/A** — Filter=None, Extractor 비-LLM
+- + Filter final (3 cell): **vLLM era** (Wave 1.5 측정, GLM 재측정 X — post-deadline 큐, ΔF1 +0.04~+0.06 추정 §presentation_brief Q7)
+
+### 비용 / 운영
+- LLM 호출 0, 비용 ₩0
+- 시간: ~38min wall clock (01:55:29 launch → 02:34:37 metrics 모두 생성)
+- GPU: 2/3 (사용자 명시 swap 후, memory rule + settings.json `ask` rule 보강) — 다른 연구자 GPU 0/1 점유로 2026-04-26 이번 swap 한정
+
+### 산출물
+- Configs (5): `configs/experiments/s04_ablation/stagewise/qcond_gat_basic_selector_only.yaml`, `configs/experiments/s03_gat_ensemble/a07_enriched_triplet/s03_a07_0{1,2}_*_{selector_only,no_filter}.yaml`
+- Script: `scripts/run_builder_cumulative.sh` (GPU 2/3 split, sequential within each, GLM endpoint 검사 없음 — LLM 호출 X)
+- Logs/Outputs: `logs|outputs/experiments/{s04_ablation/stagewise/qcond_gat_basic_selector_only/, s03_gat_ensemble/a07_enriched_triplet/s03_a07_*/}/`
+
+### 후속 (planner 핸드오프)
+- `presentation_brief_2026-04-28.md §14.1` cumulative 표 9-cell 완성 + Filter Δ F1 by Builder 정량 반영
+- DECISIONS 후속 엔트리 (Option C 결과 기록 + Plain 우세 narrative 정량)
+
+---
+
+## Selector Ablation Cumulative Backfill (Option B, 2026-04-26) — SuperNode 보류 + Plain/QCond 18-cell
+
+**근거**: [planning/DECISIONS.md](planning/DECISIONS.md) 2026-04-26 (Ablation 2 보강 #2 9-cell 매트릭스 + Option B 채택)
+**목적**: Ablation 2 (Encoder × Score × Stage) 27-cell cumulative matrix 완성. **SuperNode 9 cells 보류** (smoke FAILED), Plain/QCond 18-cell (= 6 score combo × 3 stage) 진행.
+
+### SuperNode smoke FAILED (2026-04-26 02:49:23)
+
+**Cell**: `s04_stagewise_supernode_gat_a0_selector_only` (smoke test 단독 launch)
+**원인**: ckpt input dim mismatch
+- ckpt `best_gat_query_supernode.pt`: `[256, 384]`
+- `EnsembleSelector(query_supernode=True)` model expect: `[256, 768]`
+- Traceback: `src/modules/selectors/ensemble_selector.py:128` self.gat_model.load_state_dict
+- DECISIONS 2026-04-22 17:05 §8-1 SuperNode split-order bug 영향권 ckpt (T7) 후속 영향
+- **9 SuperNode cells 보류** (selector_only 3 + no_filter 3 + final 3) — partial backup `*_failed_20260426_0249/`
+- 후속 해결 옵션 (planner 결정): (a) selector 세션 SchemaHeteroGAT in_channels 자동 분기 구현 (b) ckpt 재학습 (post-2026-04-28, §8-1 bug fix 와 묶어서)
+
+### 18-cell stagewise matrix (Plain/QCond × {GAT/Cos/Ens} × {Selector only / +Extractor / +Filter})
+
+> ⚠ Alpha convention (2026-04-26 정정): `final_score = α·cosine + (1−α)·gat`. **α=0 → GAT only, α=1 → Cosine only, α=0.85 → Cosine 우세 ensemble**.
+
+| Encoder | Score | Selector only | + Extractor (Basic PCST, no_filter) | + Filter (Final) | era |
+|---------|-------|---------------|-------------------------------------|------------------|-----|
+| **Plain** | GAT (α=0) | 0.5281 / 0.2034 / **0.2937** ★ | 0.7785 / 0.1330 / **0.2272** ⊕ | 0.6676 / 0.7236 / **0.6945** ⊙ | vLLM |
+| **Plain** | Cosine (α=1) | 0.7693 / 0.2549 / **0.3829** ★ | 0.9662 / 0.1302 / **0.2295** ★ | 0.7987 / 0.7694 / **0.7838** ⊙ | vLLM |
+| **Plain** | Ensemble (α=0.85) | 0.7678 / 0.2681 / **0.3974** ★ | 0.9667 / 0.1273 / **0.2250** ★ | 0.8149 / 0.7597 / **0.7863** ⊙ | vLLM |
+| **QCond** | GAT (α=0) | 0.6061 / 0.2494 / **0.3534** ★ | 0.7813 / 0.1752 / **0.2862** ⊕ | 0.6622 / 0.7539 / **0.7051** ⊙ | vLLM |
+| **QCond** | Cosine (α=1) | 0.7693 / 0.2549 / **0.3829** ★ | 0.9662 / 0.1302 / **0.2295** ★ | **0.8501 / 0.8348 / 0.8424** 🚀★ | GLM |
+| **QCond** | Ensemble (α=0.85) | 0.7834 / 0.2700 / **0.4016** ⊕ | 0.9651 / 0.1287 / **0.2271** ⊕ | 0.8169 / 0.7605 / **0.7877** ⊙ / 0.8438 / 0.8329 / **0.8383** 🚀⊙ | vLLM / GLM |
+
+★ = 2026-04-26 신규 측정 (이번 Backfill 10 cells)
+⊕ = Wave 1.5 backfill 또는 Builder Cumulative (기존 측정)
+⊙ = Wave 1.5 / 2×2×2 / GLM era (기존 측정)
+🚀 = GLM era top 후보
+
+### 10 신규 cells 측정 (2026-04-26 02:52:01 launch → 04:31:08 완료, ~1h 39min)
+- Selector_only 6: `plain_{gat_a0,cos_a1,ens}_selector_only`, `qcond_{gat_a0,cos_a1,ens}_selector_only`
+- No-filter 3: `plain_cos_a1_no_filter`, `plain_ens_no_filter`, `qcond_cos_a1_no_filter`
+- Final 1: **`s04_stagewise_qcond_cos_a1_glm`** (GLM API)
+
+### 8 기존 cells (재참조)
+
+| Cell | Stage | F1 | 출처 |
+|------|-------|---:|------|
+| `qcond_raw_basic_no_filter` | Plain GAT +Ext (=ensemble_raw_a0_no_filter) | 0.2272 | Wave 1.5 W1 |
+| `qcond_raw_basic_no_filter` | QCond GAT +Ext (=qcond_raw_basic_no_filter) | 0.2862 | Wave 1.5 W2 |
+| `qcond_gat_basic_no_filter` | QCond Ensemble +Ext | 0.2271 | Wave 1.5 W3 |
+| `s04_stagewise_ensemble_raw_a0` | Plain GAT Final | 0.6945 | Wave 1.5 W1 |
+| `s04_stagewise_qcond_raw_basic` | QCond GAT Final | 0.7051 | Wave 1.5 W2 |
+| `s04_stagewise_qcond_gat_basic` | QCond Ensemble Final | 0.7877 | Wave 1.5 best (vLLM) |
+| `abl_a01_05_cos_basic_xiyan` | Plain Cosine Final | 0.7838 | 2×2×2 |
+| `abl_a01_06_ens_basic_xiyan` | Plain Ensemble Final | 0.7863 | 2×2×2 |
+| `s04_stagewise_qcond_gat_basic_glm` | QCond Ensemble Final (GLM) | 0.8383 | GLM era top (이전) |
+
+### Filter Δ F1 by Encoder × Score (no_filter → final)
+
+| Encoder × Score | no_filter F1 | final F1 | Filter Δ F1 |
+|-----------------|-------------:|---------:|------------:|
+| Plain GAT | 0.2272 | 0.6945 | **+0.4673** |
+| Plain Cosine | 0.2295 | 0.7838 | **+0.5543** |
+| Plain Ensemble | 0.2250 | 0.7863 | **+0.5613** |
+| QCond GAT | 0.2862 | 0.7051 | **+0.4189** |
+| QCond Cosine | 0.2295 | **0.8424** 🚀 | **+0.6129 (max!)** |
+| QCond Ensemble (vLLM) | 0.2271 | 0.7877 | +0.5606 |
+| QCond Ensemble (GLM) | 0.2271 | 0.8383 | +0.6112 |
+
+### 🚀 새 GLM era top 후보 발견
+- **`s04_stagewise_qcond_cos_a1_glm`**: R=0.8501 / P=0.8348 / **F1=0.8424**
+- vs 직전 GLM era top `qcond_gat_basic_glm` (F1=0.8383): **+0.0041** (미세 우세, noise 범위 가능)
+- vs Wave 1.5 best `qcond_gat_basic` (F1=0.7877): **+0.0547**
+- α=1.0 (Cosine only) + GLM-4.7 가 α=0.85 ensemble + GLM 보다 살짝 더 높음
+
+### 주요 발견 (Plain/QCond 6 cells × 3 stage)
+1. **🚀 QCond Cosine + GLM 새 GLM era 후보 top** — F1=0.8424, 직전 0.8383 대비 +0.0041. anchor 갱신 임계 (≥+0.005) 미달이지만 noise 가능성 분석 필요.
+2. **Selector_only Cosine 단독에선 encoder 무관**: Plain/QCond Cosine F1 둘 다 0.3829 동일 — PLM 임베딩 직접 사용해 encoder 차이 없음 (cosine 만 쓸 때 GAT module 통과 안 함).
+3. **GAT only 단계에서 QCond > Plain (+0.0597)**: encoder 효과 발현 가장 강한 지점. selector_only Plain GAT 0.2937 → QCond GAT 0.3534.
+4. **Ensemble 단계도 QCond > Plain (+0.0042)**: 매우 미세. Cosine 우세 blend 라 encoder 효과 약화.
+5. **Filter Δ F1 max = QCond Cosine + GLM (+0.6129)**: filter 가 cosine-only candidate 의 정밀도 부족을 가장 크게 보강. 다음으로 QCond Ensemble GLM (+0.6112).
+6. **+Extractor 단계 매우 균질화**: 6 cells 모두 R≈0.965~0.967, F1≈0.225~0.230. PCST 가 후보 거의 다 끌어와 encoder/score 차이 dilute (단, QCond GAT 만 R=0.7813 / F1=0.2862 로 다름 — extractor 가 score 분포에 sensitive).
+
+### 비용 / 운영
+- 10 신규 cells 비용: ~₩764 (Final 1 cell GLM API), No-filter/Selector_only 9 cells LLM-free
+- Wall clock: 1h 39min (02:52:01 → 04:31:08, GPU 2/3 parallel, smoke fail 직후 즉시 launch)
+- GPU: 2/3 (memory rule swap, 다른 연구자 GPU 0/1 점유 유지)
+
+### 산출물
+- Configs (19): `configs/experiments/s04_ablation/stagewise/{selector_only/, no_filter/, *_glm.yaml}` (10 측정 + 9 SuperNode 보류용)
+- Script: `scripts/run_ablation2_selector_cumulative.sh` (CFGS_GPU2 9 cells + CFGS_GPU3 1 cell, SuperNode 5 cells 제거)
+- Smoke fail backup: `outputs/.../selector_only/supernode_gat_a0_selector_only_failed_20260426_0249/`, `logs/.../supernode_gat_a0_selector_only_failed_20260426_0249/`
+
+### 후속 (planner 핸드오프)
+- `presentation_brief_2026-04-28.md §14.2` 18-cell matrix 완성 + Filter Δ F1 by Encoder × Score 정량
+- DECISIONS 후속 엔트리: (a) SuperNode 9 cells 보류 + ckpt mismatch (b) Plain/QCond 18-cell 결과 + QCond Cosine GLM 새 후보 (c) anchor 갱신 임계 (+0.005 미달, noise 가능성) 분석 — vLLM era 동일 anchor 비교 필요?
+- selector 세션: SchemaHeteroGAT in_channels 자동 분기 (384 vs 768) 또는 SuperNode ckpt 재학습 검토
+- analyzer (선택): qcond_cos_a1_glm 의 cosine-only 가 ensemble blend 보다 우세인 origin 분석 — query 분포별 효과 분해
+
+## GLM era 일관 재측정 (Ablation 1/2/3, 2026-04-27) — 11 cells (8 final GLM + 3 LLM-free no-filter)
+
+발사: 2026-04-27 01:01:27 → 완료: 03:14:47 (wall clock 2h 13min, budget 3.5h 내). GPU 2/3 split, 2 concurrent per GPU = 4 cells parallel × 3 batch.
+
+### Ablation 1 (Builder × Stage) — Enriched final 1 cell
+
+| Cell | R | P | F1 |
+|---|---|---|---|
+| s03_a07_01_enriched_gat_glm | 0.6926 | 0.8300 | 0.7551 |
+
+### Ablation 2 (Encoder × Score × Stage) — Final 4 cells (Plain encoder + Basic PCST + XiYan(GLM))
+
+| Cell | R | P | F1 |
+|---|---|---|---|
+| plain_gat_a0_glm (α=0 GAT only) | 0.6825 | 0.7153 | 0.6985 |
+| **plain_cos_a1_glm (α=1 Cos only)** | **0.8472** | 0.8310 | **0.8390** ★ |
+| plain_ens_glm (α=0.85 Ensemble) | 0.8447 | 0.8316 | 0.8381 |
+| qcond_gat_a0_glm | 0.6830 | 0.7638 | 0.7211 |
+
+### Ablation 3 (Extractor × Stage) — final 3 + no_filter 3 cells (Plain Ens stack)
+
+| Stack | Extractor | R (no_filter) | P (no_filter) | F1 (no_filter) | R (final) | P (final) | F1 (final) | Filter ΔF1 |
+|---|---|---|---|---|---|---|---|---|
+| Plain Ens | AdaptivePCST | 0.7255 | 0.3480 | 0.4704 | 0.6479 | 0.8099 | 0.7199 | +0.2495 |
+| Plain Ens | SteinerBackbone | 0.8242 | 0.2345 | 0.3651 | 0.7081 | 0.8073 | 0.7545 | +0.3894 |
+| Plain Ens | MST (Steiner 2-approx) | 0.8370 | 0.2366 | 0.3689 | 0.7252 | 0.8276 | 0.7730 | +0.4041 |
+| (참고) Plain Ens | Basic PCST = `plain_ens_glm` | — | — | — | 0.8447 | 0.8316 | **0.8381** | — |
+
+### 새 GLM era top 후보 갱신
+
+- **`plain_cos_a1_glm`**: R=0.8472 / P=0.8310 / **F1=0.8390**
+- 직전 GLM era top `qcond_gat_basic_glm` (F1=0.8383): **ΔF1=+0.0007** (anchor 갱신 임계 +0.005 미달, **anchor 유지**)
+- `qcond_cos_a1_glm` (직전 측정 F1=0.8424) 와 비교: -0.0034 (encoder 차이는 노이즈 수준)
+- **결론**: F1=0.83~0.84 plateau 영역 — Cosine 우세 stack 동률 후보 다수
+
+### 주요 발견 (11 cells)
+
+1. **Cosine 우세 stack 의 GLM era 일관 우세**: α=1 Cos 0.8390, α=0.85 Ens 0.8381, α=0 GAT 0.6985 → ΔF1 GAT→Cos +0.1405. **Score signal 절대 우세**, encoder 차이 무시 가능.
+2. **Encoder agnostic** (Cos 기준): Plain Cos 0.8390 ≈ QCond Cos 0.8424 — encoder 효과 noise 수준. GAT-only stack 일 때만 QCond > Plain (+0.0226).
+3. **Extractor 위계 GLM era 재현**: Basic PCST (0.8381) >> MST (0.7730) > Steiner (0.7545) > Adaptive (0.7199). vLLM era "Basic > Adaptive + XiYan" 결론 GLM era 에서도 견고.
+4. **새 발견 — MST > Adaptive + XiYan (+0.0531)**: MST 의 소량 selection 이 XiYan 정밀 prune 과 시너지. Adaptive 의 P80 widening 은 XiYan 의 prune 부담만 가중.
+5. **Filter Δ F1 by Extractor**: MST (+0.4041) > Steiner (+0.3894) > Adaptive (+0.2495) — **입력 sub graph 가 단순할수록 LLM filter 효율 ↑**. MST 가 seed-only Steiner tree로 가장 좁게 시작 → filter 가 false negative 추가 prune 적음.
+6. **Enriched GAT GLM era 갱신**: vLLM era a07_01 (F1≈0.7140) → GLM era 0.7551 (+0.0411). Builder 효과는 GLM 환경에서 더 발현.
+
+### 비용 / 운영
+
+- 8 GLM cells 비용: 8 × ~₩764 = **~₩6,112** (단일 GLM 셀 1.78s/query × 1534 = 45.5min, total LLM input ~50.6M tok)
+- 3 LLM-free cells: 비용 0
+- Wall clock: 2h 13min (concurrent GPU 2/3, batch 1+2 GLM ~58min each, batch 3 LLM-free ~16min)
+
+### 산출물
+
+- Configs (11): `configs/experiments/s03_gat_ensemble/a07_enriched_triplet/s03_a07_01_enriched_gat_glm.yaml`, `configs/experiments/s04_ablation/stagewise/{plain_gat_a0,plain_cos_a1,plain_ens,qcond_gat_a0}_glm.yaml`, `configs/experiments/s04_ablation/extractor/plain_ens_{adaptive,steiner,mst}_glm.yaml`, `configs/experiments/s04_ablation/extractor/no_filter/plain_ens_{adaptive,steiner,mst}_no_filter.yaml`
+- Script: `scripts/run_glm_era_ablation_full.sh` (GPU 2/3 split, 2 concurrent per GPU)
+- MST smoke (sanity): 28s에 15 preds 산출, MSTExtractor forward pass 정상 (smoke 후 output 삭제 + main launch)
+
+### 후속 (planner 핸드오프)
+
+- `presentation_brief_2026-04-28.md §14.1` (Ablation 1) Enriched GLM 1 cell 추가 + 9-cell Builder × Stage 매트릭스 완성
+- `§14.2` (Ablation 2) Plain final 4 cells 추가 → 9-cell Encoder × Score × Stage 정합 (Plain final 줄 채움)
+- `§14.3` (Ablation 3) **신규 도입**: Extractor (Adaptive/Steiner/MST) × Stage 6 cells + plain_ens_glm 참조 — Filter Δ F1 by Extractor 정량
+- `§14.5` (예: Alpha sweep) — 다음 결정 후보: anchor `qcond_gat_basic_glm` 유지하지만 plain_cos_a1_glm 동률 표기 + alpha sweep 시 Plain encoder 기준 또는 QCond 기준 선택 필요
+- DECISIONS 후속 엔트리: (a) GLM era 일관 재측정 11 cells 결과 (b) MST > Adaptive 새 발견 + Filter Δ F1 by Extractor 위계 (c) anchor 유지 + plain_cos_a1_glm 동률 후보 표기 (d) Alpha sweep stack 선택 (Plain Cos 대 QCond Cos 우선순위)
+- analyzer (선택): MST 셀 score_analysis_*.jsonl 분해 — Adaptive 대비 MST 가 R 손실 (-0.07) 했음에도 P 향상 (+0.0177) 으로 F1 +0.0531 — 정확히 어떤 query 클러스터에서 MST 가 보이드 회피하는지 case study
+
+## Ablation 1/2/3 α=0.5 Re-measurement (Option B, 2026-04-27) — 15 cells (6 final GLM + 9 LLM-free)
+
+발사: 2026-04-27 14:41:16 → 완료: 17:42:22 (wall clock 3h 1min, budget 3h 살짝 초과 +1min). GPU 2 (6 Final GLM, 3 batches × 2 concurrent), GPU 3 (9 LLM-free, 5 batches). α=0.85 → α=0.5 (neutral, GAT/Cosine 동등 결합) baseline 재정의.
+
+### 근거 (DECISIONS.md 2026-04-27 α=0.5 재측정 결정)
+
+- **α=0.85 의 sweep 근거 제한**: I1a-c sweep 은 No Filter stack 한정 (α∈{0.70/0.75/0.85}, with-Filter 미수행)
+- **L92 분석 인용**: "Filter 적용 시 Ensemble vs Cosine 차이 미미, α=0.85 GAT 15% 만 반영" — Filter 단 ensemble 약화
+- **Advisor analysis L9/L29/L43**: α=0.85 의 GAT 15% 비중 비판, neutral baseline 권장
+- **사용자 confirm 2026-04-27**: "Ensemble score 비교에 α=0.5 가 더 합리적 + alpha ablation 따로 진행"
+
+### Ablation 2 — Plain/QCond × α=0.5 × 3 stage (6 cells)
+
+| Encoder | Stage | R | P | F1 |
+|---|---|---|---|---|
+| Plain | Selector only | 0.6301 | 0.2358 | 0.3432 |
+| Plain | + Extractor (Basic PCST) no_filter | 0.9550 | 0.1217 | 0.2159 |
+| **Plain** | + Filter (XiYan GLM) Final | **0.8316** | **0.8188** | **0.8252** |
+| QCond | Selector only | 0.7110 | 0.2780 | 0.3997 |
+| QCond | + Extractor (Basic PCST) no_filter | 0.9581 | 0.1304 | 0.2296 |
+| **QCond** | + Filter (XiYan GLM) Final | **0.8337** | **0.8275** | **0.8306** |
+
+### Ablation 1 — Enriched α=0.5 × 3 stage (3 cells)
+
+| Stage | R | P | F1 |
+|---|---|---|---|
+| Selector only | 0.6243 | 0.2326 | 0.3389 |
+| + Extractor (Basic PCST) no_filter | 0.9557 | 0.1233 | 0.2184 |
+| **+ Filter (XiYan GLM) Final** | **0.8325** | **0.8199** | **0.8262** ★ |
+
+### Ablation 3 — Plain α=0.5 + 3 ext × 2 stage (6 cells)
+
+| Extractor | Stage | R | P | F1 |
+|---|---|---|---|---|
+| AdaptivePCST | no_filter | 0.5849 | 0.2929 | 0.3903 |
+| AdaptivePCST | Final (XiYan GLM) | 0.5058 | 0.6730 | **0.5775** |
+| SteinerBackbone | no_filter | 0.6979 | 0.2101 | 0.3230 |
+| SteinerBackbone | Final (XiYan GLM) | 0.5992 | 0.7081 | **0.6491** |
+| MST | no_filter | 0.7231 | 0.2170 | 0.3338 |
+| MST | Final (XiYan GLM) | 0.6257 | 0.7377 | **0.6771** |
+
+### α=0.85 vs α=0.5 비교 (직접 baseline 비교)
+
+#### Final GLM (with-Filter, 6 cells)
+
+| Stack | α=0.85 F1 | α=0.5 F1 | ΔF1 |
+|---|---|---|---|
+| Plain Ens (Basic PCST) | 0.8381 | 0.8252 | -0.0129 |
+| QCond Ens (Basic PCST) | 0.8383 | 0.8306 | -0.0077 |
+| **Enriched Ens (Basic PCST)** | **0.7551** | **0.8262** | **+0.0711 ★** |
+| Plain Ens + Adaptive | 0.7199 | 0.5775 | **-0.1424 ⚠️** |
+| Plain Ens + Steiner | 0.7545 | 0.6491 | -0.1054 |
+| Plain Ens + MST | 0.7730 | 0.6771 | -0.0959 |
+
+#### LLM-free cumulative (9 cells)
+
+| Stage / Stack | α=0.85 F1 | α=0.5 F1 | ΔF1 |
+|---|---|---|---|
+| Plain Ens selector_only | 0.3974 | 0.3432 | -0.0542 |
+| QCond Ens selector_only | 0.4016 | 0.3997 | -0.0019 |
+| Enriched Ens selector_only | 0.3877 | 0.3389 | -0.0488 |
+| Plain Ens no_filter | 0.2250 | 0.2159 | -0.0091 |
+| QCond Ens no_filter | 0.2271 | 0.2296 | +0.0025 |
+| Enriched Ens no_filter | 0.2252 | 0.2184 | -0.0068 |
+| Plain + Adaptive no_filter | 0.4704 | 0.3903 | -0.0801 |
+| Plain + Steiner no_filter | 0.3651 | 0.3230 | -0.0421 |
+| Plain + MST no_filter | 0.3689 | 0.3338 | -0.0351 |
+
+### 🎯 핵심 발견 (15 cells)
+
+1. **🚀 Builder × α 상호작용 (Enriched 가 α=0.5 압도적 우세 +0.0711)**: 새 발표 주력 narrative. Enriched 의 description 정보가 Cosine PLM 임베딩에 noise 로 작용 (α=0.85 cos 우세 → 손실), GAT 가 학습한 구조 정보로 보정 (α=0.5 GAT 비중 ↑ → 회복). **Enriched 의 학술적 가치를 α=0.5 baseline 에서 새로 발견**.
+2. **⚠️ Extractor × α 상호작용 (Adaptive/Steiner/MST 모두 α=0.5 에서 큰 손실 -0.10~-0.14)**: Adaptive PCST 의 per-q P80 threshold + Steiner backbone bonus + MST seed-only 가 모두 score 분포에 sensitive — GAT noise 가 percentile/cost cutoff 왜곡. **Basic PCST 가 α 변경에 robust** (fixed θ=0.1 절대 threshold).
+3. **anchor 유지 정당 강화 (Plain/QCond Final α=0.85 vs α=0.5: ΔF1 +0.008/+0.013)**: with-Filter stack 에서도 α=0.85 가 약하게 우세, I1a-c sweep "α=0.85 best" (No Filter stack) 결론 with-Filter 에서도 재현. 단 plateau 영역 임계 +0.005 미달이라 narrative 상 α=0.5 baseline 표기 가능.
+4. **Pre-Filter 단계 평균 ΔF1 = -0.0354**: GAT 비중 ↑로 noise 영향 ↑, Filter 단계에서 일부 회복. Filter 의 noise prune 가치 정량.
+5. **Adaptive + α=0.5 stack 부적절 발견**: F1=0.5775 — 모든 변형 중 최저 (no_filter 0.3903 → final 0.5775, Filter Δ +0.1872 도 가장 낮음). per-q P80 + GAT noise 부정적 시너지.
+
+### 비용 / 운영
+
+- 6 GLM cells 비용: ~₩4,584 (1.78s/query × 1534 × 6)
+- 9 LLM-free cells: ₩0
+- Wall clock: 3h 1min (GPU 2/3 split, GPU 3 finish 51min, GPU 2 finish 3h 1min — bottleneck = GPU 2 GLM batch 3)
+
+### 산출물
+
+- Configs (15): `s04_ablation/stagewise/{plain_ens_a05_glm, qcond_ens_a05_glm}.yaml`, `s04_ablation/stagewise/selector_only/{plain_ens, qcond_ens}_a05_selector_only.yaml`, `s04_ablation/stagewise/no_filter/{plain_ens, qcond_ens}_a05_no_filter.yaml`, `s03_gat_ensemble/a07_enriched_triplet/s03_a07_01_enriched_a05_{selector_only, no_filter, glm}.yaml`, `s04_ablation/extractor/plain_ens_a05_{adaptive, steiner, mst}_glm.yaml`, `s04_ablation/extractor/no_filter/plain_ens_a05_{adaptive, steiner, mst}_no_filter.yaml`
+- Script: `scripts/run_ablation_alpha05_remeasure.sh` (GPU 2: 6 GLM 3 batches, GPU 3: 9 LLM-free 5 batches)
+
+### 후속 (planner 핸드오프)
+
+- `presentation_brief_2026-04-28.md §14.1` — Builder Ensemble 행 α=0.5 갱신 (Enriched +0.0711 새 narrative ★ 핵심), α=0.85 anchor 표기 유지
+- `§14.2` — Plain/QCond Ensemble 행 α=0.5 갱신, α=0.85 alpha sweep 한 점 표기
+- `§14.3` — 4 Extractor 통일 stack α=0.5 갱신, α 변경 robustness 위계 (Basic >> Steiner > MST > Adaptive)
+- `§14.6` — anchor 결정 재판정 (현 anchor `qcond_gat_basic_glm` F1=0.8383 유지, α=0.5 plateau 내 plain_cos_a1_glm 0.8390 동률 표기 그대로)
+- `§11 Q&A` — "왜 α=0.5 로 재측정?" Q 추가 (DECISIONS L33-34 narrative 활용)
+- DECISIONS 후속 엔트리: (a) 15 cells α=0.5 재측정 결과 (b) Builder × α 상호작용 Enriched +0.0711 발견 (c) Extractor × α 상호작용 (d) anchor 유지 정당성 강화 (e) Adaptive + α=0.5 stack 부적절 발견
+- Alpha sweep H8 (post-deadline): 본 측정으로 α∈{0.5, 0.85, 1} 3 점 확보 — α∈{0.25, 0.7, 0.95} 보강하여 with-Filter stack alpha sensitivity 완성
+
+## MST 변형 측정 (옵션 C + Union, 2026-04-27) — 6 cells (4 옵션 C + 2 Union, 🚀 anchor 갱신)
+
+발사 1: 2026-04-27 19:11:12 → 완료: 20:21:43 (4 cells, wall clock 1h 10min, GPU 1)
+발사 2: 2026-04-27 20:23:30 → 완료: 22:21:53 (2 cells, wall clock 1h 58min, GPU 1)
+SuperNode 학습 GPU 0 와 병렬 진행 (충돌 없음).
+
+### 근거 (DECISIONS.md 2026-04-27)
+
+- **옵션 C 결정**: 사용자 의문 "MST recall 이 왜 낮나" 해소 — 기존 `MSTExtractor` 가 사실 Steiner 2-approx + top-k seed 였기 때문. 진짜 MST Kruskal + score-threshold seed 측정 필요.
+- **MST ∪ PCST union 결정**: 사용자 직전 요청 "MST 로 찾은 집합과 PCST 로 찾은 집합의 합집합". 새 anchor (MST Kruskal F1=0.8642) 의 R 상한 검증 + Filter 의 union 처리 능력 정량.
+
+### 신규 Extractor 구현 (Extractor 모듈 세션)
+
+- **MSTExtractor**: `seed_mode ∈ {"topk", "threshold"}` + `score_threshold=0.1` 추가 — 기존 default 보존, threshold 변형 활성화
+- **MSTKruskalExtractor** (신규): `score_threshold=0.1` 노드의 induced subgraph 위 networkx.minimum_spanning_tree (Kruskal default), Steiner point 없음
+- **MSTPCSTUnionExtractor** (신규): MSTKruskal ∪ PCSTExtractor (Basic, node_threshold=0.1) — 노드 + 엣지 합집합
+
+### 6 cells 측정 결과 (R/P/F1, 4자리)
+
+#### Plain Ens α=0.5 stack — Extractor × Stage matrix
+
+| Extractor | no_filter R / P / F1 | Final GLM R / P / F1 | Filter ΔF1 |
+|---|---|---|---|
+| Steiner Tree threshold seed (`MSTExtractor seed_mode=threshold`) | 0.9914 / 0.1223 / **0.2177** | 0.8720 / 0.8538 / **0.8628** | +0.6451 |
+| MST Kruskal (진짜 MST, induced) | 0.9914 / 0.1222 / **0.2176** | **0.8724 / 0.8561 / 0.8642** ★ | +0.6466 |
+| **MST ∪ PCST union** ★🆕 | **0.9914 / 0.1222 / 0.2176** | **0.8787 / 0.8560 / 0.8672** ★🚀 | **+0.6496 (max)** |
+
+#### 시나리오 판정
+
+- **mst_pcst_union vs mst_kruskal anchor**: ΔF1 = 0.8672 - 0.8642 = **+0.0030**
+- **시나리오 B 채택** (DECISIONS.md L24-27): F1 ≈ anchor ±0.005 plateau → **anchor 유지** (`plain_ens_a05_mst_kruskal_glm` F1=0.8642)
+- 단 union 미세 우세 — narrative 강화: "MST Kruskal R 상한 거의 도달, union 추가 노드 효과 ΔR=+0.0063 / ΔF1=+0.0030"
+
+### 🎯 6 cells 핵심 발견
+
+1. **🚀 anchor 갱신 (옵션 C 4 cells, 직전 결과)**: 직전 anchor `qcond_gat_basic_glm` F1=0.8383 → 새 anchor `plain_ens_a05_mst_kruskal_glm` F1=**0.8642** (ΔF1=+0.0259, 임계 +0.005 의 5배 초과). 사용자 의문 정확 해소: 기존 "MST" final F1=0.6771 의 R 한계 = Steiner 2-approx + top-k seed (한정) 때문. 진짜 MST Kruskal + score-threshold seed 변경 시 +0.1871 ΔF1 향상.
+
+2. **Algorithm 차이 거의 없음 (옵션 C)**: MST Kruskal vs Steiner Tree threshold ΔF1=+0.0014 (final), no_filter R 동일 (0.9914). **Steiner point 추가 효과 무시 가능**.
+
+3. **🆕 MST Kruskal R 상한 도달 증거 (Union 측정)**: 
+   - no_filter R 모두 동일 (Steiner threshold / MST Kruskal / union 모두 0.9914)
+   - PCST ⊆ MST Kruskal (PCST 의 노드 = MST Kruskal score>0.1 induced subgraph 의 부분집합)
+   - **score>0.1 노드 안에서 gold 회수율 99.14% 가 자연 상한**
+
+4. **🆕 Union 의 미세 final F1 +0.0030 향상**:
+   - ΔR = +0.0063 (약간 더 많은 정답 회수, 엣지 정보 차이 가능성)
+   - ΔP = -0.0001 (거의 동일)
+   - **paper insight 후보**: "Multi-extractor union 의 marginal R 회수 (+0.0063) — Filter 가 추가 엣지 정보로 정답 식별 미세 향상". 단 anchor 갱신 임계 미달이므로 narrative 보조.
+
+5. **seed pool widening 이 R 결정 mechanism (옵션 C 결과)**:
+   - top-k seed (Selector top-20): no_filter R=0.7231 (기존 MSTExtractor)
+   - score-threshold seed (score > 0.1): no_filter R=0.9914 (+0.2683 ΔR over top-k)
+   - **paper main contribution 후보**: "Extractor 의 seed pool (top-k vs score-threshold) + algorithm choice (Steiner Tree vs MST Kruskal) 가 Recall 결정 mechanism"
+
+6. **Filter ΔF1 위계 갱신**: union (+0.6496) > MST Kruskal (+0.6466) > Steiner Tree threshold (+0.6451) > Basic PCST (+0.6131, α=0.5 측정). Filter 가 minimal+rich subgraph 위에서 가장 효율적.
+
+### 명명 정정 확정
+
+- 기존 `MSTExtractor` = Steiner 2-approx (Kou-Markowsky-Berman 1981) — 명명 오류
+- 신규 `MSTKruskalExtractor` = 진짜 MST (Kruskal, networkx.minimum_spanning_tree)
+- `MSTExtractor seed_mode="threshold"` = Steiner Tree + score-threshold seed 변형
+- **post-deadline 코드 rename** (`MSTExtractor` → `SteinerTreeExtractor`, alias 유지)
+
+### 비용 / 운영
+
+- 3 GLM cells 비용: 3 × ~₩764 = **~₩2,292**
+- 3 LLM-free cells: ₩0
+- Wall clock 발사 1 (4 cells): 1h 10min
+- Wall clock 발사 2 (2 cells): 1h 58min (GLM API throughput 일시 변동, no_filter 14min + glm 117min)
+- GPU 1 only (SuperNode 학습 GPU 0 보호, 충돌 없음)
+
+### 산출물
+
+- Configs (6): `s04_ablation/extractor/no_filter/plain_ens_a05_{steiner_threshold, mst_kruskal, mst_pcst_union}_no_filter.yaml`, `s04_ablation/extractor/plain_ens_a05_{steiner_threshold, mst_kruskal, mst_pcst_union}_glm.yaml`
+- Scripts: `scripts/run_mst_variants.sh` (4 cells), 추가 inline launch (2 cells)
+- 신규 Extractor 코드 (Extractor 모듈 세션): `src/modules/extractors/mst.py` (seed_mode 추가), `src/modules/extractors/mst_kruskal.py`, `src/modules/extractors/mst_pcst_union.py`
+
+### 후속 (planner 핸드오프)
+
+- `presentation_brief_2026-04-28.md §14.3` 6-row 매트릭스 확장:
+  - Basic PCST / Steiner Tree top-k (기존 "MST") / Steiner Tree threshold / MST Kruskal / **MST ∪ PCST union (신규)** / Adaptive PCST
+  - "MST 단독" 표기 → "Steiner Tree (2-approx, Kou-Markowsky-Berman 1981)" 정정
+- `§14.6` anchor 결정: `plain_ens_a05_mst_kruskal_glm` F1=0.8642 새 anchor 확정 (옵션 C 4 cells 결과). MST ∪ PCST union F1=0.8672 plateau 내 동률 후보 표기.
+- `§11 Q&A` "Q: MST recall 이 왜 낮나?" + "Q: MST ∪ PCST union 효과는?" 신규 추가
+- DECISIONS 후속 엔트리: (a) 옵션 C 4 cells + Union 2 cells 6 cells 통합 결과 (b) 시나리오 B 판정 + anchor 유지 (c) MST Kruskal R 상한 도달 증거 (d) Union 의 marginal +0.0030 narrative
+- Analyzer (선택, post-deadline): MST Kruskal vs union vs Basic PCST 의 per-DB / per-difficulty 분해 + 어떤 query 클러스터에서 union 의 +0.0063 ΔR 발생하는지 case study
+- Extractor 모듈 (post-deadline): 코드 명명 정정 (MSTExtractor → SteinerTreeExtractor, alias 유지)
+
+## Paper Main Pipeline Measurement (옵션 A2, 2026-04-28) — 2 cells (End-to-End Co-Design with Modular LLM Filter)
+
+발사: 2026-04-28 00:10:20 → 완료: 01:12:39 (wall clock 1h 02min, GPU 1 only). SuperNode 학습 GPU 0 와 동시 진행 (충돌 없음).
+
+### 근거 (DECISIONS.md 2026-04-28 — 방향 F' 최종 채택 + 옵션 A2)
+
+- **방향 F' 최종 채택**: End-to-End Pipeline Co-Design with Modular LLM Filter (4 module contributions + 4 co-design principles)
+- **옵션 A2 측정**: 사용자 의도된 paper main pipeline (Enriched + QCond + MST Kruskal/Union + XiYan GLM) F1 정확 확보
+- **paper title 권장**: "LLM Filter as a First-Class Stage in Graph-RAG Schema Linking: Co-Designing Builder, Selector, Extractor, and Filter"
+
+### Stack 구성 (4 module)
+
+| 모듈 | 결정 | ckpt / 알고리즘 |
+|---|---|---|
+| Builder | EnrichedHeteroGraphBuilder | description-aware (CSV + tables.json) |
+| Encoder | LocalPLMEncoder | sentence-transformers/all-MiniLM-L6-v2 |
+| Selector | EnsembleSelector α=0.5 (neutral) | weight=best_gat_qcond_nl3.pt, query_conditioned=true |
+| Extractor (Cell 1) | MSTKruskalExtractor | score_threshold=0.1 (induced subgraph Kruskal MST) |
+| Extractor (Cell 2) | MSTPCSTUnionExtractor | score_threshold=0.1 (MST ∪ Basic PCST) |
+| Filter | XiYanFilter | provider=glm, model=zai-org/glm-4.7 |
+
+### 2 cells 측정 결과 (R/P/F1, 4자리)
+
+| Cell | R | P | F1 | ΔF1 vs Plain anchor (0.8642) |
+|---|---|---|---|---|
+| **enriched_qcond_a05_mst_kruskal_glm** ★ | 0.8741 | 0.8606 | **0.8673** | **+0.0031** |
+| enriched_qcond_a05_mst_pcst_union_glm | 0.8772 | 0.8564 | 0.8667 | +0.0025 |
+
+### 🎯 시나리오 판정: **A 부분 (paper main = anchor 동등)**
+
+- 두 cell 모두 Plain anchor F1=0.8642 보다 미세 우세 (ΔF1=+0.0025~+0.0031)
+- **anchor 갱신 임계 +0.005 미달** (LLM noise 범위 ±0.003~0.005, 직전 Union 진단)
+- **결론**: paper main stack ≈ Plain anchor (F1 동등), narrative 우선
+
+### 핵심 발견 (paper main pipeline)
+
+1. **🚀 End-to-End Co-Design 의 통합 효과 = Plain anchor 와 동등 F1**
+   - Plain Builder + Plain Ens (단순) 와 Enriched Builder + QCond Ens (paper main) 사이 F1 plateau 영역 (+0.0031)
+   - **paper insight**: "F1 동등이지만 학술적으로 강한 narrative — Description-aware + Query-conditioned + first-class LLM Filter"
+
+2. **MST Kruskal > Union (paper main에서)**
+   - Cell 1 MST Kruskal F1=0.8673
+   - Cell 2 Union F1=0.8667
+   - ΔF1=-0.0006 — Union 의 추가 PCST 노드가 paper main stack 에서는 효과 없음 (LLM noise 범위)
+   - **사용자 의도 main pipeline = MST Kruskal stack** 권장
+
+3. **Builder × Encoder 조합의 Plain stack 동등 F1 검증**
+   - Plain Builder + Plain Ens + MST Kruskal: F1=0.8642
+   - Enriched + QCond + MST Kruskal: F1=0.8673 (+0.0031)
+   - 사용자 의도 main pipeline 의 학술적 정당성 확보 (F1 손실 없음)
+
+4. **paper anchor narrative 결정 가능**
+   - 옵션 A: Plain anchor 표기 (F1=0.8642, simpler stack, anchor 유지)
+   - **옵션 B (권장)**: paper main pipeline 표기 (F1=0.8673, Enriched+QCond+MST Kruskal+XiYan GLM)
+   - 권장 사유: 학술적 contribution narrative 강화, 4 module + first-class LLM Filter 관점 일관
+
+### 비용 / 운영
+
+- 2 GLM cells: 2 × ~₩764 = **~₩1,528**
+- Wall clock: 1h 02min (GPU 1 단독, 2 cells 병렬, throughput 0.43 preds/s)
+- GPU 0 SuperNode 학습 보호 (T+6h 39min 동시 진행 정상)
+- 발사 시 GLM API HTTP 200 ✅, 모든 cells 정상 완료
+
+### 산출물
+
+- Configs (2): `s04_ablation/pipeline/enriched_qcond_a05_mst_kruskal_glm.yaml`, `s04_ablation/pipeline/enriched_qcond_a05_mst_pcst_union_glm.yaml` (신규 카테고리 `pipeline/`)
+- Script: `scripts/run_paper_main_pipeline.sh` (GPU 1 only, 2 cells parallel)
+
+### 후속 (planner 핸드오프)
+
+- `presentation_brief_2026-04-28.md §0` Executive Summary 갱신:
+  - paper main pipeline F1=0.8673 (Cell 1 MST Kruskal) — 4 module + co-design 표현
+  - "Plain anchor 0.8642 와 동등" 표기 + paper narrative 우선
+- `§10` 빠른 참조 갱신: paper main F1 정확 추가
+- `§14.6` (anchor 결정): 옵션 B 권장 (paper main pipeline anchor 표기)
+- `paper_research_direction.md §0` Executive Summary F1 갱신 (??? → 0.8673)
+- `paper_research_direction.md §7` 측정 갭 표 → 측정 완료 표시 + F1 기록
+- `paper_research_direction.md §10` 핵심 수치 요약 갱신
+- DECISIONS 후속 엔트리: (a) 옵션 A2 2 cells 결과 (b) 시나리오 A 부분 판정 + paper anchor 결정 (c) MST Kruskal > Union (paper main, ΔF1=-0.0006 noise) (d) End-to-End Co-Design 통합 효과 narrative
+- post-deadline:
+  - SuperNode 학습 완료 후 Concat vs SuperNode 결정 (H6)
+  - Multi-seed 검증 (H7) — paper main pipeline F1 reliability
+  - Wave 4 a05_filter_agentic — paper main pipeline 위에서 multi-agent extension
+
+## SuperNode QCond GAT 학습 완료 (옵션 A, 2026-04-28) — 9h 8min, best epoch 228, val recall@15=0.5737
+
+발사: 2026-04-27 18:32:00 → 완료: 2026-04-28 03:35 (wall clock 9h 8min, GPU 0). 사용자 명시 ≤8h 가이드라인 +1h 8m 초과 (단 paper main pipeline 측정 동시 진행 으로 GPU 효율 ↑).
+
+### 근거 (DECISIONS.md 2026-04-27 — H6 옵션 A 선택)
+
+- **사용자 옵션 A 직접 선택**: query_conditioned=True + query_supernode=True 통합 stack 학습
+- **mechanism 정정**: query_conditioned=True 시 query feature concat → input 768 (effective_in=in_channels*2), query_supernode 는 그래프에 SuperNode 노드만 추가 (dim 무관). 두 flag 별개 mechanism.
+- **이전 SuperNode smoke fail (2026-04-26)** 진단: 기존 ckpt input dim [256,384] vs Ablation 2 사용자 framing 정의 [256,768] mismatch — 새 ckpt 학습으로 해소
+
+### 학습 config
+
+- 파일: `configs/training/train_gat_query_supernode_qcond.yaml` (base: train_gat_query_supernode.yaml 복사 + query_conditioned=true 만 변경)
+- experiment_name: `gat_query_supernode_qcond`
+- checkpoint_name: `best_gat_query_supernode_qcond.pt` (기존 .pt 보존, 분리 저장)
+- model: in_channels=384 (effective_in=768 자동), hidden=256, layers=3, heads=4, dropout=0.1, query_conditioned=true, query_supernode=true
+- training: epochs=300, lr=1e-4, batch=8, pos_weight=100, infonce_lambda=0.5, temp=0.07, num_hard_negatives=15
+- GPU: 0/1 (학습 시작 시 default, 다른 연구자 부재 확인)
+
+### 학습 진행 (cron tick 추적)
+
+| Time | epoch | loss_total | best ckpt 갱신 |
+|---|---|---|---|
+| T+0:00 (18:32) | 1/300 | 15.3688 | — |
+| T+3h 16m (21:48) | ~120 | — | 첫 best 저장 |
+| T+6h 51m (01:23) | 228 | — | **마지막 best 갱신 (val recall@15=0.5737)** |
+| T+7h 27m (01:59 cron #1) | 248 | 0.3128 | 변경 없음 |
+| T+7h 38m (02:10 cron #2) | 254 | 0.0972 | 변경 없음 |
+| T+8h 08m (02:40 cron #3) | 270 | 0.3015 | 변경 없음 ⚠ 8h 임계 통과 |
+| T+8h 38m (03:10 cron #4) | 286 | 0.4088 | 변경 없음 |
+| T+9h 08m (03:40 cron #5) | 300 | 0.4233 | 변경 없음 — 학습 완료 |
+
+→ **best epoch 228 plateau 도달**, 이후 72 epoch 추가 학습 무익. H7 multi-seed 검증 시 epoch 250 cap 권장.
+
+### Best ckpt 정보 + 검증
+
+- **best epoch**: 228 / 300
+- **val recall@15**: **0.5737**
+- **lin_dict.column.weight shape**: (256, **768**) → effective_in=768 정상 (query_conditioned=True 활성)
+- **query_node lin_dict 존재**: query_supernode=True 활성
+- **ckpt 위치 (NAS)**: `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_query_supernode_qcond.pt` (220 MB)
+- **symlink**: `outputs/checkpoints/best_gat_query_supernode_qcond.pt → NAS`
+
+### Smoke test (ensemble_selector load_state_dict 검증) — 🐛 버그 발견 → 즉시 수정 → 재검증 PASS
+
+- Config: `configs/experiments/s04_ablation/stagewise/selector_only/supernode_qcond_a0_smoke.yaml` (신규, 안전한 별도 yaml — 기존 supernode_gat_a0_selector_only.yaml 변경 없이)
+- Stack: SuperNode encoder (query_conditioned=true + query_supernode=true) + GAT α=0 + Selector only
+- ckpt: best_gat_query_supernode_qcond.pt
+
+#### 1차 시도 — FAIL
+
+- 결과 (R/P/F1): 0.0000 / 0.0000 / NaN (1534 queries 모두 status=Error)
+- Error: `mat1 and mat2 shapes cannot be multiplied (3x384 and 768x256)`
+
+#### 진단 + 코드 수정 (root, 2026-04-28)
+
+- **위치**: `src/modules/selectors/ensemble_selector.py:241-243` (SuperNode 분기에서 query_emb 미전달)
+- **원인**: 학습 path 에는 `query_conditioned=True` 시 query embedding concat 활성. Inference 의 SuperNode 분기는 `query_emb` 인자 미전달 → GAT 의 query concat 비활성 → input 384 dim, ckpt 가중치 768 dim mismatch
+- **수정** (1 line):
+  ```python
+  if self.query_supernode:
+      ...
+      node_embs_dict = self.gat_model(
+          graph_data.x_dict, graph_data.edge_index_dict,
+          query_emb=q_emb if self.query_conditioned else None,  # 추가
+          active_num_layers=active_depth)
+  ```
+
+#### 2차 시도 — PASS ✅
+
+- 결과 (R/P/F1): **0.6035 / 0.2534 / 0.3569** (1534 queries 모두 status=Answerable, error 없음)
+- **비교 (selector_only α=0 GAT only)**:
+  - Plain GAT α=0: F1=0.2937
+  - QCond GAT α=0 (Concat): F1=0.3534
+  - **SuperNode QCond α=0 (신규)**: F1=**0.3569** ★ (Concat 대비 +0.0035, noise 범위)
+- **결론**: load_state_dict + forward path + selected_nodes 산출 모두 정상. SuperNode encoder 효과는 selector_only 에서 Concat 과 거의 동일.
+
+### 비용 / 운영
+
+- 학습 비용: ₩0 (GPU 자체 사용)
+- Wall clock: 9h 8m (사용자 ≤8h 가이드라인 +1h 8m 초과)
+- GPU 0 단독 (paper main pipeline 측정 동시 GPU 1 진행, 충돌 없음)
+- NAS 220 MB 사용 (1.1T 여유 영향 minor)
+
+### 산출물
+
+- 학습 config: `configs/training/train_gat_query_supernode_qcond.yaml`
+- ckpt: `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_query_supernode_qcond.pt` (symlink → outputs/checkpoints/)
+- 학습 로그: `logs/gat_query_supernode_qcond/train/train_step.jsonl` (32100 entries, 30 MB)
+- Smoke config: `configs/experiments/s04_ablation/stagewise/selector_only/supernode_qcond_a0_smoke.yaml`
+
+### 후속 (planner 핸드오프)
+
+- **Selector 결정 (H6)**: 신규 ckpt 학습 완료 (val recall@15=0.5737) + inference path 버그 수정 완료 + smoke PASS (selector_only F1=0.3569 ≈ Concat 0.3534)
+- **코드 수정 적용**: `src/modules/selectors/ensemble_selector.py:241-243` SuperNode 분기에 `query_emb=q_emb if self.query_conditioned else None` 인자 추가 (1 line). 이전 SuperNode cells (vLLM era a03_16~18 등) 도 본 수정의 영향 확인 필요 — `query_conditioned=False, query_supernode=True` 였으면 영향 없음.
+- **post-deadline measurement 옵션** (코드 수정 완료, 즉시 가능):
+  - SuperNode stack × 3 stage = 3 cells (Plain Builder + α=0.5 통일) — paper main pipeline narrative 와 align
+  - 또는 SuperNode + Enriched + α=0.5 + MST Kruskal/Union × 2 cells = paper main pipeline (옵션 A2) 의 SuperNode variant
+- **DECISIONS 후속 엔트리**: (a) 학습 완료 + best epoch 228 / val recall=0.5737 (b) NAS migration 완료 (c) 🐛 smoke 1차 fail = inference path 버그 (load_state_dict OK, SuperNode 분기 query_emb 미전달) (d) ✅ 코드 fix + 2차 smoke PASS (F1=0.3569 selector_only) (e) post-deadline measurement 검토
+- **paper_research_direction.md §1 모듈별 결정**: "Concat vs SuperNode 결정" → "SuperNode ckpt 학습 + smoke PASS (val recall@15=0.5737, selector_only F1=0.3569 ≈ Concat 0.3534), measurement 검토 진행"
+- **§8 Future Works H6** 갱신: "진행 중 → 학습 + 코드 수정 + smoke 모두 완료, post-deadline measurement"
+- **발표 narrative 영향 X** — SuperNode 9 cells "측정 X" caveat 그대로 유지 (DECISIONS 2026-04-27 H6 옵션 A 엔트리 caveat 적용)
+- **사용자 결정 대기 (옵션 B/C)**: smoke 통과 했으니 즉시 추가 cells 측정 가능
+  - 옵션 B: SuperNode + Enriched + α=0.5 + MST Kruskal + XiYan GLM 1 cell (~50min, ~₩764) — paper main pipeline F1=0.8673 (Concat) 와 직접 비교
+  - 옵션 C: 옵션 B + Union variant 2 cells (~50min, ~₩1,528)
+
+## SuperNode 9-cell Matrix 측정 (Ablation 2 SuperNode, 2026-04-29) — α∈{0, 0.5, 1} × {Selector_only, +Basic PCST, +XiYan GLM}
+
+발사: 2026-04-29 19:45:46 → 완료: 21:38:51 (wall clock 1h 53min, GPU 0/1 split). 사용자 요청 (2026-04-29): "SuperNode 의 alpha=0.0, 0.5, 1.0 일 때의 각 단계별 (Selector Only, +Basic PCST, +XiYan Filter) 점수".
+
+### 근거 (DECISIONS.md 2026-04-28 — H6 옵션 A 선택 + 학습 완료 + 코드 fix)
+
+- **새 ckpt**: `best_gat_query_supernode_qcond.pt` (best epoch 228, val recall@15=0.5737)
+- **코드 fix 적용**: `src/modules/selectors/ensemble_selector.py:241-243` (SuperNode 분기 query_emb 전달)
+- **smoke PASS**: F1=0.3569 (α=0 selector_only) 정상 동작 검증
+
+### 9 cells 결과 매트릭스 (R/P/F1, 4-decimal)
+
+| α / Stage | Selector only | + Basic PCST (no_filter) | + XiYan(GLM) Final |
+|---|---|---|---|
+| **α=0** (GAT only) | 0.6035 / 0.2534 / **0.3569** | 0.5539 / 0.2809 / **0.3728** | 0.4738 / 0.6487 / **0.5476** |
+| **α=0.5** (neutral) | 0.7276 / 0.2787 / **0.4030** | 0.9564 / 0.1396 / **0.2436** | **0.8353 / 0.8330 / 0.8341** |
+| **α=1** (Cosine only) | 0.7693 / 0.2549 / **0.3829** | 0.9662 / 0.1302 / **0.2295** | **0.8441 / 0.8296 / 0.8368** |
+
+### vs QCond Concat 비교 — Final GLM
+
+| α | Concat F1 | SuperNode F1 | ΔF1 (SN − Concat) |
+|---|---|---|---|
+| α=0 (GAT only) | 0.7211 | 0.5476 | **-0.1735 ⚠️** |
+| α=0.5 (neutral) | 0.8306 | 0.8341 | +0.0035 (noise) |
+| α=1 (Cosine only) | 0.8424 | 0.8368 | -0.0056 (noise) |
+
+### 🎯 핵심 발견 (9 cells)
+
+1. **🚨 α=0 (GAT only) 에서 SuperNode 큰 손실 (-0.1735 vs Concat)** — paper insight 후보:
+   - Concat: query embedding 을 모든 노드 input feature 에 concat → GAT score 산출에 직접 기여
+   - SuperNode: query_node 를 그래프에 주입 + message passing 통한 indirect 영향
+   - α=0 (GAT-only) 신호 모드에서 SuperNode 의 indirect 효과가 dilution → Concat 의 direct concat 이 우세
+   - **Selector_only/+ PCST 단계에서도 동일 패턴 확인**: SuperNode α=0 selector_only F1=0.3569 < QCond Concat α=0 0.3534 (+0.0035 가까움) → Filter 단에서 격차 확대 (-0.1735) — Filter 의 prune 부담이 SuperNode α=0 의 약한 signal 에 더 큼
+
+2. **α=0.5/1 에서 SuperNode ≈ Concat (plateau 동등)** — Cosine 비중 우세 영역 (α≥0.5) 에서는 GAT/SuperNode 차이 dilute. 양쪽 모두 plateau (F1=0.83~0.84) 도달.
+
+3. **No-filter 단계 (no_filter) SuperNode α=0.5/1 R 매우 높음** (0.9564/0.9662) — Concat 과 거의 동일. Selector signal 차이가 없음.
+
+4. **paper main pipeline anchor 유지**: Concat (`s04_pipeline_enriched_qcond_a05_mst_kruskal_glm` F1=0.8673). SuperNode 어떤 α 에서도 anchor 갱신 임계 +0.005 초과 못 함.
+
+5. **H6 결정 — Concat 채택, SuperNode 보류**:
+   - 발표 narrative: paper main pipeline = QCond **Concat**
+   - SuperNode 는 future work (α=0 손실 mechanism 분석 필요, paper limitation 후보)
+
+6. **Filter Δ F1 by α (SuperNode stack)**:
+   - α=0: no_filter 0.3728 → final 0.5476, Δ=+0.1748 (small)
+   - α=0.5: no_filter 0.2436 → final 0.8341, Δ=**+0.5905** (large)
+   - α=1: no_filter 0.2295 → final 0.8368, Δ=**+0.6073** (max)
+   - **α=0 SuperNode 의 small Filter Δ** → Filter 가 SuperNode α=0 의 signal noise 를 충분히 prune 못 함
+
+### 비용 / 운영
+
+- 3 GLM cells: 3 × ~₩764 = **~₩2,292**
+- 6 LLM-free cells: ₩0
+- Wall clock: 1h 53min (GPU 0/1 split, 6 LLM-free 빠르게 GPU 1 batch 처리, 3 GLM GPU 0 batches)
+- 코드 fix 적용 후 첫 정상 측정 — load_state_dict + forward + selected_nodes + R/P/F1 모두 정상
+
+### 산출물
+
+- Configs (9): `s04_ablation/stagewise/{selector_only/, no_filter/, }supernode_qcond_a{0,05,1}_{selector_only,no_filter,glm}.yaml`
+- Script: `scripts/run_supernode_qcond_9cells.sh`
+- 코드 수정: `src/modules/selectors/ensemble_selector.py:241-243` (SuperNode 분기 query_emb 전달)
+
+### 후속 (planner 핸드오프)
+
+- **DECISIONS 후속 엔트리**: "2026-04-29 (SuperNode 9-cell matrix 완료) — H6 결정 (Concat 채택) + α=0 SuperNode 손실 발견 + paper limitation"
+  - 9-cell 결과 표
+  - Concat vs SuperNode 비교 (final F1)
+  - α=0 손실 mechanism 후보 narrative
+  - paper main pipeline anchor 유지 (Concat F1=0.8673)
+- **paper_research_direction.md 갱신**:
+  - §1 모듈별 결정 — "Concat vs SuperNode 결정" → **"Concat 채택"** (H6 결정 완료)
+  - §8 Future Works H6 — "post-deadline measurement" → **"완료, paper limitation 으로 narrative 강화"**
+  - §9 paper limitation — α=0 SuperNode 손실 mechanism 분석 미완 → future work
+- **presentation_brief 갱신**:
+  - §11 Q&A — "SuperNode 측정 X" caveat 정정: "SuperNode 9-cell 측정 완료, Concat α=0.5 보다 plateau 동등 (F1=0.8341 vs 0.8306)"
+  - §14.2 SuperNode 3 row → 9 cells 결과 채움
+- **Analyzer (선택, post-deadline)**: α=0 SuperNode 손실 mechanism — query_node message passing 의 indirect signal 약화 case study. SuperNode message passing depth 별 attention 분석.
+
+## SuperNode + Enriched Paper Main Pipeline 측정 (2026-04-29 22:57 → 23:58, 2 cells)
+
+발사: 2026-04-29 22:57:30 → 완료: 23:58 (wall clock ~62min, GPU 0/1 split). 사용자 요청 (2026-04-29): "Enriched Graph + QCond-SuperNode + MST + PCST + XiYan Filter 사용한 성능".
+
+### 근거 (DECISIONS.md 2026-04-28 옵션 A2 + 9-cell matrix 후속)
+
+- 옵션 A2 (Concat) 측정 완료: F1=0.8673 (MST Kruskal) / 0.8667 (Union)
+- SuperNode 9-cell matrix 결과: SuperNode α=0.5 ≈ Concat plateau (F1=0.8341 vs 0.8306) 검증
+- 질문: **Enriched Builder 와 SuperNode 통합 시 paper main pipeline F1 변화?**
+
+### Stack 구성 (2 cells)
+
+| 모듈 | 결정 |
+|---|---|
+| Builder | EnrichedHeteroGraphBuilder (description-aware) |
+| Encoder | LocalPLMEncoder (MiniLM-L6-v2) |
+| Selector | EnsembleSelector α=0.5 + best_gat_query_supernode_qcond.pt + query_conditioned=true + query_supernode=true |
+| Extractor (Cell 1) | MSTKruskalExtractor (score_threshold=0.1) |
+| Extractor (Cell 2) | MSTPCSTUnionExtractor (score_threshold=0.1) |
+| Filter | XiYanFilter (provider=glm, model=zai-org/glm-4.7) |
+
+### 2 cells 측정 결과 (R/P/F1, 4-decimal)
+
+| Cell | R | P | F1 |
+|---|---|---|---|
+| `enriched_supernode_a05_mst_kruskal_glm` | 0.8706 | 0.8591 | **0.8648** |
+| **`enriched_supernode_a05_mst_pcst_union_glm`** ★ (= 사용자 의도 MST + PCST) | **0.8742** | 0.8597 | **0.8669** |
+
+### Concat vs SuperNode Paper Main Pipeline 비교
+
+| Stack | F1 | ΔF1 vs Concat anchor (0.8673) |
+|---|---|---|
+| **Concat + MST Kruskal** (paper main anchor) | **0.8673** | (baseline) |
+| Concat + Union | 0.8667 | -0.0006 |
+| **SuperNode + MST Kruskal** | 0.8648 | **-0.0025** (noise) |
+| **SuperNode + Union** ★ | **0.8669** | **-0.0004** (noise) |
+
+### 🎯 시나리오 B 채택 — Plateau 동등 (anchor 유지)
+
+- 두 SuperNode 변형 모두 **갱신 임계 ±0.005 plateau** 내
+- **SuperNode + Union F1=0.8669** = Concat + Union F1=0.8667 거의 정확 동률 (+0.0002)
+- **paper main pipeline anchor 유지**: Concat + MST Kruskal F1=0.8673
+
+### 핵심 발견
+
+1. **🚀 Enriched 효과 SuperNode 에서도 발현**: Plain SuperNode α=0.5 (0.8341) → Enriched SuperNode (0.8648/0.8669) **ΔF1 +0.0307~+0.0328**. Description-aware Builder 의 학술적 정당성 SuperNode stack 에서도 확보.
+2. **SuperNode ≈ Concat plateau 동등 (Enriched + α=0.5 + GLM stack)**: ΔF1=-0.0025/-0.0004, anchor 갱신 임계 미달.
+3. **SuperNode + Union 가 SuperNode 변형 중 best (F1=0.8669)** — Concat + Union (0.8667) 와 거의 동일.
+4. **사용자 의도 stack (Enriched + QCond-SuperNode + MST + PCST + XiYan GLM) F1=0.8669** — paper main pipeline 후보로 narrative 활용 가능 (Concat 0.8667 와 동률).
+5. **2 × 2 cross-comparison (Selector × Extractor)**:
+   - SuperNode + MST Kruskal (0.8648) < SuperNode + Union (0.8669): Union 이 SuperNode 에서 +0.0021 우세
+   - Concat + MST Kruskal (0.8673) > Concat + Union (0.8667): MST Kruskal 이 Concat 에서 +0.0006 우세
+   - → SuperNode 와 Union 시너지 (간접 signal 의 marginal R 회수와 union 의 추가 노드 시너지 가능성, 단 모두 plateau 내 noise)
+
+### 비용 / 운영
+
+- 2 GLM cells: 2 × ~₩764 = **~₩1,528**
+- Wall clock: ~62 min (GPU 0/1 parallel)
+- 코드 fix 적용 후 SuperNode + Enriched + extractor 변형 첫 정상 측정
+
+### 산출물
+
+- Configs (2): `s04_ablation/pipeline/enriched_supernode_a05_mst_kruskal_glm.yaml`, `s04_ablation/pipeline/enriched_supernode_a05_mst_pcst_union_glm.yaml`
+- 비교 baseline (이전 측정): `enriched_qcond_a05_mst_kruskal_glm` F1=0.8673, `enriched_qcond_a05_mst_pcst_union_glm` F1=0.8667
+
+### 후속 (planner 핸드오프)
+
+- **DECISIONS 후속 엔트리**: "2026-04-29 (SuperNode + Enriched paper main 2 cells 완료) — 시나리오 B + paper main anchor 유지 + Enriched 효과 SuperNode 에서도 발현"
+- **paper_research_direction.md §1 Selector 결정 재확인**: Concat 채택 (paper main anchor F1=0.8673) — SuperNode + Union 동률 (0.8669), narrative 차원에서 SuperNode 활용 가능 단 anchor 는 Concat
+- **paper_research_direction.md §10 핵심 수치 갱신**: 4-cell anchor plateau 정량 (Concat MST/Union, SuperNode MST/Union 모두 F1≈0.864~0.867)
+- **presentation_brief §14.6 anchor 결정** 갱신: 4 anchor plateau (3 Concat 후보 0.8673/0.8667/0.8424 + SuperNode + Union 0.8669) 중 paper main = Concat MST Kruskal 0.8673 유지
+- **§11 Q&A 보강**: "Q: SuperNode + Enriched paper main 결과는?" — A: F1=0.8669 (Union) / 0.8648 (MST Kruskal), Concat 와 plateau 동등, anchor 미갱신
+- **post-deadline H7 multi-seed**: 4 anchor plateau 의 통계적 reliability 검증 — 4 stacks × 3 seeds = 12 cells

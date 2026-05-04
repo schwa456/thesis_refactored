@@ -240,6 +240,7 @@ class EnsembleSelector(BaseSelector):
                         torch.stack([dst, src], dim=0)
                 node_embs_dict = self.gat_model(
                     graph_data.x_dict, graph_data.edge_index_dict,
+                    query_emb=q_emb if self.query_conditioned else None,
                     active_num_layers=active_depth)
             elif self.query_conditioned:
                 node_embs_dict = self.gat_model(

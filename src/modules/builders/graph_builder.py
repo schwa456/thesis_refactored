@@ -501,8 +501,20 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
     - Column 노드: database_description/*.csv의 column_description, value_description
     """
     def __init__(self, plm_model_name: str = 'sentence-transformers/all-MiniLM-L6-v2',
-                 tables_json_path: Optional[str] = None, **kwargs):
+                 tables_json_path: Optional[str] = None,
+                 node_text_mode: str = 'enriched_full',
+                 **kwargs):
         super().__init__(plm_model_name=plm_model_name, **kwargs)
+        # node_text_mode: 'name' | 'name_type' | 'name_type_desc' | 'enriched_full' (default)
+        # - 'name': Column/Table 이름만
+        # - 'name_type': Column 에 type 추가
+        # - 'name_type_desc': + CSV column_description (예시값/value_desc/nl_name 모두 제외)
+        # - 'enriched_full': 기존 동작 (name + type + nl_name + desc + value_desc + examples)
+        valid_modes = {'name', 'name_type', 'name_type_desc', 'enriched_full'}
+        if node_text_mode not in valid_modes:
+            raise ValueError(f"node_text_mode must be in {valid_modes}, got '{node_text_mode}'")
+        self.node_text_mode = node_text_mode
+        logger.info(f"EnrichedHeteroGraphBuilder node_text_mode = '{node_text_mode}'")
         self.table_nl_names: Dict[str, Dict[str, str]] = {}  # db_id -> {original_name: nl_name}
         self.column_nl_names: Dict[str, Dict[str, str]] = {}  # db_id -> {table.col: nl_name}
         if tables_json_path and os.path.exists(tables_json_path):
@@ -593,11 +605,23 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
         for idx, t in enumerate(schema_info["tables"]):
             table_to_id[t] = idx
             nl_name = table_nl.get(t, "")
-            if nl_name:
-                table_texts.append(f"Table: {t} ({nl_name})")
-                _enrich_tbl_nl_applied += 1
-            else:
+            # Table text mode 분기
+            if self.node_text_mode in ('name', 'name_type'):
+                # Name only / Name + Type 모드: nl_name 무시
                 table_texts.append(f"Table: {t}")
+            elif self.node_text_mode == 'name_type_desc':
+                # 'name_type_desc' 모드: table 은 nl_name 만 (description 은 column 기준)
+                if nl_name:
+                    table_texts.append(f"Table: {t} ({nl_name})")
+                    _enrich_tbl_nl_applied += 1
+                else:
+                    table_texts.append(f"Table: {t}")
+            else:  # 'enriched_full' (default, 기존 동작)
+                if nl_name:
+                    table_texts.append(f"Table: {t} ({nl_name})")
+                    _enrich_tbl_nl_applied += 1
+                else:
+                    table_texts.append(f"Table: {t}")
 
         # --- Column Nodes (enriched) ---
         c_idx = 0
@@ -606,36 +630,50 @@ class EnrichedHeteroGraphBuilder(HeteroGraphBuilder):
                 full_name = f"{table}.{col['name']}"
                 col_to_id[full_name] = c_idx
 
-                # Base text
-                parts = [f"Column: {col['name']} in table {table}, type {col['type']}."]
+                # Mode 별 column text 구성
+                if self.node_text_mode == 'name':
+                    col_texts.append(f"Column: {col['name']}")
+                elif self.node_text_mode == 'name_type':
+                    col_texts.append(f"Column: {col['name']}, type {col['type']}.")
+                elif self.node_text_mode == 'name_type_desc':
+                    parts = [f"Column: {col['name']} in table {table}, type {col['type']}."]
+                    desc_info = col_descriptions.get(full_name, {})
+                    col_desc = desc_info.get("description", "")
+                    if col_desc and col_desc.lower() != col['name'].lower():
+                        parts.append(f"Description: {col_desc}.")
+                        _enrich_col_desc_applied += 1
+                    col_texts.append(" ".join(parts))
+                else:  # 'enriched_full' (default, 기존 동작)
+                    # Base text
+                    parts = [f"Column: {col['name']} in table {table}, type {col['type']}."]
 
-                # NL column name from tables.json
-                nl_col_name = col_nl.get(full_name, "")
-                if nl_col_name:
-                    parts.append(f"Meaning: {nl_col_name}.")
-                    _enrich_col_nl_applied += 1
+                    # NL column name from tables.json
+                    nl_col_name = col_nl.get(full_name, "")
+                    if nl_col_name:
+                        parts.append(f"Meaning: {nl_col_name}.")
+                        _enrich_col_nl_applied += 1
 
-                # Column description from CSV
-                desc_info = col_descriptions.get(full_name, {})
-                col_desc = desc_info.get("description", "")
-                if col_desc and col_desc.lower() != col['name'].lower():
-                    parts.append(f"Description: {col_desc}.")
-                    _enrich_col_desc_applied += 1
+                    # Column description from CSV
+                    desc_info = col_descriptions.get(full_name, {})
+                    col_desc = desc_info.get("description", "")
+                    if col_desc and col_desc.lower() != col['name'].lower():
+                        parts.append(f"Description: {col_desc}.")
+                        _enrich_col_desc_applied += 1
 
-                # Value description from CSV
-                val_desc = desc_info.get("value_description", "")
-                if val_desc:
-                    # Truncate very long value descriptions
-                    if len(val_desc) > 200:
-                        val_desc = val_desc[:200] + "..."
-                    parts.append(f"Values info: {val_desc}.")
-                    _enrich_col_val_desc_applied += 1
+                    # Value description from CSV
+                    val_desc = desc_info.get("value_description", "")
+                    if val_desc:
+                        # Truncate very long value descriptions
+                        if len(val_desc) > 200:
+                            val_desc = val_desc[:200] + "..."
+                        parts.append(f"Values info: {val_desc}.")
+                        _enrich_col_val_desc_applied += 1
 
-                # Example values from DB
-                if col['samples']:
-                    parts.append(f"Example values: {', '.join(col['samples'])}.")
+                    # Example values from DB
+                    if col['samples']:
+                        parts.append(f"Example values: {', '.join(col['samples'])}.")
 
-                col_texts.append(" ".join(parts))
+                    col_texts.append(" ".join(parts))
                 c_idx += 1
 
         # --- FK Nodes (unchanged) ---

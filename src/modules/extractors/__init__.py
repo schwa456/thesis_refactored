@@ -11,6 +11,8 @@ from .pcst import (
     LouvainCommunityPCSTExtractor,
 )
 from .mst import MSTExtractor, steiner_tree_2approx
+from .mst_kruskal import MSTKruskalExtractor
+from .mst_pcst_union import MSTPCSTUnionExtractor
 from .baseline import TopKExtractor, NoneExtractor
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "UncertaintyPCSTExtractor",
     "DynamicUncertaintyPCSTExtractor",
     "MSTExtractor",
+    "MSTKruskalExtractor",
+    "MSTPCSTUnionExtractor",
     "steiner_tree_2approx",
     "TopKExtractor",
     "NoneExtractor",

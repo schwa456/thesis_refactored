@@ -69,15 +69,37 @@ class MSTExtractor(BaseExtractor):
     선택된 시드 노드들을 잇는 Steiner Tree를 추출합니다.
     Kou-Markowsky-Berman 2-근사 알고리즘을 사용하여
     seed 간 metric closure MST를 구한 뒤 원래 경로로 복원합니다.
+
+    seed_mode:
+      - "topk" (default): 외부에서 전달된 `seed_nodes` 를 그대로 사용 (Selector top-k)
+      - "threshold": `node_scores > score_threshold` 인 노드를 seed 로 자체 산출
+        (Basic PCST 와 동일한 candidate pool 정의)
     """
-    def __init__(self, **kwargs):
+    def __init__(self, seed_mode: str = "topk", score_threshold: float = 0.1, **kwargs):
+        if seed_mode not in ("topk", "threshold"):
+            raise ValueError(f"seed_mode must be 'topk' or 'threshold', got '{seed_mode}'")
+        self.seed_mode = seed_mode
+        self.score_threshold = float(score_threshold)
         self.last_info: Dict[str, Any] = {}
-        logger.info("Initialized MST Extractor (Steiner 2-approx)")
+        logger.info(
+            f"Initialized MST Extractor (Steiner 2-approx, seed_mode={self.seed_mode}, "
+            f"score_threshold={self.score_threshold})"
+        )
 
     def extract(self, graph_data: Dict[str, Any], node_scores: List[float],
                 seed_nodes: Optional[List[int]] = None,
                 **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
         t_start = time.perf_counter()
+
+        derived_seed_count = 0
+        if self.seed_mode == "threshold":
+            seed_nodes = [i for i, s in enumerate(node_scores) if s > self.score_threshold]
+            derived_seed_count = len(seed_nodes)
+            logger.debug(
+                f"[MST] threshold seed_mode: {derived_seed_count} nodes "
+                f"with score > {self.score_threshold}"
+            )
+
         if not seed_nodes:
             logger.warning("MST requires seed_nodes. Returning empty.")
             self.last_info = {
@@ -87,6 +109,8 @@ class MSTExtractor(BaseExtractor):
                 "extractor_num_selected_nodes": 0,
                 "extractor_num_selected_edges": 0,
                 "mst_seed_count": 0,
+                "mst_seed_mode": self.seed_mode,
+                "mst_score_threshold": float(self.score_threshold),
                 "no_seeds": True,
                 "extractor_time_s": float(time.perf_counter() - t_start),
             }
@@ -109,6 +133,9 @@ class MSTExtractor(BaseExtractor):
             "mst_seed_count": int(len(seed_nodes)),
             "mst_seeds_in_graph": int(sum(1 for s in seed_nodes if s in G)),
             "mst_steiner_nodes_added": int(max(len(selected_nodes) - len(seed_nodes), 0)),
+            "mst_seed_mode": self.seed_mode,
+            "mst_score_threshold": float(self.score_threshold),
+            "mst_derived_seed_count": int(derived_seed_count),
             "extractor_time_s": float(time.perf_counter() - t_start),
         }
         return selected_nodes, selected_edges
