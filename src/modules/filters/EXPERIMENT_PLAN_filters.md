@@ -10,13 +10,128 @@
 
 ---
 
-## 이 모듈이 받아야 할 3가지 제안
+## 이 모듈이 받아야 할 4가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
 | FL-I | **Autonomous Schema Exploration Agent (AutoLink-style)** (원안 #6) | Iterative ReAct agent + graph-native tools로 탐색적 refinement | 상 | a05 F3 (Tiered Bidirectional) 의 확장 — full exploration variant |
 | FL-II | **Extractive Decoder-only LLM — Filter mode** (원안 #7) | LLM span extraction + logit score로 token-level pruning | 중 | 새 축 (a05 외) |
 | FL-III | **Symbolic-Neural Layer 3 — Verifier** (원안 #9 Layer 3) | FK graph 상 connectivity 검증 + disconnected 결과 reject | 상 | a05 F2 (VerifierFilter) 의 강화형 |
+| **SGBE** | **Score-Gated Batch Extractive Filter** (학술 Agent 2026-05-12) | GAT score 분포 기반 column-level 3-way routing + extractive binary LLM | **최상** | XiYan 대체 candidate. FL-I/II/III 와 직교 — 결합 가능 |
+
+---
+
+## SGBE. Score-Gated Batch Extractive Filter (★ 최상)
+
+### 동기
+- XiYan (anchor F1=0.6940) 의 prune-only recall 손실 ~0.15 의 mechanism 이 진단됨 (Yuan 2025):
+  - TP (gold+kept) mean GAT score **0.7108**
+  - Filter✗ (wrong-pruned gold) mean **0.6394**
+  - TN (non-gold+dropped) mean **~0.40**
+- 세 group 의 score 분포가 **이미 구간으로 분리**되어 있다는 사실이 핵심. LLM 이 전체 subgraph 를 한 번에 보면 Filter✗ 그룹을 잘못 판단 → recall 손실. **Column-level routing** 으로 LLM 의 판단 범위를 mid-confidence 구간으로 좁히면 recall+precision+속도가 동시에 개선됨.
+- 학술 Agent 2026-05-12 ([planning/filtering_suggestion_by_scholar_agent_2026-05-12.md](/home/hyeonjin/thesis_refactored/planning/filtering_suggestion_by_scholar_agent_2026-05-12.md)) 가 5 references (Glass 2025 / Hoang 2025 / Talaei 2024 / Maamari 2024 / Yuan 2025) 로 합성한 hybrid 설계.
+
+### 설계 — 3-step routing
+```
+Step 0  Structural Hard Keep        0 LLM calls
+        S_struct = FK/PK columns in S_pcst      ← 무조건 keep (CHESS hardcode rule, Talaei 2024)
+
+Step 1  Score-Gate                  0 LLM calls, O(n)
+        θ_keep = 0.65 (TP mean 0.7108 기반)
+        θ_drop = 0.40 (TN mean ~0.40 기반)
+        S_keep_hard  = {v | s_v ≥ θ_keep}       → 즉시 keep
+        S_drop_hard  = {v | s_v < θ_drop}       → 즉시 drop
+        S_uncertain  = {v | θ_drop ≤ s_v < θ_keep}  → LLM 대상
+
+Step 2  Extractive LLM              1 LLM call, S_uncertain 만
+        per-column binary 판단 ("yes/no + one-line reason") with value samples
+        S_lm_keep ⊆ S_uncertain
+
+Output: final_nodes = S_keep_hard ∪ S_lm_keep ∪ S_struct
+```
+
+### 세 조건 충족 mechanism
+- **Recall 보호**: TP mean 0.7108 → θ_keep=0.65 로 대부분 TP 가 Step 1 에서 즉시 keep. LLM 이 TP 그룹에 접근 불가 → wrong-prune 이 구조적으로 불가능.
+- **Precision 향상**: TN mean ~0.40 → θ_drop=0.40 으로 명확한 noise 가 LLM 없이 즉시 제거. Step 2 의 extractive binary 판단은 generative list 보다 column 간 독립.
+- **빠른 추론**: LLM input token **60~80% 감소** (S_uncertain ≈ 20~40% 의 전체).
+
+### 인터페이스 (계약 유지)
+```python
+@register("filter", "ScoreGatedBatchExtractiveFilter")
+class ScoreGatedBatchExtractiveFilter(BaseFilter):
+    def __init__(self,
+                 model_name="zai-org/glm-4.7",
+                 theta_keep=0.65, theta_drop=0.40, temperature=0.0,
+                 db_dir="./data/raw/BIRD_dev/dev_databases",
+                 num_examples=3, fk_pk_hardcode=True,
+                 step_mode="step_0+1+2",              # 신규 (2026-05-12 follow-up)
+                 score_collapse_threshold=0.05,        # 신규 (2026-05-12 follow-up)
+                 provider="glm", api_key=None, base_url=None, **kwargs): ...
+
+    def refine(self, query, subgraph, db_id=None,
+               tier2_pool=None, gat_scores=None, metadata=None, **kwargs) -> Dict:
+        # 반환: {"status", "final_nodes", "reasoning",
+        #        "stats": {"step_mode", "keep_hard", "drop_hard", "uncertain",
+        #                  "lm_keep", "struct", "score_collapse_detected"},
+        #        "filter_info": {...}}
+```
+
+### Option 1 — `step_mode` (Phase 3/5 분리 평가용, 2026-05-12 follow-up)
+| step_mode | 흐름 | LLM call | 용도 |
+|-----------|------|----------|------|
+| `"step_0"` | FK/PK Hardcode 만 | 0 | Phase 5 ablation 의 Step 0 only baseline |
+| `"step_0+1"` | + Score-Gate (S_uncertain 전부 drop) | 0 | Phase 3 calibration sweep 의 "LLM call 없는 Step 0+1 평가" — θ_keep × θ_drop grid 빠른 탐색 |
+| `"step_0+1+2"` (default) | Full SGBE | 1 | Phase 4 final SGBE 평가 |
+
+- Backward compat: 미명시 시 default `"step_0+1+2"` → 기존 검증 시나리오 그대로 통과.
+- `stats["step_mode"]` 가 결과에 동봉되어 analyzer 가 step 별 contribution 을 직접 집계 가능.
+
+### Option 2 — `score_collapse_threshold` (학술 Agent §"한계" 보강)
+- candidate score 들의 std 가 threshold 미만이면 score 분포가 collapse 한 것으로 간주, 모두 S_uncertain 으로 라우팅하여 LLM 판단에 위임 (XiYan-equivalent recall-safe fallback).
+- 근거: V4-era over-smoothing 시 score 분포가 균일해져 θ_keep / θ_drop 이 무의미 (Maamari 2024).
+- Default 0.05. `None` 설정 시 감지 비활성화 — anchor stack 처럼 score 분포가 분리된 정상 era 에서는 항상 정상 score-gate.
+- `stats["score_collapse_detected"]` + `filter_info["filter_score_std"]` 가 결과에 기록되어 analyzer 가 era 별 collapse 빈도 측정 가능.
+
+### 의존성
+- **Selector 의 raw GAT score 가 filter 단까지 전달**되어야 함 — 별도 module session (selector Phase 2 SGBE-A) 책임.
+- `gat_scores=None` 시 graceful fallback: 모든 candidates 를 S_uncertain 로 → XiYan-equivalent 동작 (LLM 1 call, recall-safe).
+- FK column 추출: `metadata["fk_to_id"]` 키 (SymbolicVerifierFilter 와 동일 패턴) — 추가 의존 없음.
+- PK column 추출: 우선 `metadata["primary_keys"]` 시도, 없으면 SQLite PRAGMA `table_info` 직접 조회 (best-effort).
+
+### 한계 / Caveat
+- **Score collapse era 무력화**: over-smoothing 이 심한 V4-era 결과처럼 score 분포가 균일해지면 θ_keep / θ_drop 이 무의미. 단 Step 0 (FK/PK hardcode) 와 token 감소 효과는 항상 유효 (Maamari 2024).
+- **GAT score column-level calibration 전제**: anchor stack 의 score 분포가 TP/Filter✗/TN 별 분리됨을 (selector module session) 별도 진단.
+- **JSON parsing 실패 fallback**: S_uncertain 전부 keep (recall-safe). a05_01 의 Unanswerable fallback recall 파괴 교훈을 따름.
+
+### 예상 효과 (학술 Agent 정량 — Yuan 2025 분포 기반)
+| Filter | LLM Input | Recall | Precision | 속도 | Backbone 민감도 |
+|---|---|---|---|---|---|
+| XiYan (anchor) | 전체 subgraph | 0.6761 | 0.7128 | 1× | -0.032 |
+| Reflection 1iter | 전체 × 2 | 0.7320 | 0.6833 | ~0.5× | -0.035 |
+| Verifier | 전체 + unit test | 0.7093 | 0.6676 | ~0.6× | -0.017 |
+| **SGBE (제안)** | **S_uncertain (20-40%)** | **≥0.73** | **≥0.70** | **1.5-2×** | **~-0.015** |
+
+### 예상 실험 (Root chain Phase 3-5, [planning/DECISIONS.md 2026-05-12 SGBE entry](/home/hyeonjin/thesis_refactored/planning/DECISIONS.md))
+| Phase | 실험 ID prefix | 셀 수 | 비고 |
+|-------|---------------|------|-----|
+| 3 (θ calibration) | `s04_ablation/pipeline/sgbe/calib_*` | 9 (3 × 3 grid) | Step 0+1 only, LLM 없음. fast (~2-3h). |
+| 4 (final SGBE) | `s04_ablation/pipeline/sgbe/final_glm` | 1 | Optimal θ × GLM 4.7 backbone (~5-9h LLM API) |
+| 5 (ablation chain) | `s04_ablation/pipeline/sgbe/{step0_only,step01_only,full}` | 3 + anchor XiYan | Step contribution decomposition |
+
+### 학술 기여
+- **Filter Dominance 8번째 axis (candidate)**: "Score-Gated Hybrid 가 prune-only recall 손실의 mechanism-level cure" — 6 axis + 9-cell sweep 의 Filter-invariance 와 결합.
+- **Open Question #9.4 / #9.5 직접 답변** (학술 Agent §9): prune-only recall mechanism 과 GNN selector role 재정의.
+- **Layer 분리 narrative 보강**: Layer 1 (selector) score 분포가 Layer 3 (filter) routing 의 input 으로 직접 활용 — 두 Layer 간 정보 흐름의 구체적 instance.
+
+### 산출물 (본 모듈 책임)
+- [`score_gated_batch_extractive_filter.py`](score_gated_batch_extractive_filter.py) — `ScoreGatedBatchExtractiveFilter` 신규 구현. step_mode 3-mode + score_collapse_threshold 옵션 추가 (2026-05-12 follow-up).
+- [`tests/test_sgbe.py`](tests/test_sgbe.py) — 16-scenario smoke test (**PASSED 16/16**). 신규: step_0 / step_0+1 / step_0+1+2 explicit / score collapse detect / collapse-disabled / invalid step_mode.
+- [`/home/hyeonjin/thesis_refactored/src/prompts/filter.md`](/home/hyeonjin/thesis_refactored/src/prompts/filter.md) — `sgbe_extractive` section 추가
+- [`__init__.py`](__init__.py) — registry export 추가
+
+### 다음 단계 (selector module session 의존)
+- selector EnsembleSelector / DirectGATSelector 의 raw GAT score 가 main pipeline 의 `gat_scores=...` 인자로 filter 단에 전달되도록 interface 보강 → 본 모듈은 정상 routing
+- 통합 smoke test 는 selector Phase 2 완료 후 root chain Phase 3 에서
 
 ---
 
@@ -189,9 +304,13 @@ a05 라인 연장선. **anchor는 a03_17 (Direct 최고) + abl_ens_basic_xiyan (
 | [bidirectional_agent_filter.py](bidirectional_agent_filter.py) | AutoLink full-exploration mode 추가 |
 | [symbolic_verifier_filter.py](symbolic_verifier_filter.py) | 신규 — FL-III |
 | [extractive_llm_filter.py](extractive_llm_filter.py) | 신규 — FL-II |
+| [score_gated_batch_extractive_filter.py](score_gated_batch_extractive_filter.py) | 신규 — SGBE (완료 2026-05-12) |
+| [tests/test_sgbe.py](tests/test_sgbe.py) | 신규 — SGBE 10-scenario smoke (PASSED) |
 | [tools/graph_tools.py](tools/graph_tools.py) | `get_all_tables`, `get_similar_columns_by_name` 등 추가 |
+| `src/prompts/filter.md` | `sgbe_extractive` section 추가 (완료) |
 | `src/llm_client/api_handler.py` | vLLM `logprobs` 지원 |
 | `configs/experiments/abl/a05_filter_agentic/` | a05_13 ~ a05_22 yaml |
+| `configs/experiments/s04_ablation/pipeline/sgbe/` | SGBE θ calibration + final + ablation (root chain Phase 3-5) |
 
 ## 인터페이스 계약 (유지)
 - `refine(query, subgraph, db_id, tier2_pool=None, gat_scores=None, metadata=None, **kwargs)` → `Dict`

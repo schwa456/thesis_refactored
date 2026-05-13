@@ -18,7 +18,10 @@ class LLMSQLGenerator(BaseGenerator):
         self.client = APIClient(provider=provider)
         logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model}, Provider: {provider or 'auto'})")
 
-    def generate(self, query: str, subgraph: Dict[str, List[str]], **kwargs) -> str:
+    def generate(self, query: str, subgraph: Dict[str, List[str]], evidence: str = "", **kwargs) -> str:
+        # evidence: BIRD-dev `external_knowledge` 필드 (query 별 domain hint / formula).
+        # 직전 (2026-05-12 Filter sweep) 까지 미사용 → Baseline (GLM 4.7 Full Schema EX=55.87%) 대비
+        # anchor EX=33.96% 21.91%p gap 의 dominant 원인. 본 fix 로 evidence 전달.
         schema_ddl = AgentUtils.generate_ddl(subgraph=subgraph)
 
         selected_tables = list(subgraph.keys())
@@ -36,6 +39,7 @@ class LLMSQLGenerator(BaseGenerator):
             section="sql_generator",
             schema_str=schema_ddl,
             # schema_str=mschema_str,
+            evidence=evidence or "(none)",
             query=query
         )
 

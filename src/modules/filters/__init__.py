@@ -6,6 +6,7 @@ from .bidirectional_agent_filter import TieredBidirectionalAgentFilter
 from .adaptive_depth_filter import AdaptiveDepthFilter
 from .stacked_filter import StackedFilter
 from .symbolic_verifier_filter import SymbolicVerifierFilter
+from .score_gated_batch_extractive_filter import ScoreGatedBatchExtractiveFilter
 
 __all__ = [
     "SingleAgentFilter",
@@ -18,4 +19,5 @@ __all__ = [
     "AdaptiveDepthFilter",
     "StackedFilter",
     "SymbolicVerifierFilter",
+    "ScoreGatedBatchExtractiveFilter",
 ]

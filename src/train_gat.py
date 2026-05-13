@@ -219,6 +219,11 @@ def run_train(config_path: str):
     supernode_edge_direction = cfg['model'].get('supernode_edge_direction', 'bidirectional')
     supernode_topk = cfg['model'].get('supernode_topk', None)
     supernode_topk_criterion = cfg['model'].get('supernode_topk_criterion', 'raw')
+    # V-3-ext (Directed Top-K SuperNode, 학위 논문 Part III, 2026-05-05)
+    # threshold_mode='top_k' (기존, supernode_topk 사용) | 'percentile' (P80 등) | 'abs_tau' (norm 후 절대 cutoff)
+    supernode_threshold_mode = cfg['model'].get('supernode_threshold_mode', 'top_k')
+    supernode_threshold_value = cfg['model'].get('supernode_threshold_value', None)
+    supernode_score_normalization = cfg['model'].get('supernode_score_normalization', 'minmax')
 
     # 데이터셋 로드 (학습용)
     logger.info("🚀 Loading Training Dataset from NAS...")
@@ -260,6 +265,9 @@ def run_train(config_path: str):
         supernode_edge_direction=supernode_edge_direction,
         supernode_topk=supernode_topk,
         supernode_topk_criterion=supernode_topk_criterion,
+        supernode_threshold_mode=supernode_threshold_mode,
+        supernode_threshold_value=supernode_threshold_value,
+        supernode_score_normalization=supernode_score_normalization,
         ).to(device)
     if query_conditioned:
         logger.info("Query-Conditioned GAT enabled (Concatenation mode)")

@@ -67,8 +67,13 @@ class SchemaLinkingPipeline:
         for k, v in snapshot.items():
             setattr(self.extractor, k, v)
 
-    def run(self, db_id: str, query: str) -> Dict[str, Any]:
-        """단일 질의(Query) 처리 파이프라인"""
+    def run(self, db_id: str, query: str, evidence: str = "") -> Dict[str, Any]:
+        """단일 질의(Query) 처리 파이프라인.
+
+        evidence: BIRD-dev `external_knowledge` 필드. LLMSQLGenerator 에 전달되어 SQL gen prompt 의
+        [External Knowledge] 섹션에 삽입. 직전 (2026-05-12 Filter sweep) 까지 미사용 → 본 fix 로
+        evidence forward — Baseline 대비 anchor EX 21.91%p gap 의 dominant 원인 회수.
+        """
         logger.debug(f"[{db_id}] Processing Query: '{query}'")
 
         execution_times = {}
@@ -272,12 +277,39 @@ class SchemaLinkingPipeline:
             if s >= tier2_threshold and idx not in tier1_indices:
                 tier2_pool.append(name_str)
 
+        # SGBE Phase 2 (DECISIONS 2026-05-12) — selector 가 노출한 raw GAT score (sigmoid 후, normalize 전)
+        # 와 raw cosine score 를 column name → score dict 로 변환해 filter 에 전달.
+        # 기존 `gat_scores` (blended + minmax-normalize) 는 backward compat 으로 유지.
+        # SGBE filter 만 raw_gat_scores 의 column-level calibration 을 사용 (θ_keep/θ_drop gating).
+        #
+        # 키 형식: 'table.column' 우선 + 'column' 단독 fallback (SGBE _lookup_score 가 둘 다 지원).
+        # fk_node ('table.col->table.col') 는 제외. column 단독 키는 첫 등장 score 유지 (setdefault).
+        raw_gat_scores: Dict[str, float] = {}
+        raw_cos_scores: Dict[str, float] = {}
+        selector_raw_gat = getattr(self.selector, "latest_raw_gat_scores", None) or {}
+        selector_raw_cos = getattr(self.selector, "latest_raw_cos_scores", None) or {}
+        for idx, name in node_meta.items():
+            name_str = str(name)
+            if "." not in name_str or "->" in name_str:
+                continue
+            col_only = name_str.split(".", 1)[1] if "." in name_str else name_str
+            if idx in selector_raw_gat:
+                score_val = float(selector_raw_gat[idx])
+                raw_gat_scores[name_str] = score_val
+                raw_gat_scores.setdefault(col_only, score_val)
+            if idx in selector_raw_cos:
+                cos_val = float(selector_raw_cos[idx])
+                raw_cos_scores[name_str] = cos_val
+                raw_cos_scores.setdefault(col_only, cos_val)
+
         final_result = self.filter.refine(
             query=query,
             subgraph=subgraph_dict,
             db_id=db_id,
             tier2_pool=tier2_pool,
             gat_scores=gat_scores,
+            raw_gat_scores=raw_gat_scores,
+            raw_cos_scores=raw_cos_scores,
             metadata=metadata,
         )
 
@@ -341,7 +373,9 @@ class SchemaLinkingPipeline:
                     ]
                     final_result = self.filter.refine(
                         query=query, subgraph=subgraph_dict, db_id=db_id,
-                        tier2_pool=tier2_pool, gat_scores=gat_scores, metadata=metadata,
+                        tier2_pool=tier2_pool, gat_scores=gat_scores,
+                        raw_gat_scores=raw_gat_scores, raw_cos_scores=raw_cos_scores,
+                        metadata=metadata,
                     )
                     retry_trace.append(
                         f"retry{attempts+1}:{strategy}->{len(final_result.get('final_nodes', []))}nodes"
@@ -363,7 +397,7 @@ class SchemaLinkingPipeline:
         if self.generator is not None:
             logger.debug("SQL Generation")
             # Stage 7: SQL Generation
-            generated_sql = self.generator.generate(query=query, subgraph=subgraph_dict)
+            generated_sql = self.generator.generate(query=query, subgraph=subgraph_dict, evidence=evidence)
             logger.debug(f"Generated SQL: {generated_sql}")
         execution_times["sql_generation"] = time.perf_counter() - t_start
 

@@ -7,6 +7,7 @@ from .gat_classifier_selector import GATClassifierSelector
 from .ensemble_selector import EnsembleSelector
 from .direct_gat_selector import DirectGATSelector
 from .neurosymbolic_l1_selector import NeurosymbolicL1Selector
+from .directed_topk_supernode_selector import DirectedTopKSuperNodeSelector
 
 __all__ = [
     "FixedTopKSelector",
@@ -20,4 +21,5 @@ __all__ = [
     "EnsembleSelector",
     "DirectGATSelector",
     "NeurosymbolicL1Selector",
+    "DirectedTopKSuperNodeSelector",
     ]

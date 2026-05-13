@@ -1556,3 +1556,665 @@ paper main pipeline 측정 전용 카테고리. 학술적 narrative 우선 표�
 
 - Configs (2): `s04_ablation/pipeline/enriched_supernode_a05_{mst_kruskal, mst_pcst_union}_glm.yaml`
 
+---
+
+## H-A + H-D Ablation (2026-05-04, 13 cells)
+
+발사: 2026-05-04 15:35:08 → 완료 18:45 (wall clock ~3h 10min, GPU 0/1 split). 사용자 결정 narrative resolution 검증 — H-A (Distribution shift) + H-D (Score normalization).
+
+### H-A 11 cells 등재 (best_gat_enriched.pt + α∈{0.0~1.0})
+
+Stack: Enriched Builder + best_gat_enriched.pt (Enriched features 학습, query_conditioned=False) + α + MSTPCSTUnion + XiYan(GLM, num_examples=3) + LLMSQLGenerator(GLM)
+
+| α | Cell ID | F1 | EX |
+|---|---|---|---|
+| 0.0 | s04_pipeline_t00_enriched_ckpt_alpha_00 | 0.7195 | 0.2177 |
+| 0.1 | s04_pipeline_t00_enriched_ckpt_alpha_01 | 0.7820 | 0.2432 |
+| 0.2 | s04_pipeline_t00_enriched_ckpt_alpha_02 | 0.8566 | 0.3188 |
+| 0.3 | s04_pipeline_t00_enriched_ckpt_alpha_03 | 0.8634 | 0.3292 |
+| 0.4 | s04_pipeline_t00_enriched_ckpt_alpha_04 | 0.8648 | 0.3331 |
+| 0.5 | s04_pipeline_t00_enriched_ckpt_alpha_05 | 0.8637 | 0.3403 |
+| 0.6 | s04_pipeline_t00_enriched_ckpt_alpha_06 | 0.8632 | 0.3403 |
+| 0.7 | s04_pipeline_t00_enriched_ckpt_alpha_07 | 0.8625 | 0.3396 |
+| 0.8 | s04_pipeline_t00_enriched_ckpt_alpha_08 | 0.8634 | **0.3429** |
+| 0.9 | s04_pipeline_t00_enriched_ckpt_alpha_09 | 0.8642 | 0.3383 |
+| 1.0 | s04_pipeline_t00_enriched_ckpt_alpha_10 | **0.8651** | 0.3390 |
+
+→ **F1 plateau α∈[0.2,1.0] 유지** (9/10 cells within 0.01 of best F1=0.8651)
+→ **GAT contribution 회복 X** — Distribution shift 해소가 plateau 변경 못 함
+
+### H-D 2 cells 등재 (norm 변형, t_00 base)
+
+Stack: t_00 base (qcond_nl3 + α=0.5 + ...) + score_normalization 만 변경
+코드 fix: `src/modules/selectors/ensemble_selector.py` `score_normalization` 파라미터
+
+| Variant | Cell ID | F1 | EX |
+|---|---|---|---|
+| t_00 (minmax, default) | s04_pipeline_enriched_qcond_a05_mst_pcst_union_glm_sql | **0.8657** | **0.3377** |
+| norm_none | s04_pipeline_t00_norm_none | 0.8553 | 0.3214 |
+| norm_zscore | s04_pipeline_t00_norm_zscore | 0.8325 | 0.2881 |
+
+→ minmax > none > zscore — minmax 가 best, 다른 norm 으로 변경 시 손실
+
+### 시나리오 ② 채택 — 옵션 1 + 옵션 4 통합 narrative
+
+- 기존 "QCondGAT main contribution" → 신규 "4 module Co-Design + Filter dominance"
+- Selector = "GAT-floor (α=0 baseline robustness) + Cosine-ceiling (α≥0.2 plateau)"
+- Filter = first-class stage, F1 driver (P 회복 +0.64), EX marginal (+0.01)
+
+### 산출물
+
+- Configs (13): `s04_ablation/pipeline/t00_enriched_ckpt_alpha_*.yaml` (11) + `t00_norm_{none, zscore}.yaml` (2)
+- Scripts: `scripts/run_h_a_enriched_ckpt_alpha_sweep.sh` + `scripts/run_h_d_norm_variants.sh`
+- 코드 수정: `src/modules/selectors/ensemble_selector.py` — score_normalization 파라미터
+
+---
+
+## Wave 4 Filter Ablation (2026-05-04 → 05, 14 cells GLM, 🚀 신규 최고 F1=0.8809)
+
+발사: 2026-05-04 19:08 → 완료 2026-05-05 03:06 (wall clock 7h 58min, GPU 0/1 split). 사용자 결정 옵션 B GLM 통일 — Filter 모듈 14 변형 효과 정량.
+
+### 등재된 cells (14 신규)
+
+Stack: paper main pipeline (Enriched + QCond α=0.5 + qcond_nl3 + MSTPCSTUnion + LLMSQLGenerator(GLM)) + Filter 만 변경
+
+| Cell ID | Filter Variant | F1 | EX |
+|---|---|---|---|
+| s04_pipeline_wave4_a05_08_tiered_verifier_stack | StackedFilter (Tiered → Verifier) | **0.8809** ★ | 0.3351 |
+| s04_pipeline_wave4_a05_22_symverify_reflection_verifier_stacked | SymVerify+Reflection+Verifier 3-stack | 0.8759 | 0.3364 |
+| s04_pipeline_wave4_a05_05_tiered_no_tools | TieredBidirectionalAgent (no_tools) | 0.8695 | 0.3429 |
+| s04_pipeline_wave4_a05_09_tiered_retry | TieredBidirectionalAgent + ExtractionRetry | 0.8684 | 0.3377 |
+| s04_pipeline_wave4_a05_06_tiered_full_tools | TieredBidirectionalAgent (full_tools) | 0.8678 | 0.3422 |
+| s04_pipeline_wave4_a05_04_verifier | VerifierFilter (CHESS-style) | 0.8662 | 0.3383 |
+| s04_pipeline_wave4_a05_19_symverify_xiyan_repair | SymbolicVerifier + XiYan repair | 0.8650 | 0.3409 |
+| s04_pipeline_wave4_a05_21_symverify_xiyan_detect | SymbolicVerifier + XiYan detect | 0.8645 | 0.3370 |
+| s04_pipeline_wave4_a05_07_adaptive_depth | AdaptiveDepthFilter (uncertainty-gated) | 0.8633 | **0.3501** ★ |
+| s04_pipeline_wave4_a05_02_reflection_1iter | ReflectionFilter (1 iter) | 0.8631 | 0.3429 |
+| s04_pipeline_wave4_a05_10_adaptive_retry | AdaptiveDepth + ExtractionRetry | 0.8623 | 0.3422 |
+| s04_pipeline_wave4_a05_20_symverify_reflection_repair | SymVerify + Reflection repair | 0.8620 | 0.3396 |
+| s04_pipeline_wave4_a05_03_reflection_3iter | ReflectionFilter (3 iter) | 0.8594 | 0.3344 |
+| s04_pipeline_wave4_a05_01_adaptive_multi_agent | AdaptiveMultiAgent (Sem+Struct+Skeptic) | 0.8070 ⚠️ | 0.3279 |
+
+→ **F1 최고**: a05_08 Stacked Tiered+Verifier (R=0.8880, P=0.8739, F1=0.8809) — t_00 base F1=0.8657 대비 +0.0152
+→ **EX 최고**: a05_07 AdaptiveDepth (EX=0.3501) — 14 cells 중 유일하게 EX > 0.35 (t_00 0.3377 대비 +0.0124)
+→ **R 최고**: a05_04 Verifier (R=0.9155) — but P trade-off (0.8220) 로 F1 plateau 내 (0.8662)
+
+### 핵심 발견
+
+1. **StackedFilter sweet spot** — 단일 agent 변형 모두 능가, F1 ceiling 0.8809 갱신
+2. **F1 ↔ EX decoupling 일관** — Filter 변형으로 F1 +0.015 가능 but EX 대부분 plateau, a05_07 만 +0.0124
+3. **VerifierFilter R↑ trade-off** — recall 회복 약 50% (Δ=+0.0421) but P↓ (-0.0361) 으로 F1 중간
+4. **AdaptiveMultiAgent 실패** — Skeptic conservative voting 으로 R 급락 (-0.10), 14 cells 중 유일한 outlier
+5. **Reflection iter↑ 역효과** — 1iter > 3iter (P drift), over-correction 으로 false negative 증가
+
+### Config 주의사항
+
+- weight_path: `best_gat_qcond_nl3.pt` (t_00 default)
+- query_conditioned: true, alpha: 0.5, top_k: 20
+- connectivity_extractor: MSTPCSTUnionExtractor (score_threshold=0.1)
+- sql_generator: LLMSQLGenerator (provider=glm, llm_model=zai-org/glm-4.7, temperature=0.0)
+- 모든 Filter agent provider=glm + temperature=0.0
+
+### Paper Narrative 함의
+
+- **§3.5 mechanism 갱신 candidate**: Filter design variation (ΔF1=0.0739) 가 Filter on/off (ΔF1=0.63) 의 12% scale — Filter "first-class stage" narrative 한층 보강
+- **paper main anchor**: 옵션 A 권장 (t_00 anchor 유지 + a05_08 을 §3.5 evidence)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 4 Filter Ablation (2026-05-04 → 05)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (14): `s04_ablation/pipeline/wave4/t00_a05_*.yaml`
+- Script: `scripts/run_wave4_filter_ablation_glm.sh`
+- Plan: `planning/templates/vivid-sprouting-sunbeam.md`
+
+---
+
+## F-1 Alpha Sweep + H-G Adaptive PCST F-1 (2026-05-05, 17 cells, 🔥 Stage 2 Filter dominance 결정적 evidence)
+
+발사: 2026-05-05 11:16 → 완료 12:57 (wall clock 1h 41min, GPU 0/1 split). 사용자 결정 (DECISIONS 2026-05-04 옵션 A) — F-1 (paper main minus Filter+SQL) 10 cells + H-G (Adaptive Extractor 교체) 7 cells.
+
+### 등재된 cells (17 신규)
+
+**F-1 MSTPCSTUnion (10 신규 + α=0.5 baseline 기존)** — Stack: Enriched Builder + qcond_nl3 ckpt + α + MSTPCSTUnion(score_threshold=0.1) + No Filter + No SQL gen
+
+| α | Cell ID | R | P | F1 |
+|---|---|---|---|---|
+| 0.0 | s04_pipeline_t00_f1_alpha_00 | 0.7585 | 0.2047 | 0.3224 |
+| 0.1 | s04_pipeline_t00_f1_alpha_01 | 0.8535 | 0.2137 | **0.3418** |
+| 0.2 | s04_pipeline_t00_f1_alpha_02 | 0.9645 | 0.1728 | 0.2931 |
+| 0.3 | s04_pipeline_t00_f1_alpha_03 | 0.9845 | 0.1438 | 0.2509 |
+| 0.4 | s04_pipeline_t00_f1_alpha_04 | 0.9905 | 0.1320 | 0.2330 |
+| 0.5 | s04_pipeline_enriched_qcond_a05_mst_pcst_union_no_filter (기존) | 0.9927 | 0.1268 | 0.2249 |
+| 0.6 | s04_pipeline_t00_f1_alpha_06 | 0.9939 | 0.1240 | 0.2205 |
+| 0.7 | s04_pipeline_t00_f1_alpha_07 | 0.9940 | 0.1224 | 0.2180 |
+| 0.8 | s04_pipeline_t00_f1_alpha_08 | 0.9943 | 0.1212 | 0.2161 |
+| 0.9 | s04_pipeline_t00_f1_alpha_09 | 0.9945 | 0.1208 | 0.2154 |
+| 1.0 | s04_pipeline_t00_f1_alpha_10 | **0.9947** | 0.1207 | 0.2153 |
+
+**H-G AdaptivePCST (7 신규)** — Stack: Enriched + qcond_nl3 + α + AdaptivePCST(per-q P80, top-K=20) + No Filter + No SQL gen
+
+| α | Cell ID | R | P | F1 |
+|---|---|---|---|---|
+| 0.0 | s04_pipeline_t00_hg_adaptive_f1_alpha_00 | 0.5074 | 0.2566 | 0.3408 |
+| 0.2 | s04_pipeline_t00_hg_adaptive_f1_alpha_02 | 0.6480 | 0.3142 | 0.4232 |
+| 0.4 | s04_pipeline_t00_hg_adaptive_f1_alpha_04 | 0.7017 | 0.3268 | 0.4459 |
+| 0.5 | s04_pipeline_t00_hg_adaptive_f1_alpha_05 | 0.7260 | 0.3315 | 0.4552 |
+| 0.6 | s04_pipeline_t00_hg_adaptive_f1_alpha_06 | 0.7500 | 0.3392 | 0.4671 |
+| 0.8 | s04_pipeline_t00_hg_adaptive_f1_alpha_08 | **0.7834** | 0.3511 | **0.4849** |
+| 1.0 | s04_pipeline_t00_hg_adaptive_f1_alpha_10 | 0.7778 | 0.3428 | 0.4759 |
+
+### Spread 정량 + 결과 분기
+
+| Stack | R spread | F1 spread | 분기 |
+|-------|----------|-----------|------|
+| F-1 MSTPCSTUnion | **0.2362** | **0.1265** | ✅ 분기 1 (>0.05 의 4-5배) |
+| H-G AdaptivePCST | **0.2760** | **0.1441** | ✅ 분기 1 (>0.05 의 5-6배) |
+
+→ DECISIONS **분기 1 확정**: Stage 2 Filter precision absorption 결정적 evidence
+
+### Config 주의사항
+
+- weight_path: `best_gat_qcond_nl3.pt` (paper main t_00 default)
+- query_conditioned: true, top_k: 20
+- score_normalization: minmax (default)
+- F-1: connectivity_extractor=MSTPCSTUnionExtractor (score_threshold=0.1)
+- H-G: connectivity_extractor=AdaptivePCSTExtractor (base_cost=0.05, fk_cost=0.05, percentile=80.0, top_k=25)
+- filter: NoneFilter (LLM-free)
+- sql_generator: enabled=false
+
+### 결론 — Filter dominance (단일-stage main mechanism, Stack-dependent Stage 1)
+
+- **🚨 Stage 1 부정**: Extractor MST set saturation 가설 — basic PCST 한정 (H-C partial 결과). paper main 의 MSTPCSTUnion 은 plateau 부재 (R 0.7585 → 0.9947), AdaptivePCST 도 plateau 부재 (R 0.5074 → 0.7834)
+- **✅ Stage 2 결정적 evidence**: Filter plateau-region (α∈[0.2,1.0]) F1 spread 6× 압축 (F-1 0.0778 → With-Filter 0.0129), P 균일 elevate (0.12-0.21 → 0.83-0.86)
+- **§3.5 narrative 정정**: "2-stage absorption" → **"Filter dominance" single-stage main + Extractor stack-dependent**
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md F-1 Alpha Sweep + H-G Adaptive PCST F-1 (2026-05-05)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (17): `s04_ablation/pipeline/t00_f1_alpha_0[0~10].yaml` (10) + `s04_ablation/pipeline/t00_hg_adaptive_f1_alpha_*.yaml` (7)
+- Scripts: `scripts/run_f1_full_alpha_sweep.sh` + `scripts/run_hg_adaptive_f1_sweep.sh`
+- 비용: ₩0, wall 1h 41min
+
+---
+
+## Directed Top-K SuperNode GAT 학습 (V-3-ext 단계 2, 2026-05-06, 3 변형)
+
+발사: 2026-05-06 00:20 → 완료 10:37 (wall ~10h 17min, GPU 0/1/2 split). 학위 논문 Part III V-3-ext 단계 2 (사용자 결정 옵션 A epochs=300).
+
+### 등재된 ckpt (3 신규)
+
+Stack (학습): Enriched Builder + DualTowerProjector + DirectedSuperNode (supernode_edge_direction=directed_from_sn) + threshold mode 변형 + 300 epochs
+
+| 변형 | mode | value | best val recall@15 | NAS ckpt path |
+|---|---|---|---:|---|
+| **PRIMARY p80** | percentile | 80.0 | **0.6097** | `/SSL_NAS/.../best_gat_directed_supernode_p80.pt` |
+| **BASELINE topk20** | top_k | 20 | 0.5839 | `/SSL_NAS/.../best_gat_directed_supernode_topk20.pt` |
+| **OPTIONAL abstau07** | abs_tau | 0.7 | 0.5805 | `/SSL_NAS/.../best_gat_directed_supernode_abstau07.pt` |
+
+→ 3 변형 모두 epoch 100~150 부터 saturation, 추가 학습 효과 거의 없음
+→ p80 가 raw R (0.6133) 거의 회복, topk20 는 raw R (0.6865) 보다 -0.10 underperform, abstau07 는 raw R (0.4857) 능가 +0.10
+
+### Config 주의사항
+
+- **p80**: `supernode_threshold_mode: percentile, supernode_threshold_value: 80.0, supernode_score_normalization: minmax`
+- **topk20**: `supernode_threshold_mode: top_k, supernode_topk: 20`
+- **abstau07**: `supernode_threshold_mode: abs_tau, supernode_threshold_value: 0.7`
+- 공통: `query_supernode: true, supernode_edge_direction: directed_from_sn, in_channels: 384, hidden_channels: 256, num_layers: 3, heads: 4, epochs: 300, batch_size: 8, pos_weight: 100.0`
+
+### 결론 — 시나리오 A 잠정 (Filter Dominance 5번째 축)
+
+- GAT 학습이 selector R 한계 (raw R 0.69 → 학습 0.61) 회복 못 함 — paper §3.5 Filter Dominance narrative 일관
+- 단계 3 alpha sweep (paper main stack + 신규 ckpt × α∈{0.0~1.0}) 결과로 시나리오 A/B/C 확정
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Directed Top-K SuperNode GAT 학습 (V-3-ext 단계 2, 2026-05-06)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (3): `configs/training/train_gat_directed_supernode_{p80, topk20, abstau07}.yaml` (epochs=300)
+- Script: `scripts/run_directed_supernode_training.sh`
+- 학습 logs (NAS symlink): `logs/train/gat_directed_supernode_*_20260506_*.log`
+
+---
+
+## DSN Phase 1 Alpha Sweep (V-3-ext 단계 3, 2026-05-06, 9 cells, 🎯 시나리오 A 확정)
+
+발사: 2026-05-06 11:11 → 완료 13:36 (wall ~2h 25min, GPU 0/1 9 cells 병렬). paper main t_00 stack + DirectedTopKSuperNodeSelector × 3 신규 ckpt × α∈{0.0, 0.5, 1.0}.
+
+### 등재된 cells (9 신규)
+
+Stack: paper main t_00 (Enriched + MSTPCSTUnion + XiYan GLM + LLMSQLGenerator GLM) + DirectedTopKSuperNodeSelector
+
+| 순위 | Cell ID | R | P | F1 | EX |
+|---|---|---|---|---|---|
+| 1 | s04_pipeline_dsn_phase1_topk20_alpha_10 | 0.8776 | 0.8547 | **0.8660** | **0.3396** |
+| 1 | s04_pipeline_dsn_phase1_abstau07_alpha_10 | 0.8787 | 0.8536 | **0.8660** | 0.3377 |
+| 3 | s04_pipeline_dsn_phase1_p80_alpha_10 | 0.8766 | 0.8534 | 0.8648 | **0.3396** |
+| 3 | s04_pipeline_dsn_phase1_abstau07_alpha_05 | 0.8753 | 0.8546 | 0.8648 | 0.3364 |
+| 5 | s04_pipeline_dsn_phase1_topk20_alpha_05 | 0.8742 | 0.8551 | 0.8645 | 0.3318 |
+| 6 | s04_pipeline_dsn_phase1_p80_alpha_05 | 0.8738 | 0.8546 | 0.8641 | 0.3331 |
+| 7 | s04_pipeline_dsn_phase1_p80_alpha_00 | 0.7415 | 0.7877 | 0.7639 | 0.2288 |
+| 8 | s04_pipeline_dsn_phase1_abstau07_alpha_00 | 0.7315 | 0.7792 | 0.7546 | 0.2484 |
+| 9 | s04_pipeline_dsn_phase1_topk20_alpha_00 | 0.6932 | 0.7656 | 0.7276 | 0.2269 |
+
+→ **Best F1 = 0.8660** (topk20_α=1.0 + abstau07_α=1.0 동률) — t_00 base F1=0.8657 대비 +0.0003
+→ **Best EX = 0.3396** (p80_α=1.0 + topk20_α=1.0 동률) — t_00 base 0.3377 대비 +0.0019
+→ α∈{0.5, 1.0} 6 cells F1 plateau **[0.8641, 0.8660]** spread = 0.0019 (직전 qcond_nl3 plateau 와 동일 패턴)
+
+### 시나리오 A 확정 + Filter Dominance topology-invariant 5번째 축
+
+- **F1 ≤ 0.870** (best 0.8660) → 시나리오 A 확정 (Filter Dominance 5축 격상 candidate)
+- graph topology (Concat → directed_from_sn) + selector threshold (top_k vs percentile vs abs_tau) 변경에도 plateau 동일 → Filter mechanism 의 **6번째 evidence (topology-invariant)**
+- 3 ckpt 학습 차이 (best val recall 0.5805~0.6097, Δ 0.0292) 가 With-Filter F1 에서 ~26× 압축됨 (Δ 0.0012)
+
+### Config 주의사항
+
+- weight_path: 신규 3 ckpt (`outputs/checkpoints/best_gat_directed_supernode_{p80,topk20,abstau07}.pt`)
+- selector: `DirectedTopKSuperNodeSelector` (V-3-ext)
+- threshold_mode + threshold_value: ckpt 학습 시 모드 일치 (percentile=80 / top_k=20 / abs_tau=0.7)
+- supernode_edge_direction: directed_from_sn (학습 일치)
+- score_normalization: minmax
+- Extractor: MSTPCSTUnionExtractor(score_threshold=0.1)
+- Filter: XiYanFilter(provider=glm, max_iteration=1)
+- SQL gen: LLMSQLGenerator(provider=glm, llm_model=zai-org/glm-4.7)
+
+### 결론
+
+- 시나리오 A 확정 → paper §3.5 Filter Dominance topology-invariant 5번째 축 추가
+- 학위 논문 Part III V-3-ext 단계 3 Phase 1 완료
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Phase 1 Alpha Sweep (V-3-ext 단계 3, 2026-05-06)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (9): `s04_ablation/pipeline/dsn_phase1/t00_dsn_*.yaml`
+- Script: `scripts/run_dsn_alpha_sweep_phase1.sh`
+- 비용: ~₩18-36K, wall 2h 25min
+
+---
+
+## Baseline Correction — qcond_nl3 best val recall@15 = 0.6061 (2026-05-06, analyzer 부산물)
+
+### 정정 record
+
+| Ckpt | best val recall@15 | best epoch | Final R@15 | 학습 일자 |
+|---|---:|---:|---:|---|
+| **best_gat_qcond_nl3.pt** | **0.6061** | **59** | 0.5958 | 2026-04-23 (추정) |
+
+직전 entries 의 "main baseline qcond_nl3" cross-references 에서 best val recall@15 명시 부재 → 본 entry 가 단일 출처. 인접 ckpt (best_gat_query_supernode_direct 0.5548, best_gat_query_supernode_qcond 0.5737) 와의 유사성 추정 ~0.55 부정확 — 실측 0.6061.
+
+### 함의
+
+- DSN p80 (0.6097) ≈ qcond_nl3 baseline (0.6061), Δ=+0.0036 — 학습 saturation 동등
+- DSN topk20 (0.5839) / abstau07 (0.5805) 는 baseline underperform — 이전 narrative 에서 baseline 우월이라는 일부 표현 정정 필요
+- BCE-Recall divergence ep23~38 (4 ckpt 모두) — 학습 saturation 결정적 evidence
+
+### 근거
+
+- Analyzer 산출: [notebooks/analysis_results/dsn_oversmoothing_analysis.md §1.1](../notebooks/analysis_results/dsn_oversmoothing_analysis.md)
+- 세부 정정 이력: [EXPERIMENT_HISTORY.md Baseline Correction](EXPERIMENT_HISTORY.md)
+
+---
+
+## DSN Phase 2 + Phase 3 4-trial Mitigation Sweep (V-3-ext 단계 5, 2026-05-06 → 05-07, 🎯 시나리오 P3-A 결정적 confirm)
+
+발사: 2026-05-06 17:45 → 완료 2026-05-07 15:29 (병렬 wall ~46h, 학습 합산 ~39h). Mitigation 적용에도 raw R 한계 갱신 X — Filter Dominance 6번째 축 (training-pathology-invariant) 결정적 evidence.
+
+### 등재된 ckpts (3 신규)
+
+Stack: V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation 변형
+
+| Ckpt | 학습 entry | AC target | LR config | Best R@15 | Best Epoch | NAS path |
+|---|---|---|---|---|---|---|
+| best_gat_directed_supernode_p80_b5_mitigation.pt | train_gat_s06.py | fusion | base 1e-4 | 0.6018 | ep157 | /SSL_NAS/.../best_gat_directed_supernode_p80_b5_mitigation.pt (113MB) |
+| best_gat_directed_supernode_p80_b5_phase3_directAC.pt | train_gat_s06.py | **gat_out_L_last** | base 1e-4 | 0.5927 | ep51 | /SSL_NAS/.../best_gat_directed_supernode_p80_b5_phase3_directAC.pt (113MB) |
+| best_gat_directed_supernode_p80_b5_phase3_layerwiseLR.pt | train_gat_s06.py | fusion | **gat 5e-4 / other 1e-4** | 0.5935 | ep172 | /SSL_NAS/.../best_gat_directed_supernode_p80_b5_phase3_layerwiseLR.pt (113MB) |
+
+### 4-trial mitigation 결과 표 (decreasing R@15)
+
+| 순위 | Variant | Best R@15 | Best Epoch | Δ vs Phase 1 |
+|---|---|---:|---|---:|
+| **1** | **Phase 1 P80 (no mit)** | **0.6097** | ep91 | (baseline) |
+| 2 | Phase 3 #4 (LR x5) | 0.5935 | ep172 | -0.0162 |
+| 3 | Phase 3 #3 (Direct AC gat_out_L_last) | 0.5927 | ep51 | -0.0170 |
+| 4 | Phase 2 b8 (mit fusion) | 0.6018 | ep157 | -0.0079 |
+
+→ **모든 mitigation variants 가 baseline 보다 lower** — graph topology + B5 mitigation + Direct AC + Layer-wise LR 모두에도 raw R 한계 갱신 X
+→ Phase 2 가 mitigation variants 중 best, Phase 3 #3/#4 (더 적극적) 가 오히려 underperform → mitigation 강도 ↑ 가 학습 saturation 더 일찍 induce
+
+### Config 주의사항
+
+- weight_path: V-3-ext 단계 2 학습 ckpt 인 `best_gat_directed_supernode_p80.pt` 와는 별개 (각자 from-scratch 학습)
+- 학습 entry: `train_gat_s06.py` (root 가 V-3-ext options forward 추가 2026-05-06)
+- 공통: query_supernode=true, supernode_edge_direction='directed_from_sn', supernode_threshold_mode='percentile', supernode_threshold_value=80.0, score_normalization=minmax
+- B5 mitigation 공통: pairnorm=pairnorm, initial_residual_alpha=0.2, jumping_knowledge=concat, dual_stream=true, num_layers=2, anti_collapse_weight=0.1, loss_type=listnet
+- 변경 차원:
+  - Phase 2 b8: anti_collapse_target='fusion' (default)
+  - Phase 3 #3: anti_collapse_target='gat_out_L_last'
+  - Phase 3 #4: optimizer_layer_wise_lr=true, gat_lr_multiplier=5.0
+
+### 결론 — 시나리오 P3-A 절대 confirm + Filter Dominance 6번째 축
+
+- 4-trial mitigation null effect → paper §3.5 narrative 6번째 축 (training-pathology-invariant) 결정적 evidence
+- AC loss 0.62 일관 유지 (Phase 3 #3) → main GAT path 가 collapse 압박 처리 못함의 정량 evidence
+- 학위 논문 Part III main contribution 후보 — mechanism deep dive analyzer 위임
+- Alpha sweep skip (사용자 명시) → val recall@15 evidence only
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Phase 2 + Phase 3 4-trial Mitigation Sweep (V-3-ext 단계 5, 2026-05-06 → 05-07)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (3): `train_gat_directed_supernode_p80_b5_{mitigation, phase3_directAC, phase3_layerwiseLR}.yaml`
+- 학습 entry 확장: `src/train_gat_s06.py`
+- 비용: ₩0, 학습 wall 합산 ~39h, 병렬 wall ~46h
+
+---
+
+## DSN Mitigation v2 3-trial Sweep (V-3-ext 단계 6, 2026-05-07 → 05-08, 🎯 시나리오 V2-A 확정)
+
+발사: 2026-05-07 16:35 → 완료 2026-05-08 13:54 (병렬 wall ~21h, 3개 동시 GPU 0). 사용자 결정 옵션 A. 7-trial mitigation 통합 결과: Filter Dominance 6번째 축 결정적 evidence.
+
+### 등재된 ckpts (3 신규)
+
+Stack: V-3-ext (DSN p80) + B5 mitigation + Mitigation v2 변형
+
+| Ckpt | Mitigation v2 옵션 | Best R@15 | Best Epoch | NAS path |
+|---|---|---:|---|---|
+| best_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.pt | drop_message_p=0.2 | 0.5974 | ep157 | /SSL_NAS/.../v2_drop_message.pt (113MB) |
+| best_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.pt | use_layernorm_pre_softmax=true | **0.6011** ★ | ep289 | /SSL_NAS/.../v2_layernorm.pt (113MB) |
+| best_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.pt | aggregation_type='sum' | 0.5761 | ep194 | /SSL_NAS/.../v2_sum_aggr.pt (113MB) |
+
+### 7-trial 누적 결과 (decreasing R@15)
+
+| 순위 | Variant | Best R@15 | Δ vs Phase 1 |
+|---|---|---:|---:|
+| **1** | **Phase 1 P80 (no mit)** | **0.6097** | (baseline) |
+| 2 | Phase 2 b8 (mit fusion) | 0.6018 | -0.0079 |
+| 3 | **v2 #3 LayerNorm pre-softmax** | **0.6011** ★ | -0.0086 |
+| 4 | v2 #1 DropMessage | 0.5974 | -0.0123 |
+| 5 | Phase 3 #4 (LR x5) | 0.5935 | -0.0162 |
+| 6 | Phase 3 #3 (Direct AC) | 0.5927 | -0.0170 |
+| 7 | v2 #2 Sum Aggregation | 0.5761 | -0.0336 |
+
+→ **모든 mitigation variants 가 baseline 보다 lower** — graph topology + B5 mitigation + Direct AC + LR x5 + DropMessage + LayerNorm + Sum Aggr 모두에도 raw R 한계 갱신 X
+→ **v2 #3 LayerNorm 가 mitigation variants 중 best** — Phase 2 (0.6018) 와 거의 동등
+→ **시나리오 V2-A 절대 confirm**: Filter Dominance 6번째 축 (training-pathology-invariant) 7-trial evidence 결정적
+
+### Config 주의사항 (training)
+
+- 학습 entry: `src/train_gat_s06.py` (Mitigation v2 옵션 forward 추가됨)
+- 공통 V-3-ext (DSN p80): query_supernode=true, supernode_edge_direction='directed_from_sn', percentile=80, score_normalization=minmax
+- 공통 B5 mitigation: pairnorm=pairnorm, IR α=0.2, JK=concat, dual_stream=true, L=2, AC=0.1, ListNet, AC target=fusion
+- 변경 차원 (Mitigation v2):
+  - v2 #1: drop_message_p=0.2 (model param)
+  - v2 #3: use_layernorm_pre_softmax=true (model param)
+  - v2 #2: aggregation_type='sum' (model param)
+
+### 결론 — 시나리오 V2-A 확정 + Filter Dominance 6번째 축 7-trial 강화
+
+- 7-trial × 4 mitigation 카테고리 (graph topology / B5 mitigation / loss-level / model-level) 모두 raw R 한계 갱신 X
+- v2 #3 LayerNorm partial recovery (mech(ii) edge softmax over-concentration) 신호 — but baseline 미달
+- v2 #2 Sum Aggregation 압도적 underperform (-0.0336) — mech(i) Aggregation collapse 직접 evidence
+- 학위 논문 Part III main contribution 7-trial mechanism finding base — analyzer 위임
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Mitigation v2 3-trial Sweep (V-3-ext 단계 6, 2026-05-07 → 05-08)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (3): `train_gat_directed_supernode_p80_b5_mitigation_v2_{drop_message, layernorm, sum_aggr}.yaml`
+- Scripts: `scripts/run_mitigation_v2_sweep.sh` + `run_mitigation_v2_layernorm_resume.sh`
+- 학습 entry 확장: `src/train_gat_s06.py` + `src/models/gat_network_v2.py`
+- 비용: ₩0, 병렬 wall ~21h
+
+---
+
+## Filter Module Confirmation Sweep v2 — 9-cell with Evidence Forward (GLM 4.7 + EX) (2026-05-13, 🎯 Filter-Invariant F1 + EX 양쪽 확정)
+
+발사: 2026-05-13 01:33:31 KST → 종료: 2026-05-13 08:56:01 KST (wall **7h22min30s**, 9-cell PARALLEL). v1 (5/12, no evidence) anchor EX gap 21.91%p vs Baseline B1' 의 dominant 원인 (LLMSQLGenerator 의 evidence 미사용) 진단 + fix 후 v2 재측정. v1 결과 archive.
+
+### 등재된 9 cell — v2 최종 R/P/F1/EX (F1 정렬)
+
+| 순위 | Cell | Filter | R | P | **F1** | **EX** |
+|---|---|---|---:|---:|---:|---:|
+| **1** | **c4_stacked_glm** | Stacked (Refl→Verif) | 0.8781 | 0.8629 | **0.8704** ⭐best F1 | 0.5267 |
+| 2 | c7_bidirectional_glm | TieredBidirectional | 0.8923 | 0.8433 | 0.8671 | **0.5287** ⭐best EX |
+| 3 | **c0_xiyan_glm_sql** (anchor) | XiYan | 0.8706 | 0.8596 | **0.8651** | 0.5202 |
+| 4 | c1_reflection_glm | Reflection (1 iter) | 0.8907 | 0.8407 | 0.8650 | 0.5222 |
+| 4 | c5_symverify_glm | SymbolicVerifier | 0.8717 | 0.8585 | 0.8650 | 0.5222 |
+| 6 | c2_verifier_glm | Verifier | **0.9163** ⭐best R | 0.8161 | 0.8633 | 0.5267 (biggest ΔEX +0.1916) |
+| 7 | c6_adaptive_depth_glm | AdaptiveDepth | 0.8786 | 0.8484 | 0.8632 | 0.5248 |
+| 8 | c3_adaptive_multi_agent_glm | AdaptiveMultiAgent ⚠️outlier | 0.7734 | 0.8373 | **0.8041** | 0.5189 |
+| 9 | c8_no_filter (baseline) | None | **0.9927** | 0.1269 | 0.2250 | 0.5156 |
+
+### v1 → v2 핵심 변화
+
+- **anchor EX**: 0.3396 → **0.5202** (+0.1806, gap 의 82% 회수)
+- **best EX**: 0.3468 → **0.5287** (C1 → C7, +0.1819)
+- F1 변화: sub-noise (±0.0031 max) — evidence 가 schema linking F1 무영향 (의도)
+- C3 outlier F1=0.8041 무변동 — multi-agent vote pathology 확정 outlier
+- Baseline B1' Full (55.87%) 대비 anchor v2 gap: **-3.85%p** (v1 -21.91%p 에서 회수)
+
+### Stack 공통 (C0~C8)
+
+- Builder: EnrichedHeteroGraphBuilder
+- Selector: EnsembleSelector + qcond_nl3.pt + α=0.5 (QCond Concat)
+- Extractor: MSTKruskalExtractor (score_threshold=0.1)
+- LLM (C0~C7): GLM 4.7 (zai-org/glm-4.7, provider="glm", T=0.0)
+- SQL Generator (C0~C8 모두 활성): LLMSQLGenerator + GLM 4.7
+- C8: filter.name="None" (LLM-free filter, sql_gen 만)
+
+### 🎯 시나리오 재확정 — Filter-Invariant (F1 + EX 양쪽)
+
+- **7 LLM filter (C3 outlier 제외) F1 spread = 0.8704 − 0.8632 = 0.0072** → **Filter-Invariant** ★
+- **7 LLM filter EX spread = 0.5287 − 0.5202 = 0.0085** → **Filter-Invariant** ★ (양쪽 sub-noise)
+- v1 의 F1 spread 0.0116 (Filter-Modest) → v2 0.0072 (Filter-Invariant) 더 좁아짐
+- v1 narrative "EX 측 effect ≈ zero" 폐기 — v2 의 +18.06%p EX 회복으로 Filter Dominance 의 EX axis 도 결정적 evidence 확보
+
+### 핵심 발견 (5 — HISTORY 자세한 narrative)
+
+1. **Evidence fix +18.06%p EX**: anchor EX 0.3396 → 0.5202 (Baseline B1' 의 93% 도달)
+2. **C7 best EX=0.5287** (anchor +0.0085) — TieredBidirectional 의 evidence-aware restoration
+3. **C4 best F1=0.8704** (anchor +0.0053, cost 6× — 비용 대비 marginal lift)
+4. **C3 outlier 확정** — F1=0.8041 evidence 와 무관 (multi-agent vote pathology)
+5. **C8 no_filter EX=0.5156 ≈ anchor v2 EX=0.5202** — F1=0.2250 (over-include) 가 GLM 4.7 SQL gen 으로 흡수, Filter 의 EX 측 lift 는 +0.0046 marginal (단 F1 측 lift 0.6401 결정적)
+
+### 비용 / 운영 (v2)
+
+- 학습 wall: **7h22min30s** (v1 9h26min 대비 2h 단축)
+- 비용: ~₩수십만 (총 token in=82.0M, out=2.4M, v1 과 유사)
+- GPU 0 max memory: 7.7GB (9 cell × ~850MB, 24GB 의 32%)
+- 모든 9 cell 정상 완료, fail 0
+- v1 archive: `outputs/experiments/s04_ablation/pipeline/filter_sweep_v1_no_evidence/`
+
+### 산출물
+
+- Configs (9): `configs/experiments/s04_ablation/pipeline/filter_sweep/c{0..8}_*.yaml`
+- Sweep script: `scripts/run_filter_sweep_glm.sh` (PARALLEL 9-cell wait-based)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Filter Module Confirmation Sweep](EXPERIMENT_HISTORY.md)
+
+### 후속 (즉시 trigger 가능)
+
+- **Analyzer 위임**: `notebooks/analysis_results/filter_sweep_glm_9cell.md` 신규 — 9-cell × R/P/F1/EX 매트릭스 + anchor↔best contrast + EX-F1 decoupling 발견 + Filter Dominance 7번째 축 narrative
+- **Planner 위임 (analyzer 후)**: paper §3.5 통합 + anchor F1=0.8663 ranking + main pipeline anchor 유지/변경 결정 + DECISIONS prepend
+
+---
+
+## SGBE Phase 3-5 — Score-Gated Batch Extractive Filter (2026-05-12, 🚀 Phase 3 launch active)
+
+근거: DECISIONS 2026-05-12 SGBE Chain Phase 3 Launch Trigger + SGBE Filter 채택. Module:filters 가 step_mode 3-mode + score_collapse_threshold (Option A default 0.05) 옵션 추가 (16/16 smoke PASSED). Phase 3 launch active (21:44 KST, PID 1241364).
+
+### Anchor stack (paper main mirror)
+
+- **Builder**: `EnrichedHeteroGraphBuilder` (include_views=False, run_leiden_clustering=True)
+- **NLQ Encoder**: `LocalPLMEncoder` — `sentence-transformers/all-MiniLM-L6-v2`
+- **Projection**: enabled=False
+- **Seed Selector**: `EnsembleSelector` — `weight_path=outputs/checkpoints/best_gat_qcond_nl3.pt`, `alpha=0.5`, `top_k=20`, `query_conditioned=true`, `encoder_type=plm`
+- **Connectivity Extractor**: `MSTKruskalExtractor` — `score_threshold=0.1`
+- **Filter**: `ScoreGatedBatchExtractiveFilter` (SGBE) — `provider=glm`, `model_name=zai-org/glm-4.7`, `temperature=0.0`, `fk_pk_hardcode=true`, `num_examples=3`
+- **Post-processing**: `auto_join_keys=true`
+
+### 3 master config + sweep matrix
+
+| Phase | Master config | Sweep dimension | Status |
+|---|---|---|---|
+| **Phase 3 θ calibration** (9-cell, LLM 없음) | `configs/experiments/s04_ablation/pipeline/sgbe/sgbe_calibration_base.yaml` | θ_keep ∈ {0.50, 0.55, 0.60} × θ_drop ∈ {0.20, 0.25, 0.30} + `step_mode="step_0+1"` | 🚀 active (21:44 KST) |
+| **Phase 4 Final SGBE** (best θ, GLM 4.7) | `configs/experiments/s04_ablation/pipeline/sgbe/sgbe_final.yaml` | Phase 3 best θ + SQL generator + `step_mode="step_0+1+2"` | ⏸ Phase 3 후 |
+| **Phase 5 Step Ablation** (3 cells) | `configs/experiments/s04_ablation/pipeline/sgbe/sgbe_step_ablation_base.yaml` | `step_mode` ∈ {`step_0`, `step_0+1`, `step_0+1+2`} | ⏸ Phase 4 후 |
+
+### Sweep scripts
+
+- `scripts/run_sgbe_calibration.sh` — Phase 3 9-cell sweep (base yaml + sed override → temp yaml). Pre-check: SGBE step_mode option 존재 검증.
+- `scripts/run_sgbe_final_ablation.sh` — Phase 4 (Final) + Phase 5 (3 step ablation) 통합. STEP_MODES 정식 값 ('step_0', 'step_0+1', 'step_0+1+2').
+- `scripts/run_sgbe_ablation.sh` (5/12 신규) — Phase 5 only 분리, 3 cell 순차.
+
+### 후속
+
+- **module:filters**: SGBE 의 `skip_llm` + `step_mode` option 추가
+- **root (option 추가 후)**: Phase 3 launch → analyzer best θ 결정 → Phase 4+5 launch
+- **analyzer**: `notebooks/analysis_results/sgbe_filter_results.md` 신규
+- **planner**: Filter Dominance 7번째 axis (Filter-invariance) + 8번째 axis (Score-Gated Hybrid) candidate
+
+---
+
+## DSN Mitigation V5 Tier 1+2 4-Direction (V5-A GATE / V5-B GCNII L=2/4/6 / V5-C Full AERO) (V-3-ext 단계 9, 2026-05-12, 🚧 코드 준비 + Launch 보류)
+
+근거: DECISIONS 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction). 본 entry 는 Launch 보류 placeholder — module 세션 review 후 launch 결정.
+
+### 등재 예정 ckpt (5 신규, Launch 보류)
+
+| Ckpt | gat_layer_type / 옵션 | num_layers | NAS path (예정) |
+|---|---|---:|---|
+| **V5-A GATE** | `gat_layer_type='gate'` (att + att_self 분리) | 2 | `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_v5a_gate.pt` |
+| **V5-B GCNII L=2** | `gat_layer_type='gcnii'`, `gcnii_beta_lambda=0.5` (Identity Mapping) | 2 | `best_gat_directed_supernode_p80_v5b_gcnii_L2.pt` |
+| **V5-B GCNII L=4** | gcnii + num_layers=4 | 4 | `best_gat_directed_supernode_p80_v5b_gcnii_L4.pt` |
+| **V5-B GCNII L=6** | gcnii + num_layers=6 | 6 | `best_gat_directed_supernode_p80_v5b_gcnii_L6.pt` |
+| **V5-C Full AERO** | `gat_layer_type='aero_full'`, `aero_hop_attention=true`, JK='none' | 2 | `best_gat_directed_supernode_p80_v5c_aero_full.pt` |
+
+### Stack
+
+- V5-A/B (L=2/4/6): V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation (PN+IR α=0.2+JK=concat+Dual-Stream+AC=0.1+ListNet) + V5 architectural intervention
+- V5-C: 위와 동일 단 `jumping_knowledge='none'` (Hop Attention 가 cross-layer aggregation 대체)
+
+### 차별점 (V4 와)
+
+- V5-A: row-stochasticity **유지** (softmax 그대로) — Conservation Law 만 수정. Wu 2023 JSR<1 가정 violation 가 아닌 task-irrelevant aggregation switch-off 표적.
+- V5-B: row-stochasticity **유지** + Identity Mapping (β_l = log(λ/l+1)) 으로 gradient flow upper bound 안정화. Initial Residual (α=0.2) + Identity Mapping 동시 적용 — Chen 2020 GCNII 의 핵심 두 component.
+- V5-C: V4-B (Softplus + Sym-Norm) **+ Hop Attention** (V4-B 의 H10.1c 직접 표적). cumulative attention residual 차단 → AERO Theorem 3 의 full architecture 실현.
+
+### 11-trial mitigation 매트릭스 (V5 결과 합산 후 갱신 예정)
+
+(현재 10-trial — V4 결과 까지. V5 5 ckpt 종료 시 15-trial 매트릭스로 확장.)
+
+### 후속
+
+- **module:selectors (또는 신규 module:models)**: V5-A/B/C 클래스 + Hop Attention forward code review → launch 결정. Root 영역 위반으로 본 root 가 직접 launch 불가.
+- **analyzer (launch 완료 후)**: 15-trial 매트릭스 + Layer 1/2/3 evidence 재정량 + dsn_mitigation_v5_4dir.md 신규
+- **analyzer (V5-D-1, 별도 chain)**: PLM Lower Bound 진단 (Plain vs Enriched c_L0/c_L3) → outputs/analysis/v5_d1_plm_lower_bound_diagnostic/
+- **planner (analyzer 후)**: narrative pivot 결정 + 5 over-smoothing planning 문서 갱신 + paper §3.5
+
+---
+
+## DSN Mitigation V4 Architectural Intervention (V4-A LN+GIN Combo + V4-B AERO Softplus) 학습 (V-3-ext 단계 8, 2026-05-11 → 05-12, 🎯 시나리오 V4-Combo-Null 확정)
+
+발사: 2026-05-11 23:23 KST → 종료: V4-B 09:05 (wall 9h 38min) + V4-A 10:14 (wall 10h 47min). DECISIONS 2026-05-11 §V4 채택 + `planning/oversmoothing_solution_methodology_2026-05-11_apa.md` §C-1 + §C-2 — combo 가설 (mech(ii-b) softmax-weighted-mean DOMINANT) 의 정량 검증. **결과: 둘 다 baseline 0.6097 미달 → mech(ii-b) DOMINANT 5/5 absolute confirm.**
+
+### 등재된 ckpt (2 신규)
+
+| Ckpt | 옵션 | Best R@15 | Best Epoch | NAS path |
+|---|---|---:|---:|---|
+| **V4-A LN+GIN Combo** | gat_layer_type='lngin' (Pre-softmax LN + GIN MLP) | **0.5929** | **ep259** | `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_v4a_lngin_combo.pt` (**257MB**) |
+| **V4-B AERO Softplus** | gat_layer_type='softplus' + softplus_symmetric_norm=true | **0.5951** | **ep58** | `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_v4b_aero.pt` (**113MB**) |
+
+### Stack
+
+V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation (PN+IR α=0.2+JK=concat+Dual-Stream+L=2+AC=0.1+ListNet) + V4 architectural intervention.
+
+### 10-trial mitigation 통합 매트릭스 (최종, V4 결과 반영)
+
+| 순위 | Variant | Best R@15 | Best Epoch | Δ vs Phase 1 |
+|------|---------|-----------|------------|--------------|
+| **1** | **Phase 1 P80 (no mit)** | **0.6097** | ep91 | (baseline) |
+| 2 | Phase 2 b8 (B5 mit fusion) | 0.6018 | ep157 | -0.0079 |
+| 3 | v2 #3 LayerNorm pre-softmax | 0.6011 | ep289 | -0.0086 |
+| 4 | v2 #1 DropMessage | 0.5974 | ep157 | -0.0123 |
+| 5 | v3 #1 GIN-style aggregation | 0.5954 | ep246 | -0.0143 |
+| **6** | **🆕 V4-B AERO Softplus** | **0.5951** | **ep58** | **-0.0146** |
+| 7 | Phase 3 #4 (LR x5) | 0.5935 | ep172 | -0.0162 |
+| 8 | Phase 3 #3 (Direct AC) | 0.5927 | ep51 | -0.0170 |
+| **9** | **🆕 V4-A LN+GIN Combo** | **0.5929** | **ep259** | **-0.0168** |
+| 10 | v2 #2 Sum Aggregation | 0.5761 | ep194 | -0.0336 |
+
+### 🎯 시나리오 V4-Combo-Null 확정
+
+- ❌ V4-Combo-Win (≥0.6097): 미충족
+- **✅ V4-Combo-Null** (둘 다 <0.6097): **확정** — mech(ii-b) DOMINANT 4/5 → **5/5 absolute confirm** + Filter Dominance 6번째 축 narrative 결정적 강화
+- ❌ V4-Mixed: 미충족
+
+핵심 발견:
+1. V4-A combo Δ=-0.0168 — partial mit 합산이 새 회복 만들지 못함 (destructive interference 가능성)
+2. V4-B row-stochasticity 파괴 Δ=-0.0146 — Wu et al. 2023 의 over-smoothing 회피 이론이 본 schema linking stack 에서는 실증 안 됨
+3. Best epoch 분포 (V4-A ep259 / V4-B ep58) 모두 직전 8-trial 의 ceiling 흡수 패턴과 일관
+
+### 비용 / 운영
+
+- 학습 wall: V4-B 9h 38min + V4-A 10h 47min (병렬, max=10h 47min)
+- 비용 ₩0 (LLM-free)
+- ckpt NAS: V4-A **257MB** + V4-B **113MB**
+- 자동 후속: sweep script 가 `dsn_oversmoothing_analysis.py --max_queries 50 --skip_step1 --skip_step2` 자동 호출 (10:15 KST start) — attention/cosine OK, ⚠️ grad_flow 일부 미호환
+
+### 산출물
+
+- Configs (2): `configs/training/dsn/train_dsn_p80_v4{a_lngin_combo,b_aero}.yaml`
+- 모델 확장: `src/models/gat_network_v2.py` (`LNGINGATv2Conv` + `SoftplusGATv2Conv` + `GAT_LAYER_TYPES` + V4 forwarding/validation)
+- 학습 entry: `src/train_gat_s06.py` (V4 kwargs forwarding line ~243-258)
+- 분석 확장: `src/analysis/dsn_oversmoothing_analysis.py` (CKPTS v4a/v4b 등록 + V4 ckpt 분기)
+- Sweep script: `scripts/run_v4_mitigation_sweep.sh`
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Mitigation V4 Architectural Intervention 학습 (V-3-ext 단계 8, 2026-05-11)](EXPERIMENT_HISTORY.md)
+
+### 후속
+
+- **Analyzer 위임 (즉시 trigger 가능)**: `notebooks/analysis_results/dsn_mitigation_v4_combo.md` 신규 (V4-A=0.5929 / V4-B=0.5951 정량 + 10-trial matrix + mech(ii-b) 5/5 absolute confirm)
+- **Planner 위임 (analyzer 후)**: advisor briefing + root cause report + paper §V.5.4 main finding narrative integration
+
+---
+
+## DSN Mitigation v3 #1 GIN-style aggregation 학습 (V-3-ext 단계 7, 2026-05-08 → 05-09, 🎯 시나리오 V3-A 1차 confirm)
+
+발사: 2026-05-08 17:12 → 완료 2026-05-09 04:51 (wall ~11h 39min, GPU 0). Phase 1 deep dive (A1+A2+A3) 후 Phase 2 GIN 구현 + Phase 3 학습. 8-trial mitigation 통합 결과: 모든 variants baseline 미달.
+
+### 등재된 ckpt (1 신규)
+
+| Ckpt | 옵션 | Best R@15 | Best Epoch | NAS path |
+|---|---|---:|---|---|
+| best_gat_directed_supernode_p80_b5_mitigation_v3_gin.pt | aggregation_type='gin' | **0.5954** | ep246 | /SSL_NAS/.../v3_gin.pt (140MB) |
+
+### 8-trial 통합 누적 (decreasing R@15)
+
+| 순위 | Variant | Best R@15 | Δ vs Phase 1 |
+|---|---|---:|---:|
+| **1** | **Phase 1 P80 (no mit)** | **0.6097** | (baseline) |
+| 2 | Phase 2 b8 (mit fusion) | 0.6018 | -0.0079 |
+| 3 | v2 #3 LayerNorm pre-softmax | 0.6011 | -0.0086 |
+| 4 | v2 #1 DropMessage | 0.5974 | -0.0123 |
+| **5** | **🆕 v3 #1 GIN-style aggregation** | **0.5954** | **-0.0143** |
+| 6 | Phase 3 #4 (LR x5) | 0.5935 | -0.0162 |
+| 7 | Phase 3 #3 (Direct AC) | 0.5927 | -0.0170 |
+| 8 | v2 #2 Sum Aggregation | 0.5761 | -0.0336 |
+
+### Config 주의사항
+
+- 학습 entry: `src/train_gat_s06.py` (aggregation_type='gin' forward)
+- 공통 V-3-ext (DSN p80) + B5 mitigation: Phase 2 b8 와 동일
+- 변경 차원: aggregation_type='gin' — `_make_gin_conv` factory + `HeteroConv aggr='mean'` fix + 18 inner GINConvs
+- attention 자체 부재 (mech(ii-a) 측정 X), mech(ii-b) propagation pathology 직접 검증
+
+### 결론 — 시나리오 V3-A 1차 confirm + mech(ii-b) DOMINANT 후보
+
+- 8-trial × 5 mitigation 카테고리 (graph topology / B5 mitigation / loss-level / model-level / aggregation-level) 모두 baseline 미달
+- GIN 가 mit variants 5위 — mech(ii-a) 부재해도 ceiling 유사 → mech(ii-b) aggregation family limitation 강화
+- v2 #3 LayerNorm (mech(ii-a) partial mitigation) > GIN (mech(ii-b) 직접) → mech(ii-a) 우위 잠정
+- analyzer Phase 4 deep dive 후 mech(ii-a)/(ii-b) sub-mechanism 정식 확정
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Mitigation v3 #1 GIN-style aggregation 학습 (V-3-ext 단계 7, 2026-05-08 → 05-09)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Config: `train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml`
+- 모델 확장: `src/models/gat_network_v2.py` (_make_gin_conv + AGGREGATION_TYPES)
+- Smoke test: `src/modules/selectors/tests/test_mitigation_v3.py` (7/7 통과)
+- 비용: ₩0, wall ~11h 39min
+

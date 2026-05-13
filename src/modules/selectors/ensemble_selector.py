@@ -46,6 +46,8 @@ class EnsembleSelector(BaseSelector):
                  num_layers_fallback: Optional[int] = None,
                  gat_version: str = "v1",
                  gat_v2_kwargs: Optional[Dict[str, Any]] = None,
+                 score_normalization: str = "minmax",
+                 supernode_edge_direction: str = "bidirectional",
                  **kwargs):
         super().__init__()
         self.alpha = alpha
@@ -53,6 +55,11 @@ class EnsembleSelector(BaseSelector):
         self.query_conditioned = query_conditioned
         self.query_supernode = query_supernode
         self.encoder_type = encoder_type
+        # score_normalization: "minmax" (default, backward compat) | "none" | "zscore"
+        valid_norms = {"minmax", "none", "zscore"}
+        if score_normalization not in valid_norms:
+            raise ValueError(f"score_normalization must be in {valid_norms}, got '{score_normalization}'")
+        self.score_normalization = score_normalization
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Proposal C H2: per-DB dynamic num_layers (inference-time early-exit).
@@ -91,6 +98,8 @@ class EnsembleSelector(BaseSelector):
             # Selector 가 depth resolution 을 단일 책임으로 가지므로 v2 모델 내부의 lookup 은 비활성.
             # num_layers_mode="fixed" + active_num_layers override 로 동작 (v1 과 동일 경로).
             v2_kwargs.setdefault("num_layers_mode", "fixed")
+            # supernode_edge_direction 도 ckpt 에 맞춰 forward (kwargs override 우선).
+            v2_kwargs.setdefault("supernode_edge_direction", supernode_edge_direction)
             self.gat_model = SchemaHeteroGATv2(
                 in_channels=in_channels,
                 hidden_channels=hidden_channels,
@@ -107,7 +116,8 @@ class EnsembleSelector(BaseSelector):
                 out_channels=out_channels,
                 num_layers=num_layers,
                 query_conditioned=query_conditioned,
-                query_supernode=query_supernode
+                query_supernode=query_supernode,
+                supernode_edge_direction=supernode_edge_direction,
             ).to(self.device)
 
         self.projector = DualTowerProjector(
@@ -131,6 +141,11 @@ class EnsembleSelector(BaseSelector):
         self.projector.eval()
 
         self.latest_scores = []
+        # SGBE Phase 2 (DECISIONS 2026-05-12) — filter 단이 raw score 기반 gating 을 수행할 수 있도록
+        # latest_raw_gat_scores (sigmoid 거친 GAT score, pre-normalize) + latest_raw_cos_scores 노출.
+        # 기존 self.latest_scores (blended + normalize) 는 그대로 유지 — backward compat.
+        self.latest_raw_gat_scores: Dict[int, float] = {}
+        self.latest_raw_cos_scores: Dict[int, float] = {}
         self.last_resolved_depth: Optional[int] = None
         logger.info(
             f"Initialized EnsembleSelector (alpha={alpha}, top_k={top_k}, "
@@ -293,17 +308,22 @@ class EnsembleSelector(BaseSelector):
         gat_scores = self._compute_gat_scores(question, graph_data, metadata)
 
         # 3. 앙상블: alpha * raw + (1 - alpha) * gat
-        # 각각 [0, 1] 범위로 정규화 후 결합
-        if raw_scores.max() > raw_scores.min():
-            raw_norm = (raw_scores - raw_scores.min()) / (raw_scores.max() - raw_scores.min())
-        else:
-            raw_norm = raw_scores
+        # score_normalization: "minmax" (default, backward compat) | "none" | "zscore"
+        def _normalize(scores: torch.Tensor) -> torch.Tensor:
+            if self.score_normalization == "none":
+                return scores
+            elif self.score_normalization == "zscore":
+                std = float(scores.std().item()) if scores.numel() > 0 else 0.0
+                if std > 1e-8:
+                    return (scores - scores.mean()) / scores.std()
+                return scores
+            else:  # "minmax"
+                if scores.max() > scores.min():
+                    return (scores - scores.min()) / (scores.max() - scores.min())
+                return scores
 
-        if gat_scores.max() > gat_scores.min():
-            gat_norm = (gat_scores - gat_scores.min()) / (gat_scores.max() - gat_scores.min())
-        else:
-            gat_norm = gat_scores
-
+        raw_norm = _normalize(raw_scores)
+        gat_norm = _normalize(gat_scores)
         ensemble_scores = self.alpha * raw_norm + (1.0 - self.alpha) * gat_norm
 
         # 3-a. Subclass hook (Neurosymbolic Layer 1 등) — default no-op
@@ -316,8 +336,19 @@ class EnsembleSelector(BaseSelector):
         top_scores, top_indices = torch.topk(ensemble_scores, k=k_actual)
         selected_seeds = [candidates[idx.item()] for idx in top_indices]
 
-        # 5. PCST extractor에 넘길 scores 저장
+        # 5. PCST extractor에 넘길 scores 저장 (기존 — blended + normalize)
         self.latest_scores = ensemble_scores.tolist()
 
-        logger.debug(f"[Ensemble] alpha={self.alpha}, selected {k_actual} seeds")
+        # 5-a. SGBE Phase 2 — filter 단에 전달할 raw score (sigmoid 거친 GAT score, normalize 전) + raw cosine
+        # node index = candidates[i] (보통 단순 0..N-1, schema_linking.py:160-163 참조)
+        gat_list = gat_scores.tolist()
+        self.latest_raw_gat_scores = {int(candidates[i]): float(gat_list[i])
+                                       for i in range(min(len(candidates), len(gat_list)))}
+        raw_list = raw_scores.tolist() if hasattr(raw_scores, "tolist") else list(raw_scores)
+        self.latest_raw_cos_scores = {int(candidates[i]): float(raw_list[i])
+                                       for i in range(min(len(candidates), len(raw_list)))}
+
+        logger.debug(f"[Ensemble] alpha={self.alpha}, selected {k_actual} seeds, "
+                     f"latest_raw_gat_scores={len(self.latest_raw_gat_scores)} "
+                     f"latest_raw_cos_scores={len(self.latest_raw_cos_scores)}")
         return selected_seeds

@@ -90,7 +90,9 @@ def main():
         logger.debug(f"Question {question_id}: {question}")
         
         try:
-            result = pipeline.run(db_id=db_id, query=question)
+            # evidence: BIRD-dev `external_knowledge` 필드 forward (LLMSQLGenerator 의 SQL gen prompt 에 삽입).
+            # 2026-05-13 fix — Baseline EX 비교 시 anchor EX 21.91%p gap 의 dominant 원인 회수.
+            result = pipeline.run(db_id=db_id, query=question, evidence=item.get("evidence", ""))
             
             gold_tables, gold_cols = parse_sql_elements(gold_sql)
             gold_tables = set(t.lower() for t in gold_tables)

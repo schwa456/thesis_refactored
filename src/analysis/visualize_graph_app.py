@@ -20,6 +20,7 @@ import os
 import sys
 import re
 import ast
+import csv
 import json
 import glob
 import tempfile
@@ -81,6 +82,7 @@ LOGS_DIR = os.path.join(ROOT, "logs")
 CONFIGS_DIR = os.path.join(ROOT, "configs")
 BIRD_DEV_JSON = os.path.join(ROOT, "data/raw/BIRD_dev/dev.json")
 BIRD_DEV_TABLES_JSON = os.path.join(ROOT, "data/raw/BIRD_dev/dev_tables.json")
+BIRD_DEV_DATABASES_DIR = os.path.join(ROOT, "data/raw/BIRD_dev/dev_databases")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -545,6 +547,45 @@ def load_dev_tables() -> Dict[str, Dict[str, Any]]:
     return {t["db_id"]: t for t in tables}
 
 
+@st.cache_data(show_spinner=False)
+def load_column_descriptions(db_id: str) -> Dict[str, Dict[str, str]]:
+    """`dev_databases/<db_id>/database_description/*.csv` → {"table.column": {description, value_description}}.
+
+    EnrichedHeteroGraphBuilder._load_column_descriptions 와 동일한 포맷.
+    파일/디렉토리 없으면 빈 dict 반환 (시각화는 description 없이 계속 동작).
+    """
+    desc_dir = os.path.join(BIRD_DEV_DATABASES_DIR, db_id, "database_description")
+    if not os.path.isdir(desc_dir):
+        return {}
+
+    result: Dict[str, Dict[str, str]] = {}
+    for csv_file in os.listdir(desc_dir):
+        if not csv_file.endswith(".csv"):
+            continue
+        table_name = csv_file[:-4]
+        csv_path = os.path.join(desc_dir, csv_file)
+        try:
+            with open(csv_path, "r", encoding="utf-8-sig", errors="replace") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    orig_col = (row.get("original_column_name") or "").strip()
+                    if not orig_col:
+                        continue
+                    nl_col = (row.get("column_name") or "").strip()
+                    col_desc = (row.get("column_description") or "").strip()
+                    val_desc = (row.get("value_description") or "").strip()
+                    if nl_col or col_desc or val_desc:
+                        result[f"{table_name}.{orig_col}"] = {
+                            "csv_column_name": nl_col,
+                            "description": col_desc,
+                            "value_description": val_desc,
+                        }
+        except Exception:
+            # 인코딩/포맷 에러는 조용히 건너뜀 — visualizer 가 정지하면 안 됨
+            continue
+    return result
+
+
 def build_plain_schema_graph(db_id: str,
                              include_fk_node: bool = True,
                              include_t2t: bool = True,
@@ -584,6 +625,10 @@ def build_plain_schema_graph(db_id: str,
     table_disp = table_names_nl if use_natural_names else table_names_orig
     col_disp = column_pairs_nl if use_natural_names else column_pairs_orig
 
+    # 자연어 description 로드 (column_description, value_description)
+    # description CSV 의 key 는 original table/column 명 기준이므로 항상 orig 로 lookup
+    col_descriptions = load_column_descriptions(db_id)
+
     # tables
     for tidx, tname in enumerate(table_disp):
         g.add_node(str(tname), name=str(tname), type="table",
@@ -599,10 +644,17 @@ def build_plain_schema_graph(db_id: str,
         full = f"{table_disp[tidx]}.{cname}"
         col_id_to_name[cidx] = full
         is_pk = cidx in primary_keys
+        # description lookup 은 original 명으로
+        orig_table = table_names_orig[tidx]
+        orig_col = column_pairs_orig[cidx][1]
+        desc_entry = col_descriptions.get(f"{orig_table}.{orig_col}", {})
         g.add_node(full, name=full, type="column",
                    col_idx=cidx, similarity_score=0.0,
                    is_pk=is_pk,
-                   nl_name=str(column_pairs_nl[cidx][1]) if cidx < len(column_pairs_nl) else cname)
+                   nl_name=str(column_pairs_nl[cidx][1]) if cidx < len(column_pairs_nl) else cname,
+                   csv_column_name=desc_entry.get("csv_column_name", ""),
+                   column_description=desc_entry.get("description", ""),
+                   value_description=desc_entry.get("value_description", ""))
         # belongs_to edge
         g.add_edge(full, str(table_disp[tidx]), type="belongs_to")
 
@@ -640,6 +692,80 @@ def build_plain_schema_graph(db_id: str,
     return g
 
 
+def _format_attr_value(value: Any) -> str:
+    """노드 attribute 를 hover tooltip 친화적 string 으로 포맷.
+
+    긴 문자열(자연어 description) 은 80자 단위로 wrap → 멀티라인 tooltip.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, float):
+        # similarity_score 같은 float 는 4-decimal (memory rule)
+        return f"{value:.4f}"
+    s = str(value)
+    # 자연어 description (column_description, value_description) 가 길면 wrap
+    if len(s) > 100:
+        import textwrap
+        wrapped: List[str] = []
+        for para in s.splitlines():
+            if not para.strip():
+                wrapped.append("")
+                continue
+            wrapped.extend(textwrap.wrap(para, width=80) or [""])
+        s = "\n  ".join(wrapped)
+    return s
+
+
+def _build_attribute_tooltip(node_id: str, data: Dict[str, Any],
+                              skip_keys: Optional[set] = None,
+                              header_lines: Optional[List[str]] = None,
+                              extra_lines: Optional[List[str]] = None) -> str:
+    """노드의 모든 attribute 를 multi-line tooltip 으로 변환.
+
+    Args:
+      node_id: 노드 식별자 (label 출력용)
+      data: graph.nodes(data=True) 에서 가져온 dict
+      skip_keys: tooltip 에 표시하지 않을 key 집합 (이미 header 에 포함된 등)
+      header_lines: tooltip 상단에 고정 표시할 줄 (예: "Name: foo", "Type: TABLE")
+      extra_lines: tooltip 하단에 추가할 줄 (예: 실험 stage 정보)
+
+    Returns:
+      multi-line 문자열. pyvis title 인자에 전달.
+    """
+    skip = skip_keys or set()
+    lines: List[str] = []
+
+    # Header (기본 식별 정보)
+    if header_lines:
+        lines.extend(header_lines)
+
+    # Attributes (data 의 나머지 모든 key)
+    attr_lines: List[str] = []
+    for key, value in sorted(data.items()):
+        if key in skip:
+            continue
+        formatted = _format_attr_value(value)
+        if not formatted:
+            continue
+        # key 를 사람 친화적으로: snake_case → Title Case
+        label = key.replace("_", " ").title()
+        attr_lines.append(f"{label}: {formatted}")
+    if attr_lines:
+        if lines:
+            lines.append("---")
+        lines.extend(attr_lines)
+
+    # Extra (실험 stage 등)
+    if extra_lines:
+        if lines:
+            lines.append("---")
+        lines.extend(extra_lines)
+
+    return "\n".join(lines)
+
+
 def render_plain_pyvis(graph: nx.Graph, title: str = "") -> str:
     """실험 annotation 없이 plain 한 색상으로 schema graph 렌더링."""
     net = Network(height="800px", width="100%", bgcolor="#111827",
@@ -673,12 +799,13 @@ def render_plain_pyvis(graph: nx.Graph, title: str = "") -> str:
             bg = "#F59E0B"
             size = 20
 
-        nl_name = data.get("nl_name", "")
-        title_text = (
-            f"Name: {data.get('name', node_id)}\n"
-            f"Type: {ntype.upper()}\n"
-            + (f"Natural name: {nl_name}\n" if nl_name and nl_name != data.get('name') else "")
-            + (f"Primary key: yes\n" if data.get("is_pk") else "")
+        title_text = _build_attribute_tooltip(
+            node_id, data,
+            skip_keys={"name", "type"},  # header 에 표시되므로 중복 제거
+            header_lines=[
+                f"Name: {data.get('name', node_id)}",
+                f"Type: {ntype.upper()}",
+            ],
         )
         net.add_node(node_id, label=str(node_id), title=title_text,
                      color=bg, shape=shape, size=size, borderWidth=1)
@@ -1140,19 +1267,24 @@ def render_pyvis(graph: nx.Graph,
             else:
                 stage_detail = "Dropped at: Unknown stage"
 
-        title = (
-            f"Name: {data.get('name', nid)}\n"
-            f"Type: {node_type.upper()}\n"
-            f"Score: {score}\n"
-            f"Gold: {'Yes' if is_gold else 'No'}\n"
-            f"---\n"
-            f"Result: {selection_status}\n"
-            f"  Seed: {'Yes' if in_seed else 'No'}\n"
-            f"  Extractor (live): {'Yes' if in_extracted else 'No'}\n"
-            f"  Final: {'Yes' if in_final else 'No'}\n"
-            f"---\n"
-            f"{stage_detail}\n"
-            f"Category: {cat}"
+        title = _build_attribute_tooltip(
+            node_id, data,
+            skip_keys={"name", "type", "similarity_score"},  # header/extra 에 이미 포함
+            header_lines=[
+                f"Name: {data.get('name', nid)}",
+                f"Type: {node_type.upper()}",
+                f"Score: {score}",
+                f"Gold: {'Yes' if is_gold else 'No'}",
+            ],
+            extra_lines=[
+                f"Result: {selection_status}",
+                f"  Seed: {'Yes' if in_seed else 'No'}",
+                f"  Extractor (live): {'Yes' if in_extracted else 'No'}",
+                f"  Final: {'Yes' if in_final else 'No'}",
+                "---",
+                f"{stage_detail}",
+                f"Category: {cat}",
+            ],
         )
 
         net.add_node(node_id, label=str(node_id), title=title, color=color,

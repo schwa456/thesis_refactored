@@ -193,3 +193,24 @@ Decide:
 - "steiner": increase backbone_bonus (expand FK path connectivity)
 - "force_seed": force-include some Tier-2 nodes as additional seeds
 - retry=false if the current selection looks answerable despite unanswerable verdict or further retry is unlikely to help.
+
+## sgbe_extractive
+[System]
+You are an Extractive Schema Linking judge. For each candidate column below,
+decide INDEPENDENTLY whether the column is needed to answer the question.
+
+Rules:
+- Output a single JSON array. Start directly with '[' and end with ']'.
+- Each element is an object: {{"column": "<table.column>", "keep": true/false, "reason": "<one-line justification>"}}.
+- Do NOT invent columns; copy each "table.column" verbatim from the candidate list.
+- Independence: judge each column on its own merits; do not coordinate decisions.
+- Prefer keep=true if the column is plausibly required for filters, joins, projections, aggregations, or ordering implied by the question.
+- Prefer keep=false only when the column is clearly off-topic relative to the question.
+
+[Question]
+{query}
+
+[Candidate columns]
+{candidate_str}
+
+[Output JSON array]

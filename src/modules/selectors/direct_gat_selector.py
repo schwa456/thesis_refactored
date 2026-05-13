@@ -196,6 +196,14 @@ class DirectGATSelector(BaseSelector):
                 final_scores[num_t + num_c:num_t + num_c + num_fk] = torch.sigmoid(logits_fk).view(-1)
 
         self.latest_scores = final_scores.cpu().tolist()
+        # SGBE Phase 2 (DECISIONS 2026-05-12) — filter 단이 raw GAT score 기반 gating 을 수행할 수 있도록
+        # latest_raw_gat_scores dict 노출. Direct variant 는 classifier head 의 sigmoid output 자체가 raw GAT score.
+        # latest_raw_cos_scores 는 Direct variant 에 cosine 분기가 없으므로 빈 dict (호출자가 None 으로 처리 가능).
+        self.latest_raw_gat_scores: Dict[int, float] = {
+            int(candidates[i]): float(self.latest_scores[i])
+            for i in range(min(len(candidates), len(self.latest_scores)))
+        }
+        self.latest_raw_cos_scores: Dict[int, float] = {}
 
         if self.apply_threshold:
             selected = [c for c, s in zip(candidates, self.latest_scores) if s >= self.threshold]

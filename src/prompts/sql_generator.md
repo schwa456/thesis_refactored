@@ -1,9 +1,14 @@
 ## sql_generator
-You are a SQL expert. Write a valid SQLite query to answer the following question.
+You are an expert SQL developer. Write a valid SQLite query based on the given schema and external knowledge.
 Use ONLY the tables and columns provided in the schema below.
+
+IMPORTANT: If a column name contains spaces or special characters, you MUST wrap it in backticks (e.g., `Column Name` or `Percent (%)`).
 
 [Schema]
 {schema_str}
+
+[External Knowledge]
+{evidence}
 
 [Question]
 {query}

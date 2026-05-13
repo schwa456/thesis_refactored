@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional, List, Tuple
 
 SUPERNODE_EDGE_DIRECTIONS = {"bidirectional", "directed_from_sn"}
 SUPERNODE_TOPK_CRITERIA = {"raw", "cosine", "ce"}
+SUPERNODE_THRESHOLD_MODES = {"top_k", "percentile", "abs_tau"}
+SUPERNODE_SCORE_NORMS = {"minmax", "none"}
 
 
 def _tensor_stats(t: torch.Tensor, dead_eps: float = 1e-4) -> Dict[str, float]:
@@ -42,7 +44,10 @@ class SchemaHeteroGAT(nn.Module):
                  query_supernode: bool = False, enable_stats: bool = False,
                  supernode_edge_direction: str = "bidirectional",
                  supernode_topk: Optional[int] = None,
-                 supernode_topk_criterion: str = "raw"):
+                 supernode_topk_criterion: str = "raw",
+                 supernode_threshold_mode: str = "top_k",
+                 supernode_threshold_value: Optional[float] = None,
+                 supernode_score_normalization: str = "minmax"):
         super(SchemaHeteroGAT, self).__init__()
         self.num_layers = num_layers
         self.query_conditioned = query_conditioned
@@ -57,9 +62,29 @@ class SchemaHeteroGAT(nn.Module):
             raise ValueError(f"supernode_topk_criterion must be in {SUPERNODE_TOPK_CRITERIA}")
         if supernode_topk is not None and not query_supernode:
             raise ValueError("supernode_topk 는 query_supernode=True 에서만 의미가 있음")
+        if supernode_threshold_mode not in SUPERNODE_THRESHOLD_MODES:
+            raise ValueError(
+                f"supernode_threshold_mode must be in {SUPERNODE_THRESHOLD_MODES}, got {supernode_threshold_mode}"
+            )
+        if supernode_score_normalization not in SUPERNODE_SCORE_NORMS:
+            raise ValueError(
+                f"supernode_score_normalization must be in {SUPERNODE_SCORE_NORMS}, got {supernode_score_normalization}"
+            )
+        if supernode_threshold_mode in ("percentile", "abs_tau"):
+            if not query_supernode:
+                raise ValueError(f"supernode_threshold_mode={supernode_threshold_mode} requires query_supernode=True")
+            if supernode_threshold_value is None:
+                raise ValueError(
+                    f"supernode_threshold_mode={supernode_threshold_mode} requires supernode_threshold_value"
+                )
         self.supernode_edge_direction = supernode_edge_direction
         self.supernode_topk = supernode_topk
         self.supernode_topk_criterion = supernode_topk_criterion
+        self.supernode_threshold_mode = supernode_threshold_mode
+        self.supernode_threshold_value = (
+            float(supernode_threshold_value) if supernode_threshold_value is not None else None
+        )
+        self.supernode_score_normalization = supernode_score_normalization
 
         # query_conditioned=True 시 node feature에 query를 concat → 입력 차원 2배
         effective_in = in_channels * 2 if query_conditioned else in_channels
@@ -141,12 +166,11 @@ class SchemaHeteroGAT(nn.Module):
         t_start = time.perf_counter() if stats_on else 0.0
         layer_stats: Dict[str, Any] = {"layers": []} if stats_on else {}
 
-        # V-3: SuperNode top-k filtering (pre-GAT raw score 기반).
-        # Selective 연결: SN → top-k schema node 만 유지 (bidirectional 인 경우 역방향도 동일 마스킹).
-        if (self.query_supernode and self.supernode_topk is not None
-                and self.supernode_topk > 0 and query_emb is not None):
-            topk_masks = self._compute_topk_mask(query_emb, x_dict)
-            edge_index_dict = self._apply_topk_to_edges(edge_index_dict, topk_masks)
+        # V-3 / V-3-ext: SuperNode threshold filtering (pre-GAT, per-query cosine).
+        # Selective 연결: SN → 선별된 schema node 만 유지. mode 별 dispatch (top_k / percentile / abs_tau).
+        if self.query_supernode and query_emb is not None and self._supernode_filter_active():
+            mask = self._compute_supernode_mask(query_emb, x_dict)
+            edge_index_dict = self._apply_topk_to_edges(edge_index_dict, mask)
 
         # V-2: directed_from_sn 시 query_node 가 HeteroConv drop 되지 않도록 self-loop edge 주입.
         if (self.query_supernode
@@ -227,12 +251,22 @@ class SchemaHeteroGAT(nn.Module):
     # ──────────────────────────────────────────────────────────────
     # V-2 / V-3 helper methods
     # ──────────────────────────────────────────────────────────────
-    def _compute_topk_mask(self, query_emb: torch.Tensor,
-                           x_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """V-3: pre-GAT raw cosine score 기준 schema 노드 top-k 선별.
+    def _supernode_filter_active(self) -> bool:
+        if self.supernode_threshold_mode == "top_k":
+            return self.supernode_topk is not None and self.supernode_topk > 0
+        return self.supernode_threshold_value is not None
 
-        Global top-k (전체 schema 노드 통합). criterion='raw' 만 구현 (Phase 1).
-        criterion='cosine' / 'ce' 는 raw 와 의미상 동치이므로 현재는 모두 raw 로 fallback.
+    def _compute_supernode_mask(self, query_emb: torch.Tensor,
+                                x_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """V-3 / V-3-ext: pre-GAT cosine score 기반 schema 노드 mask 산출.
+
+        threshold_mode 별 dispatch:
+          - top_k:        torch.topk on (norm 적용된) score 로 K 개.
+          - percentile:   torch.quantile cutoff (value=80 → P80).
+          - abs_tau:      score >= value (norm 후 절대 cutoff).
+
+        score_normalization='minmax' 시 모든 mode 가 per-query [0,1] 정규화 후 비교. analyzer
+        raw_score_distribution_for_directed_topk.md 의 정의와 동일 (학위 논문 Part III base).
         """
         q = query_emb if query_emb.dim() == 2 else query_emb.unsqueeze(0)
         if q.size(0) > 1:
@@ -247,7 +281,7 @@ class SchemaHeteroGAT(nn.Module):
             if nt not in x_dict or x_dict[nt].size(0) == 0:
                 continue
             n_norm = F.normalize(x_dict[nt], dim=-1)
-            sc = (n_norm @ q_norm.t()).squeeze(-1)  # [N_nt]
+            sc = (n_norm @ q_norm.t()).squeeze(-1)
             scores_list.append(sc)
             type_tags.extend([nt] * sc.size(0))
             local_idx.extend(range(sc.size(0)))
@@ -262,12 +296,34 @@ class SchemaHeteroGAT(nn.Module):
             return masks
 
         combined = torch.cat(scores_list, dim=0)
-        k = min(int(self.supernode_topk), combined.size(0))
-        topk = torch.topk(combined, k=k).indices.tolist()
-        for i in topk:
-            nt = type_tags[i]
-            masks[nt][local_idx[i]] = True
+        if self.supernode_score_normalization == "minmax" and combined.numel() > 0:
+            cmin, cmax = combined.min(), combined.max()
+            combined_norm = (combined - cmin) / (cmax - cmin) if cmax > cmin else combined
+        else:
+            combined_norm = combined
+
+        if self.supernode_threshold_mode == "top_k":
+            k = min(int(self.supernode_topk), combined_norm.size(0))
+            keep_idx = torch.topk(combined_norm, k=k).indices.tolist()
+            for i in keep_idx:
+                masks[type_tags[i]][local_idx[i]] = True
+        elif self.supernode_threshold_mode == "percentile":
+            p = float(self.supernode_threshold_value) / 100.0
+            cutoff = torch.quantile(combined_norm.to(torch.float32), p)
+            keep = (combined_norm >= cutoff).nonzero(as_tuple=False).flatten().tolist()
+            for i in keep:
+                masks[type_tags[i]][local_idx[i]] = True
+        else:  # abs_tau
+            cutoff = float(self.supernode_threshold_value)
+            keep = (combined_norm >= cutoff).nonzero(as_tuple=False).flatten().tolist()
+            for i in keep:
+                masks[type_tags[i]][local_idx[i]] = True
         return masks
+
+    # Backward-compat alias — 기존 분석/유틸 코드가 _compute_topk_mask 를 직접 호출하면 dispatch.
+    def _compute_topk_mask(self, query_emb: torch.Tensor,
+                           x_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        return self._compute_supernode_mask(query_emb, x_dict)
 
     def _apply_topk_to_edges(self, edge_index_dict: dict,
                              masks: Dict[str, torch.Tensor]) -> dict:

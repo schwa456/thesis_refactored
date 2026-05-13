@@ -8,6 +8,6066 @@
 
 ---
 
+## 2026-05-13 (학술 Agent Phase 1 GO Response — A-1 truncated 필드 보강 + B-1/B-2 summary 항목 정식 + Phase 1 launch 결정)
+
+> **사용자 직전 input (5/13)**: 학술 Agent 의 response 공유 — Phase 1 (A-1/A-2/A-3) 결과 우선 receive + Decision Rules 표 정식 + B-1/B-2 summary 항목 명시 + A-1 truncated 필드 보강 제안.
+
+### 학술 Agent Response 핵심
+
+**(a) Decision Rules 표 정식**:
+
+| Dataset | 핵심 지표 | Decision Trigger | 다음 행동 |
+|---|---|---|---|
+| **A-3** | mean(S_restore_precision) | **≥ 0.6** → Direction A 우선 배포 | Direction A 즉시 구현 + B/C 병행 |
+| **A-2** | mean(recall_union) - mean(recall_fwd) | **+Δ ≥ 0.05** → backward path 유효 | A-3 precision 과 종합 판단 |
+| **C-1** | mean(fk_coverage_rate) | **≥ 0.50** → Direction C feasible | < 0.30 시 Direction C post-paper |
+| **C-2** | mean(is_join_complete) | **< 0.80** → Steiner tree expected gain 큼 | Direction C 우선순위 상향 |
+| **B-1** | mask=1 ratio (hard negative) | **≥ 30%** → HN-SupCon 학습 의미 | A 결과 후 B-2 와 진행 결정 |
+
+**(b) B-1 / B-2 summary 항목 정식** (xlsx full dump 대신 md summary 충분):
+
+- **B-1 요약**: hard negative 비율 (전체 / per-query 분포) + easy negative 비율 + cosine score 분포 histogram (TP vs FN vs TN 3 group) + mask=1 ratio 추정치
+- **B-2 요약**: gold:non-gold ratio (BIRD-Train) + Train vs Dev distribution 차이 + per-difficulty 분포 (simple/moderate/challenging)
+
+**(c) A-1 보강 권고 — Token Limit 초과 처리**:
+
+- BIRD 의 california_schools / financial 등 column 수 많은 DB 의 full schema prompt 가 GLM 4.7 token limit 초과 가능성
+- 신규 필드 추가:
+  - `is_executable_full = None` (token limit 초과로 SQL 생성 불가)
+  - `truncated: true` (prompt 가 truncate 됐는지 추적)
+
+### 결정 — Phase 1 (A-1 + A-2 + A-3) 즉시 launch
+
+학위 논문 일정 (5/14~5/22) + 학술 Agent 의 Phase 1 우선 receive 요청 — 즉시 Analyzer 핸드오프 + Root sweep launch.
+
+### Spec 파일 정정 (학술 Agent 응답 반영)
+
+`planning/filter_proposal_data_spec_2026-05-13.md` 의 다음 update:
+
+1. **§2 A-1 의 포함 항목** 에 `is_executable_full = None` (token limit 초과 시 nullable) + `truncated: bool` 필드 추가
+2. **§3 B-1 의 정의** 에 학술 Agent 가 요구하는 summary statistics 항목 (hard negative ratio + cosine histogram TP/FN/TN + mask=1 ratio) 명시 — xlsx full dump 대신 md summary 의 inline 표 형식
+3. **§3 B-2 의 정의** 에 학술 Agent 가 요구하는 summary 항목 (gold:non-gold ratio + Train-Dev distribution diff + per-difficulty 분포) 명시
+4. **§1.1 Decision Rules 표** 갱신 — 학술 Agent response 의 정확한 Trigger 인용
+
+### Phase 1 책임 분담 (V5 chain 정정 원칙 준수)
+
+| Step | 책임 | 작업 | ETA |
+|---|---|---|---|
+| 1 | **Analyzer** | `src/analysis/filter_proposal_a1_preliminary_sql.py` script 작성 — B1' / B4' script 재사용 + token limit detection (`truncated` 필드) | ~2-3h |
+| 2 | **Analyzer** | Smoke test (1~5 query) — GLM 4.7 API call 정상 + truncation 감지 | ~30 min |
+| 3 | **Root** | A-1 launch (~3-5h wall, ~$10-20 cost, 1534 query × 2 prompts: full + S_fwd) | ~5h |
+| 4 | **Analyzer** | `filter_proposal_a2_backward_recall.py` (A-1 결과 의존, sqlglot parsing) | ~2h |
+| 5 | **Analyzer** | `filter_proposal_a3_restore_noise.py` (A-2 결과 의존) | ~1h |
+| 6 | **사용자** | jsonl → xlsx 변환 + md summary 작성 | ~수 시간 |
+| 7 | **학술 Agent** | md + xlsx 수령 → Decision Rules 적용 (A-3 precision ≥ 0.6 / A-2 +Δ ≥ 0.05) | discussion |
+
+### 학위 논문 일정 영향
+
+- Phase 1 launch 즉시 (5/14): A-1 + A-2 + A-3 완료 → ~5/15
+- 학술 Agent decision → ~5/16
+- Direction A 배포 (positive) 또는 B/C 검토 → ~5/17~5/22
+- 학위 논문 §V.5.x Direction A 결과 통합 → ~5/22
+
+→ **즉시 launch 적합**.
+
+### 학회/학위 논문 narrative 측면
+
+- Phase 1 A-3 의 `S_restore_precision ≥ 0.6` 시 — Direction A 가 학위 논문 §V.5.x 의 Filter Dominance enhancement evidence (학회 paper 의 future direction)
+- A-2 의 `mean(recall_union) - mean(recall_fwd) ≥ 0.05` 시 — backward path 의 recall 회복 정량 evidence
+
+### 영향 범위
+
+- `planning/filter_proposal_data_spec_2026-05-13.md` (spec 정정 — A-1 truncated 필드 + B-1/B-2 summary 항목 + Decision Rules 정식)
+- `planning/DECISIONS.md` (본 entry)
+- 후속:
+  - Phase 1 결과 후 사용자가 md summary + xlsx 변환 → 학술 Agent 전달
+  - 학술 Agent decision → Direction A/B/C 배포 결정
+
+### 근거
+
+- 사용자 직접 input (학술 Agent response 공유)
+- 학술 Agent response 의 Decision Rules 표 + B-1/B-2 summary 항목 + A-1 truncated 보강
+
+### 후속 actions
+
+- (1) **Spec 파일 정정** (즉시, planner)
+- (2) **Analyzer 핸드오프** — A-1 script 작성 (planner 작성, 사용자 전달)
+- (3) **사용자 후속 작업** — 학술 Agent 응답 md 보관 (`planning/filter_proposal_scholar_agent_response_phase1_2026-05-13.md` 신규?), Phase 1 결과 후 md summary + xlsx 변환
+
+---
+
+## 2026-05-13 (Filter Proposal Data Spec 정정 — 학술 Agent md/xlsx-only 소통 + 3-Way Workflow 명시)
+
+> **사용자 직전 input (5/13)**: "학술 에이전트는 코드베이스에 접근하지 못해 내가 md 파일만 전해주는 방식으로 소통했어" + "데이터를 엑셀로 만들어서 줘도 될 것 같아".
+
+### 정정 내용
+
+직전 `filter_proposal_data_spec_2026-05-13.md` 의 학술 Agent view 부정합 부분 minor 수정 (Option A):
+
+1. **3-Way 소통 Workflow 도식 추가** — 학술 Agent ↔ 사용자 ↔ 실험 수행 Agent 의 fact 정정. 학술 Agent 가 코드/파일 접근 불가, md/xlsx-only 소통.
+2. **§5.5 Data Output 위치** — "실험 수행 Agent reference, 학술 Agent 에게는 xlsx 로 변환되어 전달" 명시.
+3. **§6 Data Output Format 전면 재작성** — 학술 Agent 전달 형식 = **md (summary + key tables) + xlsx (per-dataset raw records)** 조합.
+4. **§6.3 Reproduction commands** → **§6.5 실험 수행 Agent 의 작업 chain** (학술 Agent → 사용자 → 실험 Agent 전달 순서) wording 정정.
+
+### 학술 Agent 전달 형식 (정식)
+
+| 형식 | 역할 | 학술 Agent 분석 |
+|---|---|---|
+| **md summary** | summary statistics + key tables + decision rule trigger + 학회 narrative 의의 | high-level decision |
+| **xlsx (per dataset)** | per-query / per-DB raw records, 1 sheet per dataset | case study, outlier 분석, 분포 시각화 |
+
+### xlsx Size 적합성
+
+| Dataset | Records | xlsx 적합? |
+|---|---:|:---:|
+| A-1 / A-2 / A-3 | 1534 each | ✅ trivial |
+| B-1 | ~980k | ⚠️ 1M row 한계 근접 — sampling or summary |
+| B-2 | ~880k | ⚠️ 동일 |
+| C-1 | ~100 | ✅ trivial |
+| C-2 | 1534 | ✅ trivial |
+
+### 3-Way Workflow 정식
+
+```
+학술 Agent (md/xlsx review only)
+   ↑                              ↓ (spec / decision)
+사용자 (bridge, md/xlsx 변환)
+   ↑                              ↓ (chain)
+실험 수행 Agent (analyzer/root/module, raw 데이터)
+```
+
+→ 사용자가 학술 Agent 의 spec/decision md 와 실험 수행 Agent 의 raw 데이터 사이 bridge. 실험 결과를 md summary + xlsx 변환 deliverable 로 학술 Agent 에 전달.
+
+### Phase 1 후 deliverable spec (예시)
+
+학술 Agent 에 전달할 deliverable 2 set:
+- `filter_proposal_phase1_results_for_scholar_agent_<date>.md` — A-1/A-2/A-3 summary + decision rule trigger + 학회 narrative 의의
+- `filter_proposal_phase1_data_<date>.xlsx` — A-1/A-2/A-3 의 per-query raw records (3 sheets)
+
+### 영향 범위
+
+- `planning/filter_proposal_data_spec_2026-05-13.md` (수정 — workflow 명시 + xlsx 옵션 추가)
+- `planning/DECISIONS.md` (본 entry)
+- Phase 1 후속 — 사용자가 변환 scripts (`scripts/jsonl_to_xlsx.py`) 작성 또는 analyzer 가 xlsx 직접 출력
+
+### 근거
+
+- 사용자 직접 input — 학술 Agent 가 코드 접근 불가, md/xlsx-only
+- 직전 5/13 spec 파일 작성 entry — 학술 Agent view 부정합 minor 수정
+
+### 후속 (사용자 결정 candidate)
+
+- (a) Phase 1 launch 즉시 (Analyzer A-1 script + Root sweep) + 결과 후 사용자가 md + xlsx 변환
+- (b) 학술 Agent 의 spec review 응답 (md) 받은 후 launch
+- (c) 학위 논문 일정 (5/14~5/22) 고려 — Phase 1+2 즉시 launch 권장
+
+---
+
+## 2026-05-13 (Filter Proposal Data Spec 작성 — 학술 Agent 3 Direction 의 필요 데이터 정리)
+
+> **사용자 직전 input (5/13)**: SGBE 실패 분석 (`sgbe_failure_analysis_for_scholar_agent_2026-05-13.md`) 후 학술 Agent 가 새 제안 (`filter_proposal_by_scholar_agent_2026-05-13.md`) 작성. 본 제안의 데이터 요구사항을 학술 Agent 가 받을 수 있는 파일로 정리 요청.
+
+### 학술 Agent 의 3 Direction Proposal 요약
+
+- **Direction A** (RSL-SQL Backward, 학습 불필요): Preliminary SQL 의 backward column 추출 + forward union — Cao et al. 2024 + Yang et al. 2024
+- **Direction B** (HN-SupCon Selector Re-train): Hard Negative Supervised Contrastive 로 selector score 분포 재형성 → SGBE Revival — Piao et al. 2025 (LitE-SQL)
+- **Direction C** (GRAST-SQL FD Graph Reranker): Functional Dependency graph + relation-aware transformer + Steiner tree — Hoang et al. 2025
+
+### 결정 — 신규 산출물
+
+`planning/filter_proposal_data_spec_2026-05-13.md` 신규 (학술 Agent 논의용, ~620 lines, 7 sections + 2 appendix):
+
+| § | 내용 |
+|---|---|
+| §1 | Overview — 3 Direction + 8 datasets matrix |
+| §2 | Direction A 데이터 spec (A-1 preliminary_sql_quality / A-2 backward_recall / A-3 restore_noise) |
+| §3 | Direction B 데이터 spec (B-1 cosine_per_query / B-2 gold_labels_train / B-3 score_after_finetune) |
+| §4 | Direction C 데이터 spec (C-1 fd_graph_completeness / C-2 structural_miss) |
+| §5 | 우선순위 + Implementation Plan (Phase 1/2/3/4) |
+| §6 | Data Output Format Schema + Reproduction commands |
+| §7 | 학회 / 학위 논문 narrative 의의 |
+| §A | References (외부 5 papers + 내부 5 reports) |
+| §B | Summary for Implementation |
+
+### 데이터 8 datasets 의 핵심 specs
+
+| ID | 정의 | 우선순위 | 수집 비용 |
+|---|---|:---:|:---:|
+| **A-1** | preliminary_sql_quality (full + S_fwd, GLM 4.7) | **1** | ~$10-20 + 3-5h |
+| **A-2** | backward_recall_stats (L_bwd ∩ L_fwd ∩ gold) | **1** | ~$0, sqlglot parsing |
+| **A-3** | restore_candidate_noise_rate (S_restore precision/recall) | **1** | ~$0 |
+| B-1 | column_embedding_cosine_per_query (Dev + Train) | 3 | ~$0, ~수 시간 |
+| B-2 | gold_column_labels_train (BIRD-Train) | 3 | ~$0 |
+| B-3 | score_distribution_after_finetune | (post-finetune) | ~수 일 학습 비용 |
+| **C-1** | fd_graph_completeness_per_db (FK/PK 선언율) | **2** | ~$0 (GPT 예측 시 ~$5-10) |
+| C-2 | structural_miss_rate_per_query | 2 | ~$0 |
+
+### 학술 Agent 의 decision rules (data 수령 후)
+
+- **A-3 의 mean(S_restore_precision) ≥ 0.6**: Direction A 우선 배포 권장 (SGBE 의 S_keep_hard 81.22% noise 와 직접 비교)
+- **C-1 의 mean(fk_coverage_rate) ≥ 0.50**: Direction C feasible (GRAST-SQL 의 FD graph 품질 충분)
+- **B-3 의 TP-TN spread ≥ 0.25** (post-finetune): SGBE Revival 가능 — HN-SupCon 의 score 분포 개선 confirm
+
+### 진행 plan (Phase 1~4)
+
+| Phase | Tier | 작업 | ETA |
+|---|---|---|---|
+| **1** | **즉시** | A-1 + A-2 + A-3 (Direction A 결정 trigger) | ~수 시간~1일 |
+| **2** | 단기 (병행) | C-1 (Feasibility check) | ~수 시간 |
+| **3** | 중기 (Phase 1 결과 후) | B-1 + B-2 (Direction B candidate) | ~수 시간 |
+| **4** | Post fine-tune | B-3 (SGBE Revival 측정) | ~수 일 |
+
+### 책임 분담 (V5 chain 정정 원칙 준수)
+
+| Step | 책임 | 작업 |
+|---|---|---|
+| 5.1.1 (A-1 script) | **Analyzer** | `src/analysis/filter_proposal_a1_preliminary_sql.py` — B1' / B4' script 재사용 |
+| 5.1.2 (A-1 launch) | **Root** | GLM 4.7 API 2-call sweep (1534 × 2) |
+| 5.1.3 (A-2/A-3) | **Analyzer** | sqlglot parsing + set operation |
+| 5.2 (C-1) | **Analyzer** | BIRD-Dev/Train DB FK/PK 분석 |
+| 5.3 (B-1) | **Module:Selector** | EnsembleSelector cosine/gat 분리 dump interface |
+| 5.3 (B-2) | **Analyzer** | BIRD-Train gold SQL parsing |
+| (Phase 3 후) | **Module:Selector** | HN-SupCon fine-tune |
+| (Phase 4) | **Analyzer** | B-3 측정 + 학술 Agent decision |
+
+### 학회/학위 논문 narrative 측면
+
+- 학회 paper: Direction A 결과 (positive 시) 가 Filter Dominance enhancement evidence candidate — 학회 main contribution 변경 X, footnote 또는 §V future direction
+- 학위 논문 §V.5.x: Direction A/B/C 의 implementation plan + 결과 (Phase 1~4 진행 후)
+- 외부 paper transfer 의의: RSL-SQL / LitE-SQL / GRAST-SQL 의 본 도메인 transfer 정량 evidence
+
+### 학위 논문 일정 영향 (5/14~5/22)
+
+- Phase 1 (Direction A): ~1일 → 5/14 launch 시 5/15 결과 → 학위 논문 §V.5.x 에 통합 가능
+- Phase 2 (C-1 feasibility): 병행 ~수 시간
+- Phase 3 (B-1, B-2): Phase 1 결과 후 결정 — 학위 본 심사 후 가능 (post-paper)
+
+→ **Phase 1+2 즉시 launch 권장** (학위 논문 §V.5.x 통합 candidate). Phase 3+4 는 post-paper future direction.
+
+### 영향 범위
+
+- planning/filter_proposal_data_spec_2026-05-13.md (신규)
+- planning/DECISIONS.md (본 entry)
+- 후속 (Phase 1 결과 후): 학술 Agent discussion + Direction A 배포 결정
+
+### 14 planning 문서의 역할 분리 (Filter 측면, 5/13 정식)
+
+| Filter 관련 문서 | 역할 |
+|---|---|
+| `src/modules/filters/CLAUDE.md` | Filter module 세션 entry (8 구현체) |
+| `src/modules/filters/EXPERIMENT_PLAN_filters.md` | Module PLAN (FL-I/II/III + SGBE) |
+| `filtering_suggestion_by_scholar_agent_2026-05-12.md` | 학술 Agent 의 SGBE 권고 (origin) |
+| `filter_full_context_2026-05-12.md` | Filter 모듈 종합 (8 구현체 + Filter Dominance 6/7/8-axis) |
+| `sgbe_failure_analysis_for_scholar_agent_2026-05-13.md` | SGBE 실패 분석 (학술 Agent 논의용) |
+| **🆕 `filter_proposal_by_scholar_agent_2026-05-13.md`** | **학술 Agent 의 3 Direction 제안 (RSL-SQL / HN-SupCon / GRAST-SQL)** |
+| **🆕 `filter_proposal_data_spec_2026-05-13.md`** (5/13 신규) | **Direction 의 필요 데이터 spec + Implementation plan** |
+
+### 근거
+
+- `filter_proposal_by_scholar_agent_2026-05-13.md` (학술 Agent input, 5/13)
+- `sgbe_failure_analysis_for_scholar_agent_2026-05-13.md` (직전 5/13 entry)
+- 외부 5 papers (Cao 2024 RSL-SQL / Yang 2024 SQL-to-Schema / Piao 2025 LitE-SQL / Hoang 2025 GRAST-SQL / Talaei 2024 CHESS)
+
+### 에스컬레이션 (사용자 결정 candidate)
+
+- **즉시**: Phase 1 (A-1/A-2/A-3) launch — Analyzer 의 script 작성 + Root sweep
+- **병행**: Phase 2 (C-1) launch — Analyzer 의 FK/PK 분석
+- **결정 보류**: Phase 3 (B-1/B-2) — Phase 1 결과 후 결정
+- **Post-paper**: Phase 4 (B-3) — HN-SupCon fine-tune 학습 비용 부담
+
+---
+
+## 2026-05-13 (V5 Module:Selector Ownership 완료 — V5-A/B/C 구현 + V5-C Cumulative Attention 신규 보강)
+
+> **사용자 직전 input (5/13)**: Module:Selector 가 V5-A/B/C 코드 ownership 완료 (Commit **afadafd**) — Smoke 16/16 통과 + EXPERIMENT_PLAN_selectors §단계 8 신설.
+
+### 산출물 표 (Commit afadafd)
+
+| ID | Class | Paper Reference | 핵심 mechanism |
+|---|---|---|---|
+| **V5-A** | `GATEGATv2Conv` (alias `GATEConv`) | Mustafa & Burkholz NeurIPS 2024 §3.2 Eq. 4 | `att_self` + `att` (neighbor) 분리, **W 공유**, row-stochasticity 유지 |
+| **V5-B** | `GCNIIGATv2Conv` | Chen 2020 (GCNII) + Peng 2024 | `eye_init` `gcnii_w` + $\beta_l = \log(\lambda/l + 1)$ (1-indexed forwarding) + Initial Residual $\alpha$ outer |
+| **V5-C** | `FullAEROGATv2Conv` (alias `FullAEROGATConv`) | Lee 2023 Theorem 3 full form | V4-B 기반 + **Hop Attention (outer)** + **🆕 Cumulative Attention** |
+
+Smoke test: **16/16 통과** (V5-A 5 + V5-B 5 + V5-C 6).
+
+### V5-C Cumulative Attention 신규 — 직전 review chain 누락 후 보강
+
+직전 5/12 V5 chain 핸드오프 작성 시 **Cumulative Attention** mechanism 누락 발견. Module:Selector 가 본 chain 에서 자체 보강. 단 **paper form vs 본 구현 차이의 이론적 caveat 명시 필요**:
+
+| 항목 | Paper (Lee 2023) | 본 구현 |
+|---|---|---|
+| **Cumulative Attention 의 적용 level** | **edge-level α 누적** ($\alpha_{ij}^{(l)} = \alpha_{ij}^{(l-1)} + \text{softplus}(e_{ij}^{(l)})$) | **hidden-state level residual outer simulation** (각 layer 의 hidden state 에 outer residual 누적) |
+| 이론적 보장 (SR2OS) | Theorem 3 의 row-stochasticity 파괴 + edge-level cumulative 의 조합 | edge-level cumulative 의 hidden-state outer 근사 — paper Theorem 3 의 SR2OS guarantee 의 transfer 정합성 불완전 |
+
+→ **이론적 caveat (학위 논문 §V.5.x 또는 caveat footnote)**:
+> "V5-C 의 Cumulative Attention 은 Lee 2023 Theorem 3 의 edge-level α 누적이 아닌 hidden-state level residual outer simulation 으로 구현. PyG `MessagePassing` 의 edge-level α 직접 누적은 GATv2Conv 의 inner 구조 access 가 어려워 outer hidden-state level 근사를 채택. paper Theorem 3 의 SR2OS guarantee 의 본 도메인 transfer 정합성은 추가 검증 candidate (post-paper)."
+
+### Hop Attention + Cumulative Attention 의 Effect Overlap 가능성
+
+- Lee 2023 Theorem 4: Hop Attention 의 sum form = $\sum_l \omega_v^{(l)} \mathbf{h}_v^{(l)}$ — per-node hop weight 의 sum
+- Theorem 3 Cumulative Attention (edge-level): $\alpha^{(l)} = \alpha^{(l-1)} + \text{softplus}(e^{(l)})$ — edge-level α 누적
+- 본 V5-C 구현 (hidden-state outer): 두 mechanism 의 hidden-state level 표현이 **부분적으로 등가** 가능성 — Hop Attention 의 sum 이 Cumulative Attention 의 outer 표현과 effect overlap
+- → V5-C 의 ablation candidate (사용자 결정):
+  - **v5c-full**: hop=True + cum=True + decay=1.0 (Theorem 3 full form 시도)
+  - **v5c-hop-only**: hop=True + cum=False (Theorem 4 만)
+  - **v5c-cum-only**: hop=False + cum=True + decay=0.5 (Theorem 3 cumulative 만)
+- → Full ablation 시 hop/cumulative overlap 정량 검증 가능
+
+### V5 Sweep Launch 결정 — 사용자 결정 (γ) Full Ablation (5/13 저녁 확정)
+
+**선택: (γ) Full — V5-A + V5-B (L=2/4/6) + V5-C 3 cell ablation (~55h GPU 0/1 병렬)**
+
+GPU 0/1 분배 최적화:
+- **GPU 0** (V5-A + V5-B sequential, ~55h): V5-A (~10h) → V5-B L=2 (~10h) → V5-B L=4 (~15h) → V5-B L=6 (~20h)
+- **GPU 1** (V5-C 3 ablation sequential, ~30h): V5-C v5c-full → V5-C v5c-hop-only → V5-C v5c-cum-only
+
+Wall = max(GPU 0, GPU 1) ≈ **~55h** (예상보다 빠름). 5/13 저녁 launch → **5/16 결과** 가능. 5/16~5/22 (6일) chapter draft 통합 적합.
+
+### V5 Sweep 결정 — 사용자 결정 candidate (직전 4 option 참조용)
+
+학위 논문 일정 (5/14~5/22) 고려한 sweep 깊이:
+
+| Option | V5-A | V5-B (depth sweep) | V5-C (Theorem 3 ablation) | Wall (GPU 0/1 병렬) |
+|---|---|---|---|---|
+| **(α) Minimal — narrative 우선** | 1 cell | L=2 만 | v5c-full 만 | ~30-40h |
+| **(β) Mid — depth sweep 추가** | 1 cell | L=2+L=4 | v5c-full 만 | ~60-70h |
+| **(γ) Full — V5-B+V5-C 모두 ablation** | 1 cell | L=2/4/6 | v5c-full + hop-only + cum-only | ~120-150h |
+| **(δ) Recommended** ⭐ | 1 cell | **L=2 + L=4** | **v5c-full 만** | **~60-70h** — 학위 논문 5/22 마감 적합 + 학회 narrative 충분 |
+
+→ **권장: (δ) Recommended** — V5-B 의 L=2 + L=4 (Peng 2024 의 deep GNN 가정 evidence + V4 stack 정합 모두 cover) + V5-C v5c-full (Theorem 3 시도). V5-C ablation 은 **post-paper future direction** (학위 논문 §V.5.x).
+
+### Chain status 갱신 (5/13)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 (v2) |
+| 2 | **V5 sweep V5-A/B/C** | ✅ **코드 ownership 완료 (afadafd)** + ⏸ **Root sweep launch 대기** |
+| 3 | SGBE Phase 3-5 | ✅ 완료 |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5-A/B/C 결과 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | ✅ 완료 |
+| ⏸ post-paper | V5-C Theorem 3 hop/cum ablation | ⏸ 학위 본 심사 후 |
+| ⏸ post-paper | Alternative anchor SGBE | ⏸ post-paper |
+
+### 근거
+
+- 사용자 직접 input (Commit afadafd + 산출물 표)
+- `src/models/gat_network_v2.py` V5 classes (GATEGATv2Conv / GCNIIGATv2Conv / FullAEROGATv2Conv)
+- `src/modules/selectors/EXPERIMENT_PLAN_selectors.md` §단계 8 신설
+- 3 smoke test files (V5-A 5 + V5-B 5 + V5-C 6, 16/16 통과)
+- DECISIONS 2026-05-13 V5 Sweep Launch 재시도 entry
+- Lee 2023 "AERO-GNN" Theorem 3 (SR2OS guarantee) + Theorem 4 (Hop Attention sum form)
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- 후속: Root chain (V5 sweep launch) → Analyzer (14-trial 보고서) → Planner (paper §V.5.4 final integration)
+- (post-paper) V5-C Theorem 3 full ablation (hop/cumulative overlap 정량)
+
+### 학회/학위 논문 narrative 측면 의의
+
+- V5-C Cumulative Attention 신규 보강 — 학위 논문 §V.5.x **lesson learned**: paper form 의 edge-level cumulative vs PyG 의 inner access 한계로 인한 hidden-state outer 근사 의 implementation caveat
+- Hop/Cumulative overlap 의 working hypothesis — post-paper Theorem 3 full ablation 의 motivation
+
+### 에스컬레이션
+
+- **Root chain** — V5 sweep launch (Option δ 권장: V5-A + V5-B L=2/L=4 + V5-C v5c-full, ~60-70h)
+- **Analyzer** (V5 결과 후) — 14-trial 통합 보고서
+- **Planner** (Analyzer 후) — paper §V.5.4 final integration + V5-D-2 trigger 결정 + V5-C post-paper ablation 결정
+
+### 추가 필요 분석 (V5 결과 후)
+
+- 14-trial 매트릭스 + 3 시나리오 분기 결정 (Layer 2 pivot 여부)
+- V5-D-2 trigger 결정 (V5 sweep 결과 의존)
+- V5-C 의 hop/cumulative overlap 정량 (post-paper future direction)
+
+---
+
+## 2026-05-13 (V5 Sweep Launch 재시도 — V5-A/B/C 처음부터 Module:Selector 구현 + Root sweep launch)
+
+> **사용자 직전 input (5/13)**: "V5 sweep 은 아마 아예 시작을 안 했을 거야 필요한 핸드오프를 작성해 줘".
+
+### Status 정정
+
+직전 5/12 V5 chain 위임 재할당 entry 후 module:selector 와 root 의 진행 상황:
+- **V5-D-1 진단** ✅ 완료 (5/12, analyzer)
+- **V5-A/B/C 코드 작성** ❌ **미진행** — 5/12 사용자 redirect ("직접 모듈 구현 금지") 후 root 의 작성 stop. Module:Selector 는 본 시점에 V5 작업 대신 **SGBE Phase 2 (raw_score interface 보강 + 3-anchor 진단)** 만 진행. V5-A/B/C 의 코드 review 작업 누락.
+- **V5 sweep launch** ❌ 미진행
+
+→ V5 chain 의 **Module:Selector 작업 처음부터 재시작 필요**.
+
+### 결정 — V5 sweep launch 재시도
+
+직전 5/12 V5 chain 위임 재할당 entry 의 책임 분담 (Module:Selector = V5-A/B/C 구현 + smoke test, Root = config + launch) 유지. Module:Selector 가 처음부터 V5-A/B/C 코드 구현 (root 의 이전 작성 시도 keep 코드 없음 가정).
+
+### Chain status 갱신 (5/13)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 (v2 evidence fix) |
+| 2 | **V5 sweep V5-A/B/C** | ❌ **미launch — Module:Selector 핸드오프 재발송** |
+| 3 | SGBE Phase 3-5 | ✅ 완료 |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5-A/B/C 결과 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | ✅ 완료 (B1'=0.5587 v1=v2 동일) |
+| ~~7~~ | B4' | ❌ Tier 해제 |
+| ⏸ 8 | Alternative anchor SGBE | ⏸ post-paper |
+
+→ **유일한 active candidate = V5 sweep launch**.
+
+### 학위 논문 일정 고려
+
+- 학위 논문 chapter draft 일정: 5/14~5/22 (8 일)
+- V5 sweep wall: ~30-40h (~5/14~5/16 결과 ETA, 즉시 launch 시)
+- → **즉시 launch 필요** (5/13 저녁 또는 5/14 새벽). 5/16 결과 받으면 §V.5.4 final integration 가능 (5/22 마감 적합).
+
+### Module:Selector 의 작업 — V5-A/B/C 코드 처음부터 구현
+
+각 클래스의 이론적 근거 (코드 주석에 명시):
+- **V5-A `GATEConv`**: Mustafa & Burkholz 2024 "GATE: How to Keep Out Intrusive Neighbors". 단일 attention vector $\mathbf{a}$ → $\mathbf{a}_s$ (self) + $\mathbf{a}_t$ (neighbor) 분리. Conservation Law 수정으로 작은 norm 으로도 task-irrelevant aggregation switch-off.
+- **V5-B `GCNIIGATv2Conv`**: Peng et al. 2024 "Beyond Over-smoothing: Uncovering the Trainability Challenges". Initial Residual + Identity Mapping 동시. L=2/4/6 sweep.
+- **V5-C `FullAEROGATConv`**: Lee et al. 2023 "AERO-GNN" Theorem 3 (SR2OS guarantee). V4-B (Softplus + Symmetric Norm) + Node-Adaptive Hop Attention 추가.
+
+### Root 의 작업 — Module:Selector 완료 후 sweep launch
+
+- Configs 5 신규 (V5-A / V5-B L=2/4/6 / V5-C)
+- scripts/run_v5_mitigation_sweep.sh
+- nohup launch + GPU 0/1 병렬
+- HISTORY + CATALOG + ID_MIGRATION 갱신
+
+### 예상 V5 결과 시나리오 (5/12 V5 chain entry 의 3 시나리오 그대로)
+
+| 시나리오 | Trigger 조건 | Narrative 영향 |
+|---|---|---|
+| 1 | V5-D-1 R 갱신 + V5-A/B/C 모두 fail | 학술 Agent reinterpretation confirm — Layer 2 pivot (PLM lower bound) |
+| 2 | V5-A 또는 V5-C 단독 R 갱신 | mech(ii-b) 5/5 absolute confirm 부분 부정 |
+| 3 | V5 4 Direction 모두 fail | mech(ii-b) 5/5 absolute confirm 결정적 강화 — **현재 working hypothesis** |
+
+→ V5 결과 후 paper §V.5.4 final integration 결정.
+
+### 근거
+
+- 사용자 직접 input ("V5 sweep 은 아마 아예 시작을 안 했을 거야")
+- 직전 5/12 V5 chain 위임 재할당 entry — Module:Selector 의 작업 누락
+- 학위 논문 일정 5/14~5/22 — V5 결과의 chapter draft 통합 필요
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- 후속: Module:Selector 작업 (~2-3일) → Root sweep launch (~30-40h) → Analyzer 보고서 → Planner narrative pivot
+
+### 추가 필요 분석
+
+- V5 sweep 완료 후 14-trial 통합 보고서 + paper §V.5.4 narrative pivot
+- V5-D-2 trigger 결정 (V5 sweep 결과 의존)
+
+---
+
+## 2026-05-13 (Filter Sweep v2 Evidence Fix 완료 — anchor EX +18.06%p + Filter-Invariant 시나리오 + 7번째 axis 교체 + B4' Tier 해제)
+
+> **사용자 직전 input (5/13, 늦은 저녁)**: analyzer 의 `filter_sweep_glm_9cell.md` v2 보고 — anchor EX 0.3396 → 0.5202 (+18.06%p), Baseline gap 82% 회수, Filter-Invariant 시나리오 확정 (F1 + EX 양쪽 sub-noise). 5 갱신 요청.
+
+### 결정적 발견 — v1 → v2 Evidence Forward Fix Dominant
+
+**v1 (직전) vs v2 (5/13 fix)**:
+
+| Cell | v1 EX | v2 EX | ΔEX (v2 - v1) |
+|---|---:|---:|---:|
+| Anchor (C0 XiYan) | 0.3396 | **0.5202** | **+0.1806** |
+| C8 No Filter | 0.3435 | (?) | (v1 confounder 해소) |
+| F1 (anchor) | 0.8663 | 0.8651 | -0.0012 (sub-noise) |
+
+→ **v1 의 EX 측정에 SQL gen prompt confounder** 존재. v2 fix 후 anchor EX 18.06%p jump. 직전 GLM Baseline B1' Full Schema 55.87% 와의 -21.91%p gap **대폭 축소** → root prompt 재실험 (5/13 진행 중) 의 motivation 정합.
+
+**v2 결과 — Filter-Invariant 시나리오 확정**:
+
+| Cell | F1 (v2) | EX (v2) |
+|---|---:|---:|
+| C0 XiYan (anchor) | **0.8651** | **0.5202** |
+| C4 Stacked (Refl→Verif) | 0.8704 (+0.0053) | (?) |
+| C7 Bidirectional | (?) | 0.5287 (+0.0085) |
+
+- **F1 spread** (anchor cluster) = **0.0072** sub-noise
+- **EX spread** (anchor cluster) = **0.0085** sub-noise
+- **양쪽 sub-noise** = **Filter-Invariant 시나리오** 확정 (v1 의 "EX-F1 decoupling" narrative 폐기)
+
+**Baseline gap 회수**:
+- B3' Gold Column (Llama 3.1 8B) EX = 41.5% — 직전 B1' GLM 4.7 Full Schema 55.87% 와 vs anchor 33.96% 의 v1 gap = -21.91%p
+- v2 anchor EX 0.5202 = **B3' (perfect schema linking, baseline) 의 84.7% 도달** — gap 82% 회수
+- 직전 "schema linking 의 EX 효과 미미" working hypothesis (v1) 의 직접 부정
+
+### 5 갱신 결정
+
+**(1) paper §3.5 7-axis matrix 갱신 — 옛 7번째 폐기 + 신 7번째 추가**:
+
+| 7번째 axis | 변경 |
+|---|---|
+| **옛 (v1, 5/13 오전)**: Filter-axis F1 robustness + EX-F1 decoupling | ❌ **폐기** (v1 confounder, v2 fix 후 decoupling 해소) |
+| **신 (v2, 5/13 저녁)**: **Filter-Invariant in F1 + EX 양쪽 sub-noise spread** | ✅ **신규** — F1 spread 0.0072 + EX spread 0.0085 sub-noise + anchor F1=0.8651/EX=0.5202 + Baseline 84.7% 도달 |
+
+8번째 axis (SGBE Negative Evidence, 5/13 SGBE chain) 유지.
+
+**(2) Paper main pipeline anchor 확정 — C0 XiYan 유지**:
+- C4 (best F1, +0.0053, 6× cost) — F1 측 sub-noise lift 단 cost 비효율
+- C7 (best EX, +0.0085, 2.6× cost) — EX 측 sub-noise lift 단 cost 비효율
+- 둘 다 sub-noise band 안 — anchor 변경 권장 X
+- **paper main**: XiYan (C0) default + C4/C7 footnote (sub-noise alternatives)
+
+**(3) DECISIONS prepend** ✅ (본 entry)
+
+**(4) B4' chain narrative re-positioning — Tier 우선순위 해제**:
+
+직전 5/13 B4' Tier 1 상향 (v1 confounder 의 mechanism 분기 H1 vs H2 필요) 의 trigger 변화:
+- **v2 anchor EX = 0.5202** 가 paper main schema linking → SQL gen → EX 의 **직접 측정**
+- B4' 의 작업 (anchor predictions → schema_str → GLM 4.7 SQL gen → EX) 가 **v2 sweep 안에 이미 포함**
+- → **B4' 별도 chain 불필요**
+- paper §V.5.4 EX evidence = **v2 anchor C0 metrics (F1=0.8651, EX=0.5202)** 가 직접 사용
+
+→ B4' Tier 1 priority **해제**. Chain status 의 chain #7 (B4') 폐기 또는 "v2 sweep 안에 흡수" 로 update.
+
+**(5) 학회 paper / 학위 논문 narrative 분리**:
+
+| Outlet | Narrative |
+|---|---|
+| **학회 paper (한국지능정보시스템학회 2026 춘계)** | §3.5 Filter Dominance narrative + **Filter-Invariant 7-axis matrix table** (anchor F1=0.8651, EX=0.5202) + C4/C7 sub-noise footnote + SGBE caveat footnote (8번째 axis) |
+| **학위 논문 §V Chapter** | (a) 본 보고서 §2 v1 → v2 evidence fix mechanism + case study, (b) §6.3 Baseline gap 회수 분해 (B3' 84.7% 도달), (c) **§V.5.5 SQL gen prompt confounder lesson learned** section 추가 (v1 의 prompt issue 의 mechanism + v2 fix detail + reproducibility 측면 교훈) |
+
+### 학회 narrative reframe 의의 (5/13 v2 후)
+
+직전 narrative (5/13 v1, Filter Sweep entry 시점):
+> "Filter Dominance 의 7-axis evidence + EX-F1 decoupling — GLM 4.7 SQL gen 이 schema imperfection 흡수"
+
+**갱신 narrative (5/13 v2 evidence fix 후)**:
+> "Filter Dominance 의 7-axis evidence — **Filter-Invariant 시나리오 (F1 + EX 양쪽 sub-noise)** + Baseline 의 84.7% 도달. Anchor (XiYan + GLM 4.7) F1=0.8651, EX=0.5202 — schema linking 의 SQL gen 측 효과가 실제로 dominant. 직전 v1 의 EX-F1 decoupling narrative 는 SQL gen prompt confounder 의 artifact 로 polish."
+
+### 본 발견의 의의 (v2 evidence fix dominant)
+
+- **Filter Dominance narrative 더 강력**: F1 측면뿐만 아니라 EX 측면도 dominant 효과 — v1 의 "F1 dominant + EX backbone-dependent" candidate B 부정. **F1 + EX 양면 모두 Filter Dominance**.
+- **B4' 별도 chain 불필요**: v2 anchor C0 의 EX=0.5202 가 곧 paper §V.5.4 의 EX evidence
+- **학위 논문 §V.5.5 lesson learned**: v1 → v2 의 prompt confounder fix 가 학위 논문의 reproducibility / methodology 측면 핵심 lesson
+- **B1' Full Schema baseline 의 위치**: 직전 v1 비교 (anchor 33.96% vs B1' 55.87% = -21.91%p) → v2 비교 (anchor 0.5202 vs B1' 0.5587 = -0.0385) — **Baseline gap 대폭 축소**. Maamari 2024 의 "Death of Schema Linking" 주장의 GLM 4.7 reframe — schema linking 이 EX 측면에서도 의미 있음 (sub-noise level 단 negative 차이 작음)
+
+### Chain status 갱신 (5/13 저녁)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 (v1 + **v2 evidence fix**) |
+| 2 | V5 sweep V5-A/B/C | 🔄 active |
+| 3 | SGBE Phase 3-5 | ✅ 완료 (Filter-Underperform 확정) |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | ⚠️ root prompt 재실험 진행 중 (v2 fix 결과의 +18.06%p anchor 가 prompt confounder mechanism 의 정합 evidence) |
+| ~~7~~ | ~~B4' paper main → SQL gen~~ | ❌ **Tier 해제 — v2 sweep 안에 흡수**. anchor C0 EX=0.5202 가 직접 paper §V.5.4 EX evidence |
+| ⏸ 8 | Alternative anchor SGBE 재평가 | ⏸ post-paper (a03_17 / vLLM era best) |
+
+### 본 sweep 의 final 8-axis (5/13 저녁 정식)
+
+```
+§3.5 Filter Dominance — Empirical Evidence (8 axes, 5/13 저녁 v2 evidence fix 후 정식)
+
+1. H-B ckpt-invariant (Pearson r 0.06~0.24)
+2. H-F stability/ordering (Jaccard 0.47~0.52)
+3. F-1 + H-G alpha sweep (17 cells, 5.085× 압축)
+4. ΔF1 lift (per-query +0.6462)
+5. H-A/H-D 부정 (Enriched + norm 변형 plateau 유지)
+6. 10-trial mitigation null + V4 architectural intervention 이중 fail (mech(ii-b) 5/5)
+7. 🆕 Filter-Invariant in F1 + EX 양쪽 sub-noise spread (Filter sweep 9-cell v2,
+   F1 spread 0.0072 + EX spread 0.0085, anchor F1=0.8651/EX=0.5202, Baseline 84.7% 도달)
+8. Score-Gated Hybrid Negative Evidence — Selector-Filter Co-Design (SGBE F1=0.3697)
+
+Caveats (footnote):
+- C3 AdaptiveMultiAgent: multi-agent vote intersection bias
+- C4 (+0.0053 F1, 6× cost) / C7 (+0.0085 EX, 2.6× cost): sub-noise alternatives, anchor 변경 권장 X
+- SGBE: paper main anchor 부정합 (TP mean 0.47 < θ_keep 0.65), post-paper alternative anchor 재평가 candidate
+- v1 EX-F1 decoupling narrative: SQL gen prompt confounder artifact, v2 fix 후 폐기
+```
+
+### 근거
+
+- `notebooks/analysis_results/filter_sweep_glm_9cell.md` v2 §0 TL;DR + §1.2 Baseline 도달률 + §2.5 v1 EX-F1 decoupling 폐기 + §5.2 Filter-Invariant 정량 정의 + §6.2 anchor 유지 정당화 + §6.4 paper §3.5 통합 candidate
+- 직전 5/13 (v1) Filter Sweep entry — 7-axis matrix
+- 직전 5/13 (저녁) SGBE Chain 완료 entry — 8-axis matrix
+- 직전 5/13 B1'+B2'+B3' GLM Baseline entry — v1 confounder mechanism (root prompt 재실험 진행 중)
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md §3.5 evidence #7 (5/13 갱신, 옛 EX-F1 decoupling) → **신 Filter-Invariant 7번째 axis 교체**
+- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 옛 → 신 교체, 8-axis SGBE 유지)
+- 후속 (paper §V.5.4 narrative final + 학위 논문 §V.5.5 lesson learned section)
+
+### 추가 필요 분석
+
+- B1' Full Schema 의 root prompt 재실험 결과 (5/13 진행 중) — v2 anchor EX 0.5202 와 비교, B1' Full Schema 의 v2 결과로 -21.91%p gap 변화 확인
+- B4' 폐기 — 별도 chain 불필요
+- (post-paper) alternative anchor SGBE 재평가 — a03_17 또는 vLLM era best
+
+---
+
+## 2026-05-13 (SGBE Chain 완료 — Filter-Underperform 확정 + 8th axis 추가 + B4' Tier 1 trigger 확정 + Alternative anchor post-paper)
+
+> **사용자 직전 input (5/13)**: analyzer 의 `sgbe_filter_results.md` 보고 — SGBE Filter-Underperform 확정, anchor F1=0.8673 → Full SGBE F1=0.3697 ΔF1=-0.4976, P drop dominant = S_keep_hard over-include + θ_keep anchor-incompatibility. 5 갱신 요청.
+
+### 결정적 발견 — SGBE Negative Evidence (학술 Agent 가설 부정)
+
+**SGBE 결과 매트릭스**:
+
+| Cell | Step | F1 | ΔF1 vs anchor |
+|---|---|---:|---:|
+| Anchor (C0 XiYan) | (baseline) | **0.8673** | — |
+| **Full SGBE (step_0+1+2)** | Step 0 + Score-Gate + LLM Extractive | **0.3697** | **-0.4976** ⚠️ |
+| Step 0+1 only (no LLM) | Score-Gate only | (Full -0.0048) | (LLM Extractive marginal +0.0048) |
+| Step 0 only | FK/PK hardcode | (Step 0+1 보다 더 낮음) | — |
+
+**핵심 mechanism (보고서 §4.5 4 sub-mechanism 의 dominant root cause)**:
+
+- **(d) θ_keep anchor-incompatibility** — paper main anchor 의 TP mean **0.4746** << SGBE θ_keep **0.65** (학술 Agent 권장 + Option B 갱신값 0.50~0.60 모두 부정합)
+- → S_keep_hard 가 거의 비어있음 + S_uncertain 이 매우 큼 → LLM call 의 noise 흡수가 dominant
+- P drop dominant source: **S_keep_hard over-include — 81.22% noise** (보고서 §4.2). 즉 SGBE 의 keep_hard 가 anchor 의 noise column 까지 keep
+- score_collapse hit rate ~0% (threshold 0.05 정상 — V4 era 같은 boundary case 만 detect, paper main anchor 는 normal score 분포)
+- 학술 Agent 권장 θ (0.65, 0.40) + Option B (0.50/0.55/0.60 × 0.20/0.25/0.30) 모두 paper main anchor 의 score ladder 와 **incompatibility** confirm
+
+→ **paper main anchor (Enriched + QCond + MST + XiYan + GLM 4.7) 에 SGBE 는 부정합**. Module:Selector Phase 2 진단 (3-anchor TP-TN spread 분석) 의 정확한 예측 confirm.
+
+### 5 갱신 결정
+
+**(1) paper §3.5 의 8th axis 추가 — SGBE Negative Evidence**:
+
+기존 7 axis (5/13 Filter Sweep entry 갱신):
+1. H-B ckpt-invariant
+2. H-F stability/ordering
+3. F-1 + H-G alpha sweep
+4. ΔF1 lift
+5. H-A/H-D 부정
+6. 10-trial mitigation null + V4 이중 fail
+7. Filter-axis F1 robustness + EX-F1 decoupling (Filter sweep 9-cell)
+
+**🆕 8번째 axis (5/13 신규, SGBE)**:
+- **Score-Gated Hybrid Negative Evidence — Selector-Filter Co-Design 중요성 강화**
+- 정량: Full SGBE F1=0.3697 (anchor -0.4976) + LLM Extractive marginal +0.0048 + score_collapse hit ~0%
+- mechanism: paper main anchor 의 TP mean 0.4746 << SGBE θ_keep 0.65 → θ anchor-incompatibility
+- 의미: Filter Dominance 의 robustness 가 **단순 filter 종류 변경 ≠ 단일 LLM call 우위** — Score-Gated Hybrid 같은 score-aware filter 는 selector 의 score ladder 와 co-design 시에만 valid. paper main anchor 의 strong filter (XiYan + GLM 4.7) 의 LLM single-call 이 dominant.
+
+**(2) Paper main anchor 유지 결정 확정 — XiYan (C0 sweep, F1=0.8663)**:
+
+- SGBE 후보 폐기 (paper main 부정합 확정)
+- **학회 paper (한국지능정보시스템학회 2026 춘계)**: anchor 유지 + SGBE caveat footnote
+  > "Score-Gated Hybrid Filter (SGBE, post-Filter Dominance 6/7-axis 의 architectural alternative candidate, Yuan et al. 2025 KaSLA + Glass et al. 2025 의 score-aware approach 통합) 는 본 도메인의 strong filter (XiYan + GLM 4.7) anchor 의 score ladder (TP mean 0.4746 < θ_keep 0.65) 와 incompatibility — F1 -0.4976 underperform. selector-filter co-design 의 정량 evidence."
+
+- **학위 논문 §V Chapter**: SGBE negative evidence full section
+  - calibration 9-cell 결과 (θ_drop range invariance)
+  - Phase 5 step contribution (Step 0 / Step 0+1 / Full)
+  - θ_keep anchor-incompatibility mechanism (4 sub-mechanism root cause)
+  - score_collapse hit rate 0% (threshold 0.05 정확)
+  - Alternative anchor candidate (a03_17 binary, vLLM era best — post-paper)
+
+**(3) DECISIONS entry prepend** ✅ (본 entry)
+
+**(4) B4' Tier 1 priority 상향 trigger 확정**:
+
+직전 DECISIONS 2026-05-12 B1'+B2'+B3' entry §B4' 보류 조건 ("SGBE + V5 + Filter sweep 모두 통합 후") 검토 결과:
+- **Filter sweep 완료 ✅** (5/13) — anchor C0 F1=0.8663 확정
+- **SGBE 부정 확정 ✅** (본 entry, 5/13) — paper main 후보 = XiYan anchor 유지
+- **V5 결과 wait 안 함** (5/13 GLM Baseline entry 의 결정 유지 + 본 SGBE 부정으로 reinforce)
+
+→ **Filter 모듈 paper main 후보 = XiYan anchor 확정**. B4' launch trigger 조건 **확정 충족**. **즉시 launch 가능** (직전 5/13 GLM Baseline entry 의 Tier 1 priority 결정 reinforce).
+
+**(5) Alternative anchor SGBE 재평가 chain (post-paper future work)**:
+
+본 SGBE 부정은 paper main anchor 의 score ladder (TP mean 0.4746) 에 한정. Module:Selector Phase 2 진단 의 다른 anchor 에서는 SGBE valid 가능:
+
+| Anchor | TP-TN spread | TP mean | SGBE 권장 θ (Phase 2 보강 entry) | SGBE 가능성 |
+|---|---:|---:|---|---|
+| paper main GLM (anchor) | 0.1741 | 0.4746 | (0.55, 0.25) | ❌ 부정 confirm (본 entry) |
+| **vLLM best (abl_ens_basic_xiyan)** | 0.1543 | **0.5526** | (0.65, 0.40) — 학술 Agent 권장 정합 | ⏸ post-paper 검증 candidate |
+| **a03_17 (binary)** | **0.3067** | 0.5818 | (0.50, 0.05) — bimodal cutoff | ⏸ post-paper 검증 candidate (학술 Agent reference 와 spread 정합) |
+
+→ **Post-paper future work entry**: a03_17 또는 vLLM era best 에서 SGBE 재calibration + selector-filter co-design 정량 evidence 확보. 학위 논문 §V Chapter 의 future direction.
+
+### 학위 논문 §V Chapter — SGBE Negative Evidence Full Section 권고
+
+- **§V.5.x** "Score-Gated Hybrid Filter — Negative Evidence + Selector-Filter Co-Design"
+  - SGBE 의 학술 Agent 권고 background (Yuan 2025 + Glass 2025 + CHESS Talaei 2024 + Hoang 2025)
+  - calibration 9-cell 결과 + step contribution
+  - 4 sub-mechanism root cause (a~d) — (d) θ_keep anchor-incompatibility dominant
+  - 학술 Agent reference anchor (TP-TN spread 0.31) 의 정체 추정 — a03_17 binary 와 정합
+  - Filter Dominance 의 selector-filter co-design 측면 강화 — "단일 LLM call 의 strong filter 가 score-aware hybrid 보다 우위" narrative
+  - Future direction: alternative anchor 에서 SGBE 재평가
+
+### Chain status 갱신 (5/13)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 |
+| 2 | V5 sweep V5-A/B/C | 🔄 active |
+| 3 | **SGBE Phase 3-5** | ✅ **완료 (5/13)** — Filter-Underperform 확정, paper main 부정합 |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5 sweep 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | ✅ 완료 (단 root + 사용자 prompt 재실험 중) |
+| **7** | **B4' paper main → SQL gen** | 🚀 **Tier 1 priority 확정** (Filter sweep + SGBE 부정 confirm 후 trigger 완전 충족) |
+| ⏸ 8 | (post-paper) Alternative anchor SGBE 재평가 | ⏸ a03_17 또는 vLLM era best 에서 SGBE re-calibration — 학위 논문 §V Chapter future direction |
+
+### Filter Dominance 의 8-axis Narrative 통합 (paper §3.5)
+
+```
+§3.5 Filter Dominance — Empirical Evidence (8 axes, 5/13 갱신)
+
+1. H-B ckpt-invariant (Pearson r 0.06~0.24)
+2. H-F stability/ordering (Jaccard 0.47~0.52)
+3. F-1 + H-G alpha sweep (17 cells, 5.085× 압축)
+4. ΔF1 lift (per-query +0.6462)
+5. H-A/H-D 부정 (Enriched + norm 변형 plateau 유지)
+6. 10-trial mitigation null + V4 architectural intervention 이중 fail (mech(ii-b) 5/5 absolute confirm)
+7. Filter-axis F1 robustness + EX-F1 decoupling (9-cell Filter sweep)
+8. 🆕 Score-Gated Hybrid Negative Evidence — Selector-Filter Co-Design (SGBE F1=0.3697, anchor -0.4976)
+
+Caveats (footnote):
+- C3 AdaptiveMultiAgent: multi-agent vote intersection bias (R -0.1017, architectural pathology)
+- C4 Stacked: future work +0.0072 F1 lift, 7.8× cost
+- SGBE: paper main anchor 부정합, alternative anchor 에서 post-paper 검증 candidate
+```
+
+### 근거
+
+- `notebooks/analysis_results/sgbe_filter_results.md` §0 TL;DR + §4.2 P drop dominant 81.22% noise + §4.5 4 sub-mechanism dominant root cause (d) θ_keep anchor-incompatibility + §6.2 학술 Agent θ 부정합 confirm + §7.2 Filter Dominance 8th axis
+- 직전 Module:Selector Phase 2 진단 (3-anchor TP-TN spread + paper main TP mean 0.4746)
+- 학술 Agent `filtering_suggestion_by_scholar_agent_2026-05-12.md` §"세 그룹의 score 분포" (TP 0.7108 / Filter✗ 0.6394 / TN ~0.40, spread 0.31)
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md §3.5 evidence — **7 → 8 axis** 갱신
+- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (8-axis 갱신)
+- 후속 (B4' 결과 후): paper §V.5.4 narrative final + 학위 논문 §V.5.x SGBE Negative Evidence section
+- Post-paper: alternative anchor SGBE 재평가 future work
+
+### 추가 필요 분석
+
+- **B4' 즉시 launch** (Tier 1 priority 확정) — paper main schema linking 결과 → GLM 4.7 SQL gen → EX
+- B1' Full Schema 의 root prompt 재실험 결과 (5/13 root 진행 중)
+- (post-paper) alternative anchor SGBE 재평가 — a03_17 또는 vLLM era best
+
+---
+
+## 2026-05-13 (B1'+B2'+B3' GLM 4.7 Baseline 완료 — 🚨 결정적 발견: anchor EX < B1' Full Schema -21.91%p + B4' Tier 1 priority 상향 + Paper dual-candidate narrative)
+
+> **사용자 직전 input (5/13)**: analyzer 의 `glm_baseline_3cell.md` 보고 — Filter Sweep anchor EX 33.96% < B1' Full Schema EX 55.87% by **-21.91%p**. 4 갱신 요청.
+
+### 🚨 결정적 발견 — Filter Dominance Narrative 의 결정적 reframe 필요
+
+**B1'+B2'+B3' 결과 (GLM 4.7, BIRD-Dev 1534)**:
+
+| Scenario | EX (GLM 4.7, 신규) | EX (Llama 3.1 8B, 기존) | ΔEX (GLM - Llama) |
+|---|---:|---:|---:|
+| **B1' Full Schema** | **55.87%** | 34.1% | **+21.77%p** |
+| B2' Gold Table | ? | 40.1% | ? |
+| B3' Gold Column | ? | 41.5% | ? |
+| Filter Sweep anchor (C0 XiYan, F1=0.8663) | **33.96%** | — | — |
+
+**🚨 anchor EX (33.96%) < B1' Full Schema EX (55.87%)** — **-21.91%p gap**:
+
+- Schema linking pipeline (F1=0.8663, anchor) 가 LLM single-call Full Schema (no schema linking) 보다 EX 측면에서 **훨씬 못함**
+- 직전 Filter sweep §5.4 의 "EX-F1 decoupling" narrative ("GLM 4.7 SQL gen 이 schema imperfection 흡수") 가 **반대 방향**: Schema linking 이 오히려 EX 를 떨어뜨림
+- Maamari 2024 의 "Death of Schema Linking" 주장이 GLM 4.7 backbone 에서 **직접 confirm** — 본 연구 narrative 의 결정적 reframe 필요
+
+### Mechanism 분기 — H1 vs H2
+
+본 -21.91%p gap 의 두 hypothesis (보고서 §4.2 candidate):
+
+| Hypothesis | 가설 | B4' 결과로 검증 |
+|---|---|---|
+| **H1 schema imperfection** | anchor 의 schema linking 결과 imperfect → SQL gen EX 감소. B4' (anchor predictions → GLM 4.7 SQL gen) 도 EX 33.96% 근방 예상 | B4' EX ≈ anchor 시 confirm |
+| **H2 schema_str format** | anchor 의 schema 가 schema_str format 변환 시 GLM 4.7 reasoning 약화 (column name 만, type/desc/value 손실). B4' (다른 schema_str 형식 가능) EX 가 anchor 보다 높을 candidate | B4' EX ≈ B1' (55%+) 시 confirm — schema 형식이 결정 변수 |
+
+→ **B4' 의 결과가 paper main contribution narrative 의 결정적 axis**. 본 발견 이전 narrative ("Filter Dominance 가 dual-layer 흡수") 의 **부분 부정** 가능성.
+
+### 4 갱신 결정
+
+**(1) B4' Tier 1 priority 상향 — Filter sweep 완료만으로 launch 가능**:
+
+- 직전 trigger 조건 (DECISIONS 2026-05-12 §B4'): "Filter 모듈 확정 후 (SGBE + V5 + Filter sweep 모두 통합 후)"
+- **새 trigger 조건 (5/13 update)**: **Filter sweep 완료만으로 launch 가능** ✅. SGBE / V5 wait 안 함.
+- **이유**: anchor (C0 XiYan, F1=0.8663) 의 schema linking 결과 (predictions.jsonl) 가 본 sweep 완료로 확정. SGBE 의 결과 (F1=anchor 또는 갱신) 와 무관하게 B4' 는 anchor predictions 기반.
+- **Priority**: 직전 Tier 4 (학위 본 심사 후) → **Tier 1 (즉시 launch)** 로 상향
+- **이유 (강력)**: 본 -21.91%p gap 의 mechanism 분기 (H1 vs H2) 가 학회 발표 / 학위 논문 narrative 의 **결정적 axis** — B4' 결과 없이는 paper main contribution narrative 정식화 불가
+
+**(2) Paper §V.5.4 narrative dual-candidate**:
+
+| Candidate | B4' 결과 조건 | Paper §V.5.4 narrative |
+|---|---|---|
+| **Candidate A**: F1+EX 동시 수립 | B4' EX ≈ B1' (55%+) | Filter Dominance 가 양면 우위 — H2 schema_str format 가 dominant. Schema linking F1 lift 가 적절한 format 변환 시 EX 에 transfer. Maamari 2024 의 reframe — "schema linking 의 format 이 결정" |
+| **Candidate B**: F1 dominant + EX backbone-dependent | B4' EX ≈ anchor (33%) | F1 측면만 dominant. EX 는 backbone capacity (GLM 4.7 의 in-context reasoning) 의존. **Filter Dominance 가 F1 측면 main contribution + EX backbone caveat footnote**. Maamari 2024 의 직접 confirm — "LLM 이 schema 전체 보면 더 잘 함" |
+
+**Candidate B 가 working hypothesis (가능성 높음)** — 직전 Filter sweep §5.4 EX-F1 decoupling 발견과 정합. C8 no_filter F1=0.2250 의 EX=0.3435 ≈ anchor 0.3396 → schema linking quality 가 EX 에 영향 X. 본 B1' 55.87% 는 schema_str format 의 영향 (full schema = 더 풍부한 context) 가능성 단 schema linking 자체의 영향 보다 큰 EX gap 설명에는 H2 만으로 부족.
+
+**(3) 학위 논문 vs 학회 paper 분리 narrative**:
+
+| Outlet | Scope | Narrative |
+|---|---|---|
+| **학회 paper (한국지능정보시스템학회 2026 춘계)** | Extended Abstract (cover + 3p) | F1 evidence + Filter Dominance 6-axis (5/12) + **EX backbone caveat footnote**. -21.91%p gap mechanism 은 footnote 만 (depth 부족). C4 Stacked future work + B3' Gold Column upper bound 인용 |
+| **학위 논문 §V Chapter** | 깊이 있는 분석 | 본 -21.91%p gap mechanism 분석 (H1 vs H2 dual-candidate) + B4' 결과 detail + backbone sensitivity 깊이 + Maamari 2024 의 GLM 4.7 confirm + paper narrative reframe |
+
+→ 학회 paper 의 main contribution narrative 는 **F1 측면 Filter Dominance 유지** (anchor F1=0.8663 + 7-axis evidence). EX backbone caveat 는 footnote 처리. 학위 논문이 깊은 mechanism 분석 + B4' 결과 통합.
+
+**(4) DECISIONS entry prepend** ✅ (본 entry)
+
+### 학회 paper narrative 변화 (5/13 update)
+
+직전 narrative (5/13 Filter sweep entry):
+> Filter Dominance 의 7-axis evidence — schema linking F1 측면 + EX-F1 decoupling (GLM 4.7 SQL gen 의 schema imperfection 흡수)
+
+**갱신 narrative (5/13 GLM Baseline 후)**:
+> Filter Dominance 의 7-axis evidence — schema linking F1 측면 dominant. **EX 측면은 backbone capacity 의존 (GLM 4.7 의 in-context Full Schema reasoning 이 schema linking 우회)**. Filter Dominance 의 학회 paper main contribution = F1 측면 7-axis evidence. EX backbone caveat = footnote (B1' 55.87% > anchor 33.96% 발견 인용).
+
+### 본 발견의 의의
+
+- **본 연구 학회 paper 의 핵심 unchanged**: Filter Dominance 의 F1 측면 7-axis evidence — anchor F1=0.8663 + sub-noise spread + GAT internal lock-in 흡수
+- **단 narrative reframe 필요**: "Filter Dominance 가 EX 도 dominate" 의 직전 implicit 주장 → "F1 dominant + EX backbone-dependent" 의 명시적 reframe
+- **학위 논문 main contribution 강화**: -21.91%p gap mechanism 분석 + Maamari 2024 의 GLM 4.7 confirm 이 학위 논문 §V.5.4 의 결정적 deeper insight
+
+### Chain status 갱신 (5/13)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 |
+| 2 | V5 sweep V5-A/B/C | 🔄 active |
+| 3 | SGBE Phase 3-5 | 🚀 launch trigger |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5 sweep 후 |
+| 6 | **B1'+B2'+B3' GLM Baseline** | ✅ **완료 (5/13)** — 결정적 발견 -21.91%p gap |
+| **7** | **B4' paper main → SQL gen** | 🚀 **Tier 1 priority 상향, 즉시 launch** (Filter sweep 완료만 trigger, SGBE/V5 wait X) |
+
+### B4' launch 의 책임 분담 (V5 chain 정정 원칙 준수)
+
+| Step | 책임 | 작업 |
+|---|---|---|
+| 1 | Analyzer 또는 신규 module:sql_gen | B4' script 작성 — anchor predictions.jsonl 의 final_nodes 를 schema_str 로 변환 + 기존 GLM 4.7 SQL gen prompt 재사용 |
+| 2 | Root | B4' launch (~1.5-2h, ~$5-10) |
+| 3 | Analyzer | B4' 결과 보고서 — anchor F1=0.8663 의 EX transfer 정량 + H1 vs H2 mechanism 결정 + paper §V.5.4 dual-candidate 선택 |
+| 4 | Planner | paper §V.5.4 narrative final integration + 학위 논문 §V Chapter detail |
+
+### 근거
+
+- `notebooks/analysis_results/glm_baseline_3cell.md` §0 TL;DR + §3.2 EX gap 정량 + §4.1 결정적 비교 + §4.2 backbone-flip 가설 + §4.4 paper narrative 재검토 필요성 + §5.4 B4' launch 시점 결정 권고
+- 직전 Filter sweep §5.3 EX-F1 decoupling + §5.4 mechanism narrative
+- Maamari et al. 2024 "The Death of Schema Linking?" arXiv:2408.07702
+- 본 연구의 GLM 4.7 era anchor F1=0.8663 + EX 33.96%
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md §3.5 evidence #7 (5/13 갱신) → **5/13 GLM Baseline 후 narrative reframe** 추가 갱신 candidate
+- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신 후 EX backbone caveat 추가 candidate)
+- 후속 (B4' 결과 후): paper §V.5.4 narrative final integration + 학위 논문 §V Chapter
+
+### 추가 필요 분석
+
+- **B4' 즉시 launch** — Tier 1 priority
+- B2' Gold Table + B3' Gold Column 의 EX 결과 (보고서 §0 또는 §3 의 정확 수치 확인) — 본 entry 의 EX matrix 보강
+- B4' 후속 — paper §V.5.4 narrative dual-candidate 선택 + 학위 논문 §V Chapter detail 작성
+
+---
+
+## 2026-05-13 (Filter Sweep 9-cell 완료 — Filter-Modest 시나리오 + C3 outlier + EX-F1 Decoupling 발견 + paper §3.5 7번째 axis 추가)
+
+> **사용자 직전 input (5/13)**: analyzer 의 `filter_sweep_glm_9cell.md` 보고 — Filter-Modest 시나리오 + C3 outlier 확정 + EX-F1 decoupling 핵심 발견. 4 갱신 요청.
+
+### 결정적 발견 (3 항목)
+
+**1. Filter-Modest 시나리오 (Filter-axis F1 robustness)**:
+
+| 비교 그룹 | F1 spread | 분류 |
+|---|---:|---|
+| 8 LLM filter (naive, C3 포함) | 0.0694 | Filter-Sensitive |
+| **7 LLM filter (C3 outlier 제외)** | **0.0116** | **Filter-Modest band** |
+| 4 anchor 근처 cell (C0/C5/C6/C7) | 0.0055 | sub-noise band |
+
+→ Filter 선택의 F1 robustness 확인. "fully invariant" 가 아닌 "modest variance + 단일 multi-agent fail mode" narrative.
+
+**2. C3 (AdaptiveMultiAgent) outlier — multi-agent vote pathology**:
+- C3 R = 0.7681 (anchor 0.8698 대비 **-0.1017**), F1 = 0.8041 (anchor 대비 **-0.0622**)
+- Mechanism: 3-agent (Semantic / Structural / Skeptic) majority vote 가 **over-aggressive pruning** — vote 가 union 이 아닌 intersection 으로 작동, Skeptic 의 conservative bias dominant
+- **vLLM era 와 일관**: a05_01_adaptive_multi_agent (Qwen) R=0.3770 — backbone 다른데도 AdaptiveMultiAgent 가 항상 outlier. **architectural pathology**.
+
+**3. EX-F1 decoupling — 본 sweep 의 가장 핵심 발견**:
+
+| Cell | F1 | EX | F1 ranking | EX ranking | Δrank |
+|---|---:|---:|---:|---:|---:|
+| C4 Stacked | 0.8735 | 0.3416 | 1 | 5 | -4 |
+| C0 XiYan (anchor) | 0.8663 | 0.3396 | 4 | 4 | 0 |
+| C1 Reflection | 0.8625 | **0.3468** ⭐ | 6 | **1** | +5 |
+| C8 No Filter | **0.2250** ⚠️ | **0.3435** | 9 | 2 | **+7** |
+
+→ **C8 no_filter F1=0.2250 (near-zero) 의 EX=0.3435 ≈ anchor EX 0.3396** (+0.0039 더 높음!). Schema linking F1 +0.6413 lift 가 EX 에 **0 transfer**. GLM 4.7 의 SQL gen robustness 가 schema imperfection 흡수.
+
+### 결정 (4 갱신 항목)
+
+**(1) paper §3.5 Filter Dominance evidence 의 6 → 7 axis 추가**:
+
+기존 6 axis (line 505):
+1. H-B ckpt-invariant
+2. H-F stability/ordering
+3. F-1 + H-G alpha sweep
+4. ΔF1 lift
+5. H-A/H-D 부정
+6. 10-Trial Mitigation Null + V4 이중 fail
+
+**🆕 7번째 axis** (5/13 신규):
+- **Filter-axis F1 robustness + EX-F1 decoupling** (9-cell Filter sweep)
+- 정량: 7-filter F1 spread 0.0116 (Filter-Modest band) + C8 no_filter EX 0.3435 ≈ anchor 0.3396 (EX-F1 decoupling)
+- 의미: schema linking F1 의 robustness 가 filter selection 에 invariant (modest band) + GLM 4.7 SQL gen 이 schema imperfection 까지 흡수 (EX-F1 decoupling)
+
+**(2) Paper main pipeline anchor 유지 (C0 XiYan)**:
+
+- Best 4 cells (C4 / C7 / C5 / C0) F1 cluster = 0.8663 ~ 0.8735, **spread 0.0072 sub-noise**
+- C4 (Stacked, +0.0072 F1, **7.8× cost**) — toxicology-targeted marginal lift
+- C7 (Bidirectional, +0.0032 F1, 3.1× cost) — bidirectional complexity
+- C5 (SymVerify, +0.0009 F1, ~1.0× cost) — best ROI 단 lift sub-modest
+- → **anchor (C0 XiYan, 단일 LLM call, 1h01m, 6.4M tokens) = simple/cost-effective default 로 robust**. paper main anchor 변경 권장 X.
+
+**C4 footnote (paper §3.5 또는 §8 Future Work)**:
+> "Future work: C4 Stacked (Refl→Verif) 가 anchor +0.0072 F1 lift candidate (toxicology-targeted), post-paper 추가 검증. 7.8× cost (filter_time 28523s vs 3672s) 의 ROI 가 학회 paper scope 밖."
+
+**C3 caveat footnote (paper §3.5 footnote)**:
+> "Filter Dominance 의 robustness 의 caveat: multi-agent voting filter (AdaptiveMultiAgent) 는 단일 LLM call 의 robustness 를 inherit 안 함 — vote 의 union 이 intersection 으로 작동, conservative bias 강화로 R 큰 손실. 본 sweep 에서 R -0.1017 (anchor 대비) 의 outlier. vLLM era (Qwen3-Coder, a05_01 R=0.3770) 와 일관 — backbone 무관 architectural pathology."
+
+**(3) B4' chain 의 narrative pre-integration** (Filter 모듈 확정 후 launch):
+- B4' = paper main schema linking 결과 (F1=0.8663) → GLM 4.7 SQL gen → EX 측정
+- 본 sweep 의 EX-F1 decoupling 발견이 **B4' 의 결정적 사전 evidence**
+- 예상 B4' 결과: anchor 의 EX ≈ **0.3396** (C0 sweep EX 와 정합, schema linking F1 variation 의 EX 무관 confirm)
+- B3' (Gold Column GLM 4.7 baseline, 별도 chain) 의 EX upper bound 와 비교가 B4' 의 paper §V.5.4 핵심 narrative
+
+**(4) Anchor F1 의 정정**:
+- 직전 anchor F1 = 0.8673 인용 (paper_research_direction.md line 505)
+- 본 sweep 의 C0 측정 F1 = 0.8663 (재실행, sweep 내)
+- ±0.0010 noise (재실행 variance) — 둘 다 anchor 의 schema linking 결과로 통용 가능
+- → 본 갱신 후 anchor F1 = **0.8663** (sweep 내 정량, paper §3.5 갱신)
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md §3.5 (line 505 evidence #6 갱신 + #7 신규 추가)
+- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신)
+- 후속 (planner, V5 결과 통합 시): paper §V.5.4 main finding + B4' chain narrative integration
+
+### 핵심 narrative 결론
+
+> 9-cell Filter sweep (BIRD-Dev 1534, GLM 4.7) 의 두 결정적 발견:
+>
+> **(a) Filter-Modest robustness**: 7-LLM filter F1 spread 0.0116 (C3 outlier 제외) — Filter Dominance 의 robustness 가 filter selection 의 단순 invariance 가 아닌 **modest variance + 단일 multi-agent fail mode** 의 정량.
+>
+> **(b) EX-F1 decoupling**: schema linking F1 +0.6413 lift (C8 no_filter 0.2250 → anchor 0.8663) 가 EX 에 **0 transfer** (C8 EX 0.3435 ≈ anchor 0.3396). GLM 4.7 의 SQL gen robustness 가 schema imperfection 까지 흡수 — **Filter Dominance 의 SQL gen 측면 ceiling 정량 evidence**.
+>
+> 두 발견으로 paper §3.5 의 Filter Dominance narrative 가 **7-axis evidence** 로 확장 — 학회 contribution 의 결정적 강화.
+
+### 근거
+
+- `notebooks/analysis_results/filter_sweep_glm_9cell.md` §0 TL;DR + §2.5 C4 cost 정당화 + §4.2 Filter dominant +0.6413 F1 + §5.3 EX-F1 ranking + §5.4 mechanism narrative + §6.2 통합 권고
+- 직전 DECISIONS entries (B1'~B3' 즉시 launch + B4' 보류 + Full Schema baseline 발견)
+
+### Chain status 갱신 (5/13 기준)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ **완료 (5/13)** — Filter-Modest + C3 outlier + EX-F1 decoupling 발견 |
+| 2 | V5 sweep V5-A/B/C | 🔄 active |
+| 3 | SGBE Phase 3-5 | 🚀 launch trigger (prerequisite 완료) |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5 sweep 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | 🚀 즉시 launch (analyzer script + root + analyzer 보고서) |
+| ⏸ 7 | B4' paper main → SQL gen | ⏸ **Filter 모듈 확정 = 본 sweep 완료 + SGBE 결과 후** launch — 본 sweep 의 EX-F1 decoupling 이 사전 evidence |
+
+### B4' launch trigger 조건 update (5/13)
+
+직전 trigger 조건 "Filter 모듈 확정 후 (SGBE + V5 + Filter sweep 결과 통합 후)" 부분 정정:
+- **Filter sweep 완료** ✅ (5/13) — anchor (C0 XiYan) F1=0.8663 정량 확정
+- **SGBE chain 완료** ⏸ — SGBE 결과가 anchor F1 갱신 candidate
+- **V5 결과** ⏸ — schema linking F1 영향 미정
+
+→ **SGBE chain 완료 후** B4' launch 가능. V5 결과는 paper §V.5.4 통합 시점 (별도) 에 영향. **B4' 의 우선순위 = SGBE chain 완료 후 즉시**.
+
+---
+
+## 2026-05-12 (B1'+B2'+B3' GLM 4.7 Baseline 즉시 launch — B4' Filter 모듈 확정 후 보류)
+
+> **사용자 직전 input (5/12)**: "B4' 은 어차피 Filter 모듈 확정되고 나서 맨 마지막에 실험할 거니까, B3' 까지만 지금 바로 진행하자".
+
+- **결정 — 3 cell 즉시 launch + B4' 보류**:
+
+  | Cell | Scenario | Backbone | Status |
+  |---|---|---|---|
+  | **B1'** | Full Schema (Maamari paradigm) | GLM 4.7 (Elice ML API) | 🚀 즉시 launch |
+  | **B2'** | Gold Table oracle | GLM 4.7 | 🚀 즉시 launch |
+  | **B3'** | Gold Column oracle (perfect schema linking) | GLM 4.7 | 🚀 즉시 launch |
+  | ⏸ B4' | paper main schema linking 결과 → GLM 4.7 SQL gen | GLM 4.7 | **보류 — Filter 모듈 확정 후 (SGBE + V5 결과 통합 후)** |
+
+- **B4' 보류의 의미**:
+  - Filter 모듈 확정 (SGBE 결과 + Filter sweep 9-cell + V5 결과 모두 종합) 후 paper main pipeline anchor 의 최종 schema linking 결과 (F1) 확정
+  - 그 시점에 paper main 의 predictions.jsonl 의 final_nodes 를 schema_str 로 변환 → GLM 4.7 SQL gen → EX 측정
+  - B4' = 본 연구의 main contribution (Filter Dominance 의 F1=0.8673 또는 갱신값) 의 downstream EX transfer 정량 — **학회 narrative 의 결정적 evidence**
+  - 학위 논문 draft (5/14~5/22) 또는 학회 paper 작성 시 launch
+
+- **B1'~B3' 의 즉시 launch 의의**:
+  - **B1'**: Maamari 2024 paradigm 의 GLM 4.7 직접 검증 — "LLM single-call full schema 가 SOTA LLM 에서 충분?" 정량
+  - **B2'**: Table-level oracle 의 GLM 4.7 EX ceiling
+  - **B3'**: Perfect schema linking (R=P=F1=1.0) 의 GLM 4.7 EX **absolute upper bound** — 학회 narrative 의 결정적 reference (본 연구 F1 의 EX transfer 갭 측정 base)
+
+- **책임 분담 chain (V5 chain 정정 원칙 준수)**:
+
+  | Step | 책임 | 작업 |
+  |---|---|---|
+  | 1 | **Analyzer** | GLM 4.7 SQL gen + EX eval script 작성 (`src/analysis/glm_baseline_sql_eval.py`). 기존 Jupyter notebook 3개 의 코드 logic 그대로 + LLM backbone 만 GLM 4.7 API client (XiYanFilter 의 GLM client 재사용) |
+  | 2 | **Root** | Script launch 3 cell (B1'+B2'+B3') |
+  | 3 | **Analyzer** | 결과 보고서 — EX 3 scenario (GLM 4.7) + Llama 3.1 8B vs GLM 4.7 backbone sensitivity 분석 + Theoretical bounds 재인용 + paper §V.5.4 narrative pre-integration (B4' 결과 후 final integration) |
+  | 4 (보류) | **Planner** | B4' launch 시점 + paper §V.5.4 narrative final integration (Filter 모듈 확정 후) |
+
+- **기존 Llama 3.1 8B 측정 reference (DECISIONS 직전 entry)**:
+  - Full Schema: EX 34.1%
+  - Gold Table: EX 40.1% (Δ +6.0%p)
+  - Gold Column: EX 41.5% (Δ +7.4%p)
+  - → GLM 4.7 backbone 결과와 직접 비교 (backbone sensitivity)
+
+- **비용 + 시간 (3 cell)**:
+  - ~$15-40 cost (GLM 4.7 API, BIRD-dev 1534 query × 3 prompt)
+  - ~4-7h wall (LLM API call latency)
+  - Full Schema 의 prompt token 가장 큼 (모든 column) → B1' 가 가장 비싼 cell
+
+- **6 chain matrix 갱신**:
+
+  | # | Chain | Status |
+  |---|---|---|
+  | 1 | Filter sweep 9-cell (root) | 🔄 active |
+  | 2 | V5 sweep V5-A/B/C (root multi-instance) | 🔄 active |
+  | 3 | SGBE Phase 3-5 | 🚀 launch trigger (prerequisite 완료) |
+  | 4 | V5-D-1 진단 (analyzer) | ✅ 완료 |
+  | 5 | V5-D-2 학습 | ⏸ V5 sweep 결과 후 권장 |
+  | **6** | **B1'+B2'+B3' GLM Baseline** | 🚀 **즉시 launch** (analyzer script + root launch + analyzer 보고서) |
+  | ⏸ 7 | B4' paper main → SQL gen | ⏸ **Filter 모듈 확정 후** (SGBE + V5 + Filter sweep 결과 통합 후) |
+
+- **GLM 4.7 SQL gen prompt 의 정확한 형식 (기존 notebook 정합)**:
+
+  System: `"You are an expert SQL developer. Your task is to write a SQLite query based on the given schema and external knowledge. IMPORTANT: If a column name contains spaces or special characters, you MUST wrap it in backticks. Output ONLY the SQL query."`
+  User: `"### Schema (table.column):\n{schema_str}\n\n### External Knowledge:\n{evidence}\n\n### Question:\n{question}\n\n### SQL:"`
+
+  → 기존 3 notebook 의 `create_messages` 함수 그대로 사용. LLM client 만 GLM 4.7 (provider="glm", model_name="zai-org/glm-4.7", temperature=0.0, max_tokens=256).
+
+- **EX evaluation logic (기존 notebook 정합)**:
+  - SQL execution with 3s timeout (thread-based, Cross Join 방지)
+  - `set(cursor.fetchall())` 비교 (gold SQL result == predicted SQL result)
+  - Error string 인 경우 비교 X (정확한 SQL 만 평가)
+
+- **자원 조율**:
+  - LLM API (GLM 4.7) — Filter sweep + SGBE chain + 본 chain 모두 동일 backbone 사용 (Elice ML API rate limit 확인 필요)
+  - GPU 자원 — 본 chain 은 GPU 사용 안 함 (LLM API only) → V5 chain GPU 와 자원 별개
+
+- **근거**:
+  - 사용자 직접 input (B4' 보류 + B1'~B3' 즉시)
+  - DECISIONS 직전 entry (Full Schema/Gold Baseline 발견)
+  - 기존 Jupyter notebook 3개 (LLM Llama 3.1 8B base)
+
+- **영향 범위**:
+  - 신규 산출물: `src/analysis/glm_baseline_sql_eval.py` (analyzer 작성)
+  - 신규 scripts: `scripts/run_glm_baseline_3cell.sh` (root 작성)
+  - 신규 outputs: `outputs/analysis/glm_baseline/{b1_full, b2_gold_table, b3_gold_column}/predictions.jsonl + metrics.txt`
+  - 신규 analyzer 보고서: `notebooks/analysis_results/glm_baseline_sql_eval_3cell.md`
+
+- **에스컬레이션**:
+  - **Analyzer** 세션 (cwd = `src/analysis/`) 에 script 작성 follow-up 핸드오프 (planner 작성)
+  - Analyzer 완료 후 **Root** 에 launch 핸드오프 (planner 가 trigger 또는 직접)
+  - Root launch 완료 후 **Analyzer** 가 결과 보고서 작성
+  - 본 chain 의 B4' 부분은 별도 — Filter 모듈 확정 후 별도 chain
+
+- **paper §V.5.4 narrative pre-integration candidate (B4' 대기 중)**:
+  - B3' (Gold Column GLM 4.7 EX) = perfect schema linking 의 EX upper bound — paper §V conclusion 의 "schema linking 의 SQL gen 측면 ceiling" 정량
+  - B1' (Full Schema GLM 4.7 EX) — Maamari 2024 paradigm 의 GLM 4.7 정량. 본 연구 narrative 의 정확한 positioning candidate
+  - B2' (Gold Table) — table-level oracle ceiling
+  - **B4' 결과 후** — Filter Dominance 의 EX transfer narrative 완성
+
+---
+
+## 2026-05-12 (Full Schema / Gold Table / Gold Column Baseline 발견 — Llama 3.1 8B + GLM 4.7 재실행 필요성)
+
+> **사용자 직전 input (5/12)**: notebooks/{direct_generation, gold_schema_table_test, gold_schema_column_test}.ipynb 위치 명시. 기존 baseline 실험이 Jupyter notebook 으로 있음.
+
+### 기존 실험 정리 (Llama 3.1 8B, BIRD-dev 1534 query)
+
+**EX (Execution Accuracy)**:
+
+| Scenario | LLM Backbone | EX | ΔEX vs Full |
+|---|---|---:|---:|
+| Full Schema (no schema linking) | meta-llama/Meta-Llama-3.1-8B-Instruct | **34.1%** | — |
+| Gold Table | (동일) | 40.1% | +6.0%p |
+| Gold Column | (동일) | 41.5% | +7.4%p |
+
+**Theoretical Schema Linking Bounds** (gold_schema_table_test.ipynb 마지막 cell):
+
+| Scenario | Overall R | Overall P | Table R | Table P | Col R | Col P |
+|---|---:|---:|---:|---:|---:|---:|
+| Full Schema | 0.9969 | 0.1381 | 0.9979 | 0.3292 | 0.9968 | 0.1173 |
+| Gold Table | 0.9978 | 0.3359 | 1.0000 | 1.0000 | 0.9968 | 0.2729 |
+| Gold Column | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+
+→ Full Schema 의 Overall Precision = 0.1381 (대부분 noise column).
+
+### 직전 사용자 질문 ("GLM-4.7 기준으로 Full Schema / Gold Table / Gold Column 실험 했었나?") 의 정확한 답
+
+- **기존 실험은 Llama 3.1 8B backbone** — paper main pipeline anchor 의 GLM 4.7 과 다른 backbone
+- 본 연구의 main contribution (Schema Linking F1=0.8673) 와 EX (34.1~41.5%) 의 cross-comparison 불가능 (다른 metric + 다른 backbone)
+- → **GLM 4.7 backbone 으로 재실행 필요**
+
+### 학회 narrative 측면 critical gap 3
+
+1. **Backbone 미정합**: paper main F1 (GLM 4.7) ↔ baseline EX (Llama 3.1 8B) 비교 불가능
+2. **Schema Linking F1 의 SQL Gen 효과 미측정**: 본 연구의 main contribution F1=0.8673 이 실제 downstream EX 에 어떻게 transfer 되는지 정량 missing — paper §V.5.4 narrative 의 결정적 evidence missing
+3. **Maamari 2024 직접 비교 불가**: Maamari paradigm "LLM single-call full schema 가 SOTA LLM 에서 충분" 이 GLM 4.7 backbone 에서 정량 검증 안 됨
+
+### 결정 — GLM 4.7 backbone 재실행 (4 cell)
+
+| Cell | Scenario | Backbone | 의미 |
+|---|---|---|---|
+| **B1'** | Full Schema | zai-org/glm-4.7 | Maamari paradigm 의 GLM 4.7 직접 검증 |
+| **B2'** | Gold Table | (동일) | Table oracle 의 GLM 4.7 EX ceiling |
+| **B3'** | Gold Column | (동일) | Perfect schema linking 의 GLM 4.7 EX ceiling (absolute upper bound) |
+| **B4'** | paper main F1=0.8673 결과 → GLM 4.7 SQL gen | (동일) | **본 연구 F1 의 EX transfer 정량 — 학회 narrative 의 결정적 evidence** |
+
+→ 직전 baseline plan (5/12 "Full Schema + Gold baseline 실험") 의 정확한 구현 path 확보. 기존 3 노트북을 base 로 LLM backbone 만 GLM 4.7 로 교체 + B4' 신규 cell 추가.
+
+### 비용 + 시간
+
+- Llama 3.1 8B 기존 측정: 1534 query × ~50min~1h35m wall (local GPU inference)
+- GLM 4.7 API: 4 cell × 1534 query × prompt size (Full Schema = large input)
+- 예상 cost: ~$20-50 (Elice ML API)
+- 예상 wall: ~5-10h
+
+### 본 연구 narrative 측면 의의
+
+- **B1' Full Schema (GLM 4.7) F1** 측정 — 본 연구 paper main F1=0.8673 과 직접 비교 (같은 backbone, 다른 schema condition)
+- **B3' Gold Column** = 본 연구의 R=P=F1=1.0 perfect oracle — schema linking 의 absolute upper bound 정량
+- **B4' paper main → SQL gen EX** = paper §V.5.4 narrative 의 SQL gen 측면 정당화 (Filter Dominance 가 downstream EX 에도 transfer)
+- Schema linking F1 (selector + filter) ↔ SQL gen EX 의 비례 관계 정량 → paper §V conclusion 의 결정적 evidence
+
+### Schema linking metric vs EX metric 의 mapping
+
+| Schema Condition | Schema Linking F1 (예상) | SQL Gen EX (예상, GLM 4.7) |
+|---|---:|---:|
+| Full Schema | 0.243 (=2·R·P/(R+P) = 2·0.997·0.138/(...)) | ? (~34% Llama → GLM 4.7 향상 candidate) |
+| Gold Table | 0.503 | ? |
+| Gold Column | **1.000** | ? (perfect schema linking 의 EX upper bound) |
+| paper main (Enriched + QCond + MST + XiYan + GLM 4.7) | **0.8673** | **?** ← B4' 측정 |
+
+→ **B4' 측정값 ↔ B3' (Gold Column) 의 gap** = "schema linking 의 R/P 0.13 의 불완전성이 SQL gen EX 에서 얼마나 차이를 만드는지" 의 정확한 정량.
+
+### Action items
+
+1. 본 entry prepend ✅
+2. 기존 3 노트북을 base 로 GLM 4.7 backbone + B4' (paper main schema linking 결과) 추가하는 신규 chain 작성 필요 (root + analyzer chain)
+3. 학회 narrative 측면: B4' 결과가 paper §V.5.4 narrative 에 직접 통합 — Schema Linking F1 (selector + filter) + SQL Gen EX 의 결합 evidence
+
+### 책임 분담 (V5 chain 정정 원칙 준수)
+
+| Step | 책임 | 작업 |
+|---|---|---|
+| 1 | Module: filter (또는 신규 module:sql_gen) | LLM client 호환 (GLM 4.7 API call) 보강 — 기존 노트북의 `meta-llama/Meta-Llama-3.1-8B-Instruct` 부분만 교체 |
+| 2 | Module: filter (또는 analyzer) | B4' 의 prompt 작성 — paper main schema linking 결과 (`outputs/.../predictions.jsonl` 의 final_nodes) 를 schema_str 로 변환 + 기존 prompt 재사용 |
+| 3 | Root | GLM 4.7 backbone B1'/B2'/B3'/B4' 4 cell launch (~5-10h, ~$20-50) |
+| 4 | Analyzer | EX + Schema linking F1 의 mapping 표 작성 + B4' 결과의 paper §V.5.4 narrative 통합 |
+
+### 근거
+
+- `notebooks/direct_generation.ipynb` (Llama 3.1 8B Full Schema 34.1%)
+- `notebooks/gold_schema_table_test.ipynb` (Gold Table 40.1% + Theoretical bounds)
+- `notebooks/gold_schema_column_test.ipynb` (Gold Column 41.5%)
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- 후속 chain (root + analyzer): GLM 4.7 backbone 4 cell 실험 + 결과 보고서
+- paper §V.5.4 narrative 의 SQL Gen EX 차원 통합 (Filter Dominance 의 downstream 정량)
+
+### 우선순위 (사용자 결정 candidate)
+
+| 옵션 | trade-off |
+|---|---|
+| **(a) 즉시 launch** | 학회 narrative 의 SQL Gen EX 정량 빠르게 확보. 단 6 chain 동시 진행 (filter sweep + V5 sweep + SGBE + V5-D-2 pending + 본 GLM 4.7 baseline + ...) |
+| **(b) SGBE chain 완료 후** | SGBE 결과의 schema linking F1 도 B4' 의 base 로 추가 가능 (anchor + SGBE 2 cell 의 EX 비교) |
+| **(c) V5 sweep 결과 후 통합** | 14-trial + V5-D-1 + SGBE + 본 4 cell baseline + V5-D-2 까지 통합 narrative — 가장 깔끔 |
+
+→ 권장: **(b)** — SGBE 결과가 B4' 의 base 로 추가 가치 + V5 sweep 와 자원 별개 (LLM API).
+
+---
+
+## 2026-05-12 (SGBE Chain Phase 3 Launch Trigger — Prerequisite 완료 + Threshold 사후 검증)
+
+> **사용자 직전 input (5/12, Module:filters 보고)**: step_mode 3-mode + score_collapse_threshold 옵션 추가 완료. 16/16 smoke test PASSED. Option A 채택 (default 0.05). stats + filter_info 에 기록 → era 별 collapse 빈도 측정 가능.
+
+- **결정 — SGBE Chain Phase 3 Launch 즉시 진행 (launch 보류 조건 해제)**:
+
+  Prerequisite 모두 충족:
+  - ✅ Module:filters SGBE 구현 완료 (5/5 smoke, 5/12)
+  - ✅ step_mode 3 mode 옵션 (16/16 smoke, 5/12) — Phase 3 calibration 의 `step_0+1` 평가 + Phase 5 ablation 의 step 별 평가 모두 지원
+  - ✅ Score collapse fallback Option A — default `score_collapse_threshold=0.05`
+  - ✅ Module:selector raw_score interface (5/5 smoke, 5/12)
+  - ✅ Root 의 sgbe_calibration_base.yaml + scripts + HISTORY placeholder
+  - ✅ Q1=Case B + Q2=paper main anchor 정합 (DECISIONS Phase 2 보강 entry §"Option B")
+
+- **Score collapse threshold 0.05 의 적정성 검증 plan**:
+
+  Module:selector Phase 2 진단의 3-anchor group mean spread:
+
+  | Anchor | TP-TN group mean spread | 추정 column-level score std (per-query) |
+  |---|---:|---:|
+  | a03_17 (binary) | 0.3067 | ~0.15~0.20 |
+  | vLLM best | 0.1543 | ~0.08~0.12 |
+  | **paper main GLM** | **0.1741** | **~0.10~0.13** |
+
+  → Threshold 0.05 가 정상 anchor 의 score std (0.08~0.20) 보다 충분히 낮음 — **conservative trigger** (V4 era boundary case 만 detect 예상, 정상 anchor 에서는 거의 trigger 안 됨). 학술 Agent §"한계" 의 V4 era 정확한 정합.
+
+  **Post-hoc analysis (Root launch 와 병행)**:
+  - SGBE 결과 stats["score_collapse_detected"] + filter_info["filter_score_std"] 가 모든 query 에 기록 (Module:filters 보고)
+  - Phase 3 sweep 결과에서 anchor GLM 의 score std 분포 측정 → threshold 0.05 의 hit rate 분석 (예상 ~0%)
+  - V4 era ckpt 의 score std 는 별도 측정 — V5 sweep 후 dsn_mitigation_v5_4dir.md 의 SGBE boundary case 통합 가능
+
+  → **즉시 Phase 3 launch 진행 + threshold 사후 검증** (conservative 동작, risk 없음).
+
+- **Score collapse threshold 권장값 update 결정 trigger**:
+  - Phase 3 sweep 결과 score_collapse_detected hit rate > 5% → threshold 너무 높음 → 0.01~0.02 권장 update
+  - Phase 3 sweep 결과 hit rate ~ 0% → threshold 적정 (V4 era 같은 extreme case 만 detect)
+  - Phase 3 sweep 결과 hit rate 100% → threshold 너무 낮음 또는 학술 Agent §한계 의 hypothesis 직접 검증 — anchor 자체가 collapse 한 score 분포
+
+- **Chain status 갱신 (5 chain matrix)**:
+
+  | # | Chain | Status |
+  |---|---|---|
+  | 1 | Filter sweep 9-cell (root) | 🔄 active |
+  | 2 | V5 sweep V5-A/B/C (root multi-instance) | 🔄 active |
+  | **3** | **SGBE Phase 3-5** | **🚀 launch trigger** — prerequisite 완료, root SGBE chain 의 Phase 3 calibration sweep 즉시 launch 가능 |
+  | 4 | V5-D-1 진단 (analyzer) | ✅ 완료 |
+  | 5 | V5-D-2 학습 | ⏸ trigger 미정 (V5 sweep 결과 후 권장) |
+
+- **Module:filters 의 산출물 명세 (보강 후)**:
+  - `src/modules/filters/score_gated_batch_extractive_filter.py` — step_mode + score_collapse_threshold 옵션
+  - `src/modules/filters/tests/test_sgbe.py` — 16/16 smoke test PASSED
+  - `src/modules/filters/EXPERIMENT_PLAN_filters.md` — SGBE entry 의 Option 1 + Option 2 갱신
+  - 인터페이스 보강:
+    - `stats["score_collapse_detected"]` (bool)
+    - `filter_info["filter_score_std"]` (float)
+    - → era 별 / anchor 별 collapse 빈도 post-hoc analysis 가능
+
+- **에스컬레이션**:
+  - **Root** 세션 (SGBE chain active, Phase 3 launch 보류 상태) 에 launch trigger handoff (planner 작성, 본 entry 후속)
+  - **Module:selector** 추가 follow-up 진단 (column-level score std per-anchor 측정) — **선택**. SGBE Phase 3 결과의 post-hoc analysis 가 동일 정보 제공 가능 → priority 낮음
+  - **Analyzer** 의 sgbe_filter_results.md 작성 시 score_collapse 정량 통합 (Phase 3 sweep 완료 후)
+
+- **근거**:
+  - Module:filters 보고 (5/12) — 16/16 smoke + Option A 채택
+  - Module:selector Phase 2 보고 (5/12) — 3-anchor TP-TN spread 0.15~0.31
+  - 학술 Agent `filtering_suggestion_by_scholar_agent_2026-05-12.md` §"한계" 의 V4 era score collapse hypothesis
+
+- **영향 범위**:
+  - planning/DECISIONS.md (본 entry — launch 보류 조건 해제)
+  - Root SGBE chain — Phase 3 launch trigger (handoff 후속 작성)
+  - Module:filters 산출물 (16/16 smoke 완료, 추가 작업 없음)
+
+- **추가 필요 분석 (Phase 3 sweep 완료 후)**:
+  - Score collapse threshold 0.05 의 hit rate 측정 → threshold update 결정
+  - Phase 3 결과의 optimal θ (paper main anchor 9 cell sweep) → Phase 4 final SGBE launch trigger
+  - V4 era ckpt 의 score std 별도 측정 (V5 sweep 후 dsn_mitigation_v5_4dir.md 통합)
+
+---
+
+## 2026-05-12 (SGBE Chain Actual Status 정정 — Launch 보류 + Module:filters skip_llm/step_mode prerequisite 필요)
+
+> **Root 세션 read-only status 보고 결과 (5/12)**: Q1=Case B (Option B paper main grid 정합) / Q2=(i) paper main GLM anchor / Q3=Phase 3 launch 미실행 (보류) / Q4=결과 0. 사용자 보고 "SGBE 실험 진행 중" 과 actual state 충돌.
+
+- **Actual Status 정정**:
+
+  | 직전 인식 (사용자 + planner) | Actual Status (root 보고) |
+  |---|---|
+  | SGBE Phase 3-5 active (sweep 진행 중) | **SGBE Phase 3 launch 보류** — yaml + scripts + HISTORY placeholder 까지만 진행, sweep 미실행 |
+  | Module:filters Phase 1 완료 → Root chain 진행 | Module:filters SGBE 구현 완료 단 **prerequisite option 부재** — `skip_llm` + `step_mode` option 미구현으로 Phase 3 calibration sweep 의 "Step 0+1 only 평가 (LLM call 없음)" 가 실행 불가 |
+
+- **사용자 보고 ↔ Actual State 의 gap 원인 (working hypothesis)**:
+  - 사용자가 module:filters 의 SGBE 코드 작성 완료 = SGBE chain launch = "실험 진행 중" 으로 잘못 인식한 가능성
+  - 또는 root 가 yaml + scripts 작성 완료 보고 = "실험 진행 중" 으로 인식
+  - **다른 root multi-instance 에서 launch 시도 없음** confirm (root 보고: `ps aux` SGBE process 0)
+  - → 사용자에게 actual state 명확화 + 다음 action 결정 candidate 제시 필요
+
+- **Root chain 의 Q1=Case B + Q2=paper main 정합성 확인**:
+  - sgbe_calibration_base.yaml 가 `s04_pipeline_enriched_qcond_a05_mst_kruskal_glm` anchor mirror — **paper main anchor 정확히 정합 ✅**
+  - 9-cell grid (θ_keep {0.50, 0.55, 0.60} × θ_drop {0.20, 0.25, 0.30}) 가 paper main 의 score ladder (TP mean 0.4746, TN mean 0.3005) 와 정확히 정합 — Planner SGBE Phase 2 보강 entry §"Option B 권장" 의 정확한 구현
+  - → root 의 사전 작업 (yaml + scripts) 은 정확. 단 launch 미실행 — prerequisite 부족
+
+- **Prerequisite — Module:filters 의 skip_llm + step_mode option 추가 필요**:
+
+  학술 Agent `filtering_suggestion_by_scholar_agent_2026-05-12.md` §"θ 설정의 실용적 접근" 인용:
+  > "BIRD-dev 의 소규모 holdout 으로 F1+ 를 기준으로 grid search. θ_keep 과 θ_drop 각 3~5개 값 조합 = 9~25 cell sweep, **각 cell 은 LLM call 없는 Step 0+1 만 평가** 하므로 매우 빠릅니다"
+
+  Phase 3 calibration sweep 의 **LLM call 없는 Step 0+1 only 평가** 가 SGBE 의 `skip_llm` option 또는 `step_mode` option 필요. 또한 Phase 5 ablation 의 4 cell:
+  - ablation-1: Step 0 only (FK/PK hardcode) → `step_mode="step_0"`
+  - ablation-2: Step 0+1 only (score gate, no LLM) → `step_mode="step_0+1"`
+  - SGBE full: Step 0+1+2 (complete) → `step_mode="step_0+1+2"` 또는 default
+
+  → Module:filters 의 SGBE 구현에 두 option 누락. **직전 SGBE Phase 1 핸드오프 (planner 작성) 의 누락** — `theta_keep`, `theta_drop`, `provider`, `model_name`, `temperature`, `fk_pk_hardcode` 만 명시, `skip_llm` + `step_mode` 미명시. Planner 의 실수.
+
+- **결정 — 4 action items**:
+
+  **(a) 사용자 보고 정정**: SGBE chain 의 actual status (Phase 3 launch 보류) 를 사용자에게 명확화. 다른 root multi-instance launch 시도 없음 confirm.
+
+  **(b) Module:filters 에 skip_llm + step_mode option 추가 follow-up handoff** (즉시 진행):
+  - 직전 SGBE Phase 1 핸드오프의 누락 보강
+  - `ScoreGatedBatchExtractiveFilter.__init__` 에 `step_mode` parameter 추가 (default = "step_0+1+2" = full SGBE)
+  - `step_mode="step_0"` / `"step_0+1"` / `"step_0+1+2"` 의 3 mode 지원
+  - smoke test 에 3 mode boundary case 추가
+  - 완료 후 Root 에 SGBE Phase 3 launch trigger
+
+  **(c) 학술 Agent grid (Case A) 추가 sweep 보류**: 본 chain 의 Q1=Case B 가 paper main anchor 정합 — 정확한 sweep. Case A 추가 sweep 은 paper §V.5.4 narrative 의 "학술 Agent reference anchor 추정" 부분에 도움 가능 단 **paper main 결과 후 결정** (priority 낮음).
+
+  **(d) 27-cell Option A (3 anchor × 9 cell) 검토 보류**: 본 chain 의 Option B (paper main 9 cell) 결과 후 a03_17 + vLLM era best 의 추가 sweep — paper main 만 우선 진행하기로 결정 (DECISIONS Phase 2 보강 entry) → **paper main 결과 후 결정** (priority 낮음).
+
+- **Chain status 갱신 (5 chain matrix)**:
+
+  | # | Chain | Status |
+  |---|---|---|
+  | 1 | Filter sweep 9-cell (root) | 🔄 active |
+  | 2 | V5 sweep V5-A/B/C (root multi-instance) | 🔄 active |
+  | 3 | **SGBE Phase 3-5** | ⏸ **launch 보류** (Module:filters skip_llm/step_mode option prerequisite 부재) |
+  | 4 | V5-D-1 진단 (analyzer) | ✅ 완료 (Tier 1 GO) |
+  | 5 | V5-D-2 학습 | ⏸ trigger 미정 |
+
+- **에스컬레이션**:
+  - **Module:filters** 세션에 skip_llm + step_mode option 추가 follow-up handoff (planner 작성)
+  - Option 추가 완료 후 **Root 의 SGBE Phase 3 launch** trigger
+  - 사용자 보고 정정 — 직전 "SGBE 실험 진행 중" 인식이 actual state 와 차이
+
+- **근거**:
+  - Root 세션 read-only status 보고 (Q1=Case B / Q2=paper main / Q3=launch 보류 / Q4=결과 0)
+  - 학술 Agent §"calibration 방법" 의 "LLM call 없는 Step 0+1 만 평가" 인용
+  - 직전 SGBE Phase 1 핸드오프 (planner 작성) 의 option 누락 — planner 의 실수
+
+- **영향 범위**:
+  - planning/DECISIONS.md (본 entry)
+  - Module:filters: SGBE 구현 보강 (skip_llm + step_mode option 추가)
+  - Root: option 추가 후 Phase 3 launch 가능
+
+- **Planner 본 entry 의 retrospective**:
+  - 직전 SGBE Phase 1 핸드오프 작성 시 학술 Agent §"calibration 방법" 의 prerequisite (LLM call 없는 Step 0+1 평가) 를 option 으로 명시 안 함 — module:filters 가 자체 발견하지 못한 경우
+  - 향후 chain prompt 작성 시 evaluation protocol (calibration / ablation 의 LLM 사용 여부) 도 module 영역 option 으로 명시 필요
+
+---
+
+## 2026-05-12 (V5-D-1 PLM Lower Bound 진단 완료 — Tier 1 GO 권고 + v5_plan §4.4/§5.3 정정)
+
+> **사용자 직전 input (5/12)**: Analyzer 의 V5-D-1 진단 chain 완료 보고 — Plain vs Enriched $\bar{c}_{L_0}$ Δ=-0.0279, anchor $\bar{c}_{L_0}$=0.6246, $\bar{c}_{L_3}$=0.8924, V5-D-1 Tier 1 GO 권고. v5_plan §4.4/§5.3 정정 + V5-D-1 후속 학습 trigger 권고 + DECISIONS prepend 요청.
+
+- **V5-D-1 진단 핵심 결과 (multi-DB n=55, 11 BIRD-Dev DBs × 5 queries seed=42)**:
+
+  | Measurement | Value |
+  |---|---:|
+  | Plain builder $\bar{c}_{L_0}$ | 0.6526 |
+  | **Enriched builder $\bar{c}_{L_0}$** | **0.6246** |
+  | Δ (Enriched - Plain) | **-0.0279** (10/11 DB negative, codebase_community +0.0109 outlier) |
+  | Anchor (Enriched + V-3-ext DSN p80) $\bar{c}_{L_3}$ | 0.8924 |
+  | GAT 추가 collapse (Δ = $\bar{c}_{L_3}$ - $\bar{c}_{L_0}$) | +0.27 (multi-DB 기준) |
+
+- **Phase 1 single-DB n=2 측정 정정**:
+  - 직전 v5_plan §4.4 인용 "$\bar{c}_{L_0}$ = 0.51" 는 single-DB (california_schools) outlier
+  - Multi-DB n=55 재측정값 anchor 0.6246 — single-DB 보다 +0.12 높은 ladder
+  - V5-D-1 진단의 directional evidence 가 multi-DB protocol 기준이 더 정확
+
+- **V5-D-1 GO 권고 — 4/4 trigger 조건 충족**:
+  1. ✅ Enriched directional evidence (Δ=-0.0279, 10/11 DBs negative direction)
+  2. ✅ Target c_L0 ≤ 0.30 까지 추가 여지 (-0.32 absolute reduction needed, current 의 51%)
+  3. ✅ Single-DB caveat 해소 (multi-DB n=55, 11 BIRD-Dev DBs all sampled)
+  4. ✅ Anchor c_L3 over-smoothing confirm (0.8924 ≥ 0.80 threshold)
+
+- **Enriched 단독의 한계 정량**:
+  - Enriched builder 가 needed -0.32 의 **~9% (-0.028) 만** 기여
+  - → V5-D-2 (contrastive pre-training) 가 추가로 **-0.30 인하 필요** — 본 chain 의 critical path
+
+- **결정 — v5_plan §4.4 + §5.3 정정 (planner 본 entry 작성 후 즉시 수행)**:
+  1. **§4.4 Direction D 정정**:
+     - "$\bar{c}_{L_0}$ = 0.51" → "single-DB outlier 0.51 ~ multi-DB n=55 0.6246" 명시
+     - GAT 추가 collapse 정량 갱신 (Δ ≈ +0.45 → +0.27 multi-DB)
+     - V5-D-1 진단 directional evidence (Δ=-0.0279) 추가
+     - Enriched builder 의 9% partial mitigation + V5-D-2 추가 인하 필요 명시
+  2. **§5.3 Tier 1 권고 정량 evidence 보강**:
+     - "0.51 → 0.30 이하" → "0.6246 → 0.30 이하 = -0.32 needed" 정정
+     - Enriched 단독 효과 -0.028 = needed 의 9% 명시
+     - 4/4 GO trigger 조건 충족 표
+     - V5-D-1 후속 학습 trigger 권고 — (a) column-specific fine-tuned PLM 또는 (b) schema-aware contrastive pre-training (LCL/SimCLR style, SBP signed-edge 사례 인용)
+
+- **V5-D-1 후속 학습 trigger 권고 정식**:
+
+  | Approach | Mechanism | 예상 효과 |
+  |---|---|---|
+  | **(a) Column-specific fine-tuned PLM** | sentence-transformer 를 BIRD schema metadata (description + data_type + FK context + NL alias) 로 fine-tuning | Enriched builder 의 -0.028 trend 확장. -0.10 ~ -0.20 추가 인하 candidate |
+  | **(b) Schema-aware contrastive pre-training** | intra-table column pair = negative, inter-table = positive. LCL / SimCLR style + SBP signed-edge inspired | Direct intra-table push-apart. -0.20 ~ -0.30 추가 인하 candidate (target 0.30 도달 candidate) |
+
+  → 두 approach 모두 valid. **권장: (a) → (b) 단계적 진행**. (a) 의 cost 가 낮고 (~1-2일), (b) 가 main effect (~수일~1주). (a) 의 결과로 (b) 의 target 조정 가능.
+
+- **Three-Axis Invariance 보강**:
+  - V5-D-1 진단의 부수적 발견: c_L0 axis 도 학습 변형 (Plain vs Enriched) 에 stable — anchor 0.6246 vs Plain 0.6526 의 spread 가 schema-dependent variability (per-DB Δ 0.005~0.054) 대비 작음.
+  - → **Architecture / Attention / Gradient / c_L0 의 4-axis invariance** (3-axis → 4-axis 격상 candidate). 본 발견은 학회 contribution candidate.
+
+- **paper §V.5.4 narrative 영향 working hypothesis**:
+  - **Layer 2 narrative pivot 의 partial evidence**: 학술 Agent v5 plan §"Layer 2 reinterpretation" ("R@15 ceiling = PLM lower bound + domain bottleneck") 의 **directional evidence** 확보. Single-DB outlier 정정 후 multi-DB c_L0 = 0.6246 — 직전 narrative ("PLM lower bound 가 0.51 mid-similar") 보다 더 심각한 baseline.
+  - **단 V5-D-2 결과 후 narrative pivot 확정**. V5-D-1 만으로는 R@15 영향 measurement 없음 (다음 학습 chain 필요).
+
+- **근거**:
+  - `notebooks/analysis_results/v5_d1_plm_lower_bound.md` §0 TL;DR + §3.3 per-DB consistency + §4.1 trigger 조건 충족
+  - 사용자 직접 input + 본 V5-D-1 진단 4/4 trigger 조건 충족
+  - 학술 Agent v5_plan §4.4 Direction D + §5.3 Tier 1 권고
+
+- **영향 범위**:
+  - planning/oversmoothing_v5_plan.md §4.4 + §5.3 (정정 완료)
+  - planning/DECISIONS.md (본 entry)
+  - 후속 (Module: Builder + Module: Selector + Module: PLM Encoder 또는 별도 module: encoders): V5-D-2 학습 chain 작성 (root 위임 + analyzer 후속 측정)
+
+- **에스컬레이션**:
+  - **사용자 결정 candidate**: V5-D-2 학습 trigger 시점 (a) 즉시 launch (3-chain 동시 진행과 별개 chain) / (b) V5 sweep (V5-A/B/C 학습) 결과 후 / (c) SGBE chain 완료 후
+  - **V5-D-2 작업 책임 분담** (V5 chain 정정 원칙 준수):
+    - PLM fine-tuning 코드: Module: Encoder (또는 신규 module:plm) 또는 src/models/plm_encoder.py 수정 영역
+    - Contrastive pre-training script: Module 영역 (코드 구현) + Root 영역 (실행)
+    - 결과 측정: Analyzer 영역
+  - **권장: V5-A/B/C 학습 결과 + SGBE Phase 5 결과를 본 V5-D-1 진단 결과와 통합 보고서 작성 후 V5-D-2 launch 결정** (사용자 일정 + LLM/GPU 자원 고려)
+
+- **추가 필요 분석**:
+  - codebase_community outlier (+0.0109) 의 mechanism — Enriched 가 어떤 column type 에서 backfire 하는지 (analyzer 의 보고서 §4.3 추가 측정 candidate)
+  - V5-D-1 후속 학습 후 c_L3 측정 — Δc_L0 vs Δc_L3 의 transfer 효율 (학회 narrative 의 V5-D-1 core finding)
+  - Enriched builder 의 component-level ablation (name_type / name_type_desc / enriched_full) — 어떤 enrichment 가 dominant contributor
+
+---
+
+## 2026-05-12 (SGBE Phase 2 보강 + 3-anchor 진단 — 학술 Agent 인용 mean 격차 + TP-TN spread 패턴 정합)
+
+> **사용자 직전 input (5/12)**: Module:Selector 세션의 SGBE Phase 2 작업 완료 보고 — Interface 보강 + 3-anchor score calibration 진단 결과.
+
+### 결과 정리
+
+**Phase 2.1 — Interface 보강 (5/5 smoke 통과)**:
+- raw_gat_scores / raw_cos_scores 키 형식이 `'table.column'` + `'column'` 단독 fallback 양쪽 등록 (SGBE `_lookup_score` 호환)
+- fk_node (`'->'`) 제외
+- 산출물: `src/pipeline/schema_linking.py` (raw_*_scores 키 보강) + `src/modules/selectors/tests/test_raw_score_interface.py` (5/5 통과)
+
+**Phase 2.2 — 3-anchor score 분포 진단** (1534 query × ~93 columns 평균):
+
+| Anchor | F1 | Stack | TP mean | Filter✗ mean | TN mean | **TP-TN spread** |
+|---|---:|---|---:|---:|---:|---:|
+| **a03_17** | 0.6940 | Direct GAT binary + Fixed PCST + XiYan | 0.5818 | 0.2787 | 0.2751 | **0.3067** ⭐ |
+| `abl_ens_basic_xiyan` (vLLM best #6) | 0.7863 | Ensemble (α=0.5) + Basic PCST + XiYan | 0.5526 | 0.4975 | 0.3983 | 0.1543 |
+| **anchor GLM (paper main)** | **0.8673** | Enriched + QCond Concat + MST + XiYan + GLM 4.7 | 0.4746 | 0.4101 | 0.3005 | 0.1741 |
+| **학술 Agent 보고 (참조)** | ? | (anchor 미명시) | 0.7108 | 0.6394 | ~0.40 | **~0.31** |
+
+### 핵심 발견
+
+1. **학술 Agent reference anchor 의 정체 미명시** — TP=0.7108 인용의 출처가 우리 3 anchor 어느 것과도 mean 절대값 일치 X. **TP-TN spread 패턴 (~0.31) 만 a03_17 (0.3067) 과 정합** — DirectGATSelector 의 binary sigmoid bimodal 분포 특성.
+
+2. **a03_17 spread 정합 의미**:
+   - DirectGATSelector binary 출력 → sigmoid bimodal 분포 → TP/TN clear separation (spread 0.31)
+   - 학술 Agent 보고서의 reference 도 같은 bimodal selector 구조 (직전 a05 anchor 가 a03_17 — 학술 Agent 가 a05 ablation 보고서 인용했을 가능성 강함)
+   - 단 mean 절대값 차이 (TP 0.7108 vs 0.5818) 의 의미: 학술 Agent reference 의 selector 가 본 ckpt 보다 sharper threshold 또는 다른 hyperparameter
+
+3. **anchor 별 score distribution 의 매우 다른 ladder**:
+   - a03_17: bimodal (binary 결과) — TP/TN 명확 분리, TP-TN spread 0.31
+   - vLLM best: blended (cosine + GAT α=0.5) — smooth 분포, TP-TN spread 0.15
+   - paper main (GLM era): Enriched + QCond Concat + MST blend — TP mean 더 낮음 (0.4746), 단 F1 가장 높음 (0.8673)
+   - → **F1 ↑ 하면서 TP mean ↓** 의 비대칭 패턴: paper main 의 strong filter (XiYan + GLM) 가 낮은 TP score 의 column 도 정확히 선별
+
+4. **학술 Agent 권장 θ (0.65, 0.40) 의 적용 가능 anchor 범위 제한**:
+   - **a03_17** (bimodal): θ_keep=0.65 너무 높음, θ_drop=0.40 너무 높음. 사실상 모든 column 이 S_uncertain 으로 떨어짐 (binary 0/1 의 0.5 cutoff)
+   - **abl_ens_basic_xiyan**: TP mean 0.5526 < θ_keep 0.65 → 대부분 TP 가 S_uncertain 으로 떨어짐. θ_keep 0.65 너무 보수적
+   - **anchor GLM (paper main)**: TP mean 0.4746 << θ_keep 0.65, TN mean 0.3005 < θ_drop 0.40. **학술 Agent 권장 θ 그대로 적용 시 거의 모든 column 이 S_uncertain 으로** → XiYan-equivalent 로 degenerate (SGBE 의 이점 사라짐)
+
+5. **Over-smoothing era 검출 X**: 세 anchor 모두 `collapsed=False`. SGBE gating valid 단 anchor 별 calibration 필수. V4-A/V4-B ckpt 의 score collapse 측정은 root chain (V5 sweep 후) 으로 위임.
+
+### θ Recalibration 권장 매트릭스 (anchor 별 별도)
+
+| Anchor | TP mean | TN mean | **권장 θ_keep** | **권장 θ_drop** | 기대 SGBE 효과 |
+|---|---:|---:|---:|---:|---|
+| **a03_17** (binary) | 0.5818 | 0.2751 | **0.50** (binary cutoff) | **0.05** (very low, almost no drop_hard) | binary 의 0/1 cutoff 위에 SGBE 의 minor restoration 효과 |
+| **abl_ens_basic_xiyan** | 0.5526 | 0.3983 | **0.65** (학술 Agent 권장 그대로) | **0.40** | 학술 Agent 권장 θ 가 가장 정합 (TP mean 0.55 가까운 0.65 keep + TN mean 0.40 가까운 0.40 drop) |
+| **anchor GLM** (paper main) | 0.4746 | 0.3005 | **0.55** (TP mean 0.47 보다 약간 위) | **0.25** (TN mean 0.30 보다 약간 아래) | paper main 의 낮은 TP score 영역을 capture 하기 위해 keep 낮춰야 |
+
+→ **anchor 별 θ 가 0.50~0.65 (keep) + 0.05~0.40 (drop) 의 범위에서 변동**. Single global θ 가 3 anchor 에서 모두 동작 불가.
+
+### Per-DB θ Adaptive 검토 권장
+
+Phase 2.2 진단의 per-DB csv (각 anchor) 가 11 BIRD-Dev DB 별 score 분포 차이 정량 가능 — single global θ 가 모든 DB 에 valid 한지 검토:
+
+- california_schools (T=3, C=89, large schema) — TP/TN spread 가 작을 가능성 (over-smoothing 영향 더 큼)
+- toxicology (T=4, C=20, small schema) — TP/TN spread 클 가능성
+
+→ 본 검토는 root chain Phase 3 의 sweep 결과 분석 시 analyzer 위임 candidate.
+
+### Root chain Phase 3 의 sweep config 권장값 갱신
+
+**직전 plan (single anchor 9-cell)**:
+- θ_keep ∈ {0.60, 0.65, 0.70}, θ_drop ∈ {0.35, 0.40, 0.45} — 학술 Agent 권장 기반 단일 grid
+
+**갱신 (anchor 별 sweep)**:
+
+Option A — 3 anchor × 9 cell = **27 cell sweep** (가장 안전):
+- a03_17 grid: θ_keep ∈ {0.45, 0.50, 0.55}, θ_drop ∈ {0.05, 0.10, 0.15}
+- abl_ens_basic_xiyan grid: θ_keep ∈ {0.60, 0.65, 0.70}, θ_drop ∈ {0.35, 0.40, 0.45}
+- anchor GLM grid: θ_keep ∈ {0.50, 0.55, 0.60}, θ_drop ∈ {0.20, 0.25, 0.30}
+
+Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor 는 후속):
+- **anchor GLM (paper main, F1=0.8673)** 만 9 cell sweep — 학회/학위 논문 narrative 의 가장 중요한 anchor
+- 결과 후 a03_17 / abl_ens_basic_xiyan 별도 sweep 결정
+
+**Recommended: Option B** — paper main anchor 우선 (학회 main contribution + LLM cost 절감)
+
+### anchor stack 정의 명확화
+
+본 진단으로 "anchor stack" 의 정의가 ambiguous — 3 candidate:
+- **paper main pipeline** (`s04_pipeline_enriched_qcond_a05_mst_kruskal_glm`, F1=0.8673): 학회/학위 논문의 main contribution. SGBE 의 primary target.
+- **vLLM era best** (`abl_ens_basic_xiyan`, F1=0.7863): 학술 Agent 의 SGBE 권장 θ 와 가장 정합한 stack
+- **a03_17** (DirectGAT binary): 학술 Agent 의 TP-TN spread 패턴 정합 — bimodal selector
+
+→ **SGBE primary target = paper main (anchor GLM)**. 단 학술 Agent 의 권장 θ 는 vLLM era best 와 정합 — selector + filter backbone 의 interaction 으로 narrative 화 가능.
+
+### paper §V.5.4 Narrative 후속 보강 Candidate
+
+> **추가 narrative**: 학술 Agent 가 권장한 SGBE θ (0.65, 0.40) 는 본 연구의 vLLM era best (`abl_ens_basic_xiyan`, Ensemble + Basic PCST + XiYan + Qwen3-Coder, F1=0.7863) 의 score 분포와 가장 정합 (TP mean 0.5526, TN mean 0.3983, spread 0.15). 그러나 paper main (Enriched + QCond Concat + MST + XiYan + GLM 4.7, F1=0.8673) 의 score 분포는 학술 Agent reference 와 격차 (TP mean 0.4746, TN mean 0.3005). 이 격차는 **selector + filter backbone 의 interaction** 으로 narrative 가능 — strong filter (GLM 4.7) 가 selector 의 낮은 TP score 영역에서도 정확한 schema linking 가능 → SGBE 의 θ 가 GLM era 에서는 더 낮은 ladder (keep 0.55 / drop 0.25) 로 calibrate 필요. **Score-Gate 의 calibration 이 단순 hyperparameter 가 아닌 selector + filter backbone interaction 의 결과** — Filter Dominance 6번째 축 narrative 의 추가 evidence (selector ↔ filter co-design).
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- root chain Phase 3 의 sweep config 갱신 (anchor 별 별도 grid)
+- paper §V.5.4 narrative — selector + filter backbone interaction 으로 보강
+- (후속) SGBE 의 anchor stack 정의 명확화 — paper main 을 primary target 으로
+
+### 에스컬레이션
+
+- **Root chain Phase 3 (SGBE θ calibration)**: 본 권장값 (Option B: paper main anchor 9 cell sweep 우선) 으로 sweep config 갱신 후 launch — Module:Filter 의 Phase 1 완료 신호 수신 후
+- **Analyzer (후속, Phase 6 보고서 작성 시)**: per-DB θ adaptive 검토 + 학술 Agent reference anchor 추정 (external prior 여부) + selector + filter co-design narrative 보강
+
+### 근거
+
+- `outputs/analysis/sgbe_score_calibration/{a03_17, abl_ens_basic_xiyan, anchor}/{score_distribution.json, per_db.csv, histogram.png}`
+- `src/analysis/sgbe_score_calibration_diagnostic.py`
+- `src/pipeline/schema_linking.py` (raw_*_scores 키 보강)
+- `src/modules/selectors/tests/test_raw_score_interface.py` (5/5 통과)
+- 학술 Agent `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` §"세 그룹의 score 분포"
+
+### 추가 필요 분석
+
+- 학술 Agent reference anchor 의 정체 — external prior 인용인지 확인 (paper 또는 다른 dataset 의 결과). 학술 Agent 보고서의 reference (Yuan 2025) 의 score 분포가 0.7108 / 0.6394 / 0.40 인지 후속 검증.
+- V4-A/V4-B ckpt 의 score collapse 측정 — V5 sweep 후 위임
+
+---
+
+## 2026-05-12 (V5 chain 위임 재할당 — Framework 원칙 정정 + Module:Selector + Analyzer 분리)
+
+> **사용자 직전 input (5/12, root chain 차단 후)**: "(a) module 재할당 / (b) Hybrid review / (c) Revert + 재작성 중 선택. 본 root chain 의 V5 sweep launch 가 사용자 redirect (5/12 "오케스트레이션과 실험을 진행하지 직접 모듈을 구현하지 마") + auto-mode classifier 차단으로 보류".
+
+- **결정 — 옵션 (a) Module 재할당 채택 (단 root 작성 코드는 keep)**:
+
+  직전 V5 chain prompt (planner 5/12 작성) 가 V5-A/B/C 코드 작성을 root 에 위임한 것이 framework 원칙 위반:
+  - `planning/CLAUDE.md` + 루트 `CLAUDE.md` 의 책임 분담: **Root** = 실험 실행 / **Module** = 모듈 내부 구현
+  - `src/models/gat_network_v2.py` 의 `GATEConv` / `GCNIIGATv2Conv` / `FullAEROGATConv` 신규 클래스 = **Module 영역**
+  - 직전 SGBE chain (Phase 1 filter module + Phase 2 selector module) 은 올바른 패턴 — V5 chain 만 inconsistent
+
+- **재할당 표**:
+
+  | Step | 직전 (잘못) | 정정 |
+  |---|---|---|
+  | V5-A GATE 코드 구현 | Root | **Module: Selector** (`src/models/gat_network_v2.py`) |
+  | V5-B GCNII 코드 구현 | Root | **Module: Selector** |
+  | V5-C Full AERO 코드 구현 | Root | **Module: Selector** |
+  | V5-D-1 PLM 진단 측정 | Root | **Analyzer** (`src/analysis/v5_d1_plm_diagnostic.py`) |
+  | Smoke test | Root | **Module: Selector** (자기 코드 검증) |
+  | Config 작성 (training yaml) | Root | **Root** (실험 config 는 root 영역) |
+  | Sweep launch (학습 실행) | Root | **Root** (실험 실행 영역) |
+  | HISTORY / CATALOG / ID_MIGRATION 갱신 | Root | **Root** |
+
+- **Root 의 작성 코드 처리 (3 옵션 중 하이브리드)**:
+  - 옵션 (a) full module 재작성 + 옵션 (b) hybrid review 의 절충:
+    - Root 가 이미 작성한 GATEConv / GCNIIGATv2Conv / FullAEROGATConv 코드 **keep** (불필요한 revert 작업 회피)
+    - Module: Selector 세션이 본 코드를 **시작점으로 검토** + 이론적 정합성 점검 (Mustafa 2024 / Peng 2024 / Lee 2023 paper 와의 매핑) + smoke test 통과 확인 + `EXPERIMENT_PLAN_selectors.md` 갱신
+    - Module 검토 통과 후 root 가 sweep launch
+    - → 최종 코드의 책임은 **Module: Selector** (자기 이름으로 final commit), root 의 작성은 draft 로 처리
+
+- **V5 chain prompt 갱신 — 3 신규 핸드오프**:
+  1. **Module: Selector** (V5-A/B/C 검토 + smoke test + EXPERIMENT_PLAN 갱신)
+  2. **Analyzer** (V5-D-1 PLM lower bound 진단)
+  3. **Root** (Module + Analyzer 완료 후 config + sweep launch + HISTORY 갱신)
+
+- **HISTORY/CATALOG/ID_MIGRATION 의 V5 entry placeholder 정리**:
+  - 이미 prepend 된 launch 보류 placeholder 는 그대로 유지
+  - Root 가 module 검토 + analyzer 완료 후 sweep launch 시 placeholder → 실제 학습 결과로 갱신
+
+- **근거**:
+  - 사용자 직접 input (root redirect + auto-mode classifier 차단)
+  - 사용자 직전 redirect: "오케스트레이션과 실험을 진행하지 직접 모듈을 구현하지 마"
+  - `planning/CLAUDE.md` 책임 분담 (Module = 모듈 내부 구현)
+  - 직전 SGBE chain 의 올바른 패턴 (Phase 1+2 module 위임) — V5 만 inconsistent
+
+- **영향 범위**:
+  - planning/DECISIONS.md (본 entry)
+  - V5 chain 의 root 위임 → module:selectors + analyzer 재할당
+  - Root 의 작성 코드 (`src/models/gat_network_v2.py` 의 신규 클래스) keep, module:selectors 가 review
+
+- **에스컬레이션**:
+  - **Module: Selector** 세션 즉시 launch — V5-A/B/C 코드 검토 + smoke test + EXPERIMENT_PLAN 갱신
+  - **Analyzer** 세션 즉시 launch — V5-D-1 진단 (병행 가능, module 과 무관)
+  - **Root** 는 module + analyzer 완료 후 (Trigger 신호 수신 시) sweep launch + HISTORY 갱신
+
+- **추가 필요 분석**: 없음. 단 Module: Selector 가 root 작성 코드 review 결과 (이론적 정합성 + smoke test 통과 여부 + minor refinement 권장 사항) 를 planner 에 보고.
+
+- **본 정정의 의의** (process retrospective):
+  - Planner 가 chain prompt 작성 시 책임 분담 원칙 재확인 필요 — root vs module vs analyzer 영역 mapping
+  - 모듈 영역 (코드 작성) 인지 운영 영역 (실험 실행) 인지 명확화 후 위임
+  - 향후 동일 패턴 (V6 등) 의 chain 작성 시 본 정정 entry 참조
+
+---
+
+## 2026-05-12 (3-chain 동시 진행 — Filter sweep + V5 + SGBE 병행 launch 결정)
+
+> **사용자 직전 input (2026-05-12)**: "옵션 B 로 진행하자 지금 진행하지 않을 이유를 잘 모르겠어".
+
+- **결정 — 3 chain 동시 진행**:
+
+  | Chain | 자원 | Status |
+  |---|---|---|
+  | **Filter sweep (9-cell)** | LLM API (GLM 4.7) + 작은 GPU inference | 🔄 active (root) |
+  | **V5 mitigation (4-Direction)** | GPU 0,1 (학습, ~30-40h) | 즉시 launch (root multi-instance) |
+  | **SGBE Phase 1+2** | 코드 작성 (GPU/LLM 없음) | 즉시 launch (module: filter + module: selector 병행) |
+
+- **자원 충돌 분석 — 무시 가능**:
+  - Filter sweep 의 GPU inference 는 selector forward 만 (작음, 1534 query × CPU 가능)
+  - V5 chain 의 GPU 학습이 main GPU consumer
+  - SGBE module sessions 는 코드 작성 → GPU/LLM 없음
+  - → 3 chain 자원 별개, 모두 병행 가능
+
+- **직전 V5 entry 의 "filter sweep 종료 후 launch" 조건 해제**:
+  - 직전 가정: root 세션 단일 chain 관리 부담
+  - 사용자 결정: multi-instance root 허용 → conflict 없음
+  - V5 chain 의 핸드오프 prompt 는 직전 DECISIONS entry (2026-05-12 V5 Mitigation Plan) 의 root chain 블록 그대로 사용 — 단 "filter sweep 종료 후 launch" → "지금 launch" 로 변경
+
+- **즉시 전달 가능한 핸드오프 3 개**:
+  1. **V5 chain → Root (multi-instance)**: 직전 V5 entry 의 chain prompt
+  2. **SGBE Phase 1 → Module: Filter**: 직전 SGBE entry 의 Phase 1 prompt
+  3. **SGBE Phase 2 → Module: Selector**: 직전 SGBE entry 의 Phase 2 prompt
+
+- **Trigger 신호 (chain 종료 → 다음 핸드오프)**:
+  - Filter sweep 종료 → Analyzer (filter 9-cell 보고서) + Planner (Filter Dominance 7번째 axis 결정)
+  - SGBE Phase 1+2 둘 다 완료 → SGBE Phase 3-5 (Root chain, multi-instance or 동일 root 세션)
+  - SGBE Phase 5 종료 → Analyzer (sgbe_filter_results.md)
+  - V5 chain 종료 → Analyzer (dsn_mitigation_v5_4dir.md)
+  - Analyzer 둘 다 완료 → Planner (narrative integration: paper §3.5 + framework snapshot + DECISIONS)
+
+- **학회 / 학위 논문 일정 영향 (개선)**:
+  - 직전 critical path: filter sweep (5-9h) → SGBE module (2-3일) → SGBE root (15-24h) → V5 chain (30-40h) → analyzer + planner → chapter draft
+  - 신규 critical path: 3 chain 병행 → 가장 늦은 chain (V5 30-40h) 가 critical
+  - → 학위 논문 draft 일정 (5/14~5/22) 에 V5 결과 통합 가능성 향상
+
+- **근거**:
+  - 사용자 직접 input + 자원 충돌 분석
+  - 직전 SGBE entry 의 §"GPU/LLM 자원 조율" — 3 chain 자원 별개 명시
+
+- **영향 범위**:
+  - planning/DECISIONS.md (본 entry)
+  - 기존 V5 entry + SGBE entry 의 핸드오프 prompt 는 그대로 (단 launch 시점만 변경)
+
+- **에스컬레이션**:
+  - 사용자가 3 핸드오프 즉시 전달:
+    1. Root multi-instance (V5 chain) — V5 entry 의 핸드오프 prompt
+    2. Module: Filter (SGBE Phase 1) — SGBE entry 의 Phase 1 prompt
+    3. Module: Selector (SGBE Phase 2) — SGBE entry 의 Phase 2 prompt
+  - Root 기존 chain (filter sweep) 는 자동 진행 continued
+
+- **추가 필요 분석**: 없음.
+
+---
+
+## 2026-05-12 (SGBE Filter 채택 — Score-Gated Batch Extractive Filter 구현 + 실험 chain)
+
+> **사용자 직전 input (2026-05-12)**: 학술 Agent 와 filter 논의 후 `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` 작성. 핸드오프 작성 + 세션별 역할 분담.
+
+- **SGBE 방법론 핵심**:
+
+  ```
+  Step 0  [Structural Hard Keep — 0 LLM calls, instant]
+    S_struct = FK/PK columns in S_pcst   ← 무조건 보존
+
+  Step 1  [Score-Gate — 0 LLM calls, O(n)]
+    θ_keep = 0.65 (TP mean 0.7108 기반)
+    θ_drop = 0.40 (TN mean ~0.40 기반)
+    S_keep_hard = {v | s_v ≥ θ_keep}     → LLM 없이 즉시 keep
+    S_drop_hard = {v | s_v < θ_drop}     → LLM 없이 즉시 drop
+    S_uncertain = {v | θ_drop ≤ s_v < θ_keep}  → LLM 대상
+
+  Step 2  [Extractive LLM — 1 LLM call, S_uncertain만]
+    Per-column binary 판단 ("yes/no + one-line reason")
+
+  Output: final_nodes = S_keep_hard ∪ S_lm_keep ∪ S_struct
+  ```
+
+- **세 조건 충족 mechanism**:
+  - **Recall 보호**: Step 0+1 의 score guard → TP (mean 0.7108) 가 LLM 접근 불가 → wrong-prune 구조적으로 불가능
+  - **Precision 향상**: Step 1 의 θ_drop=0.40 → TN (mean ~0.40) 즉시 제거 + Step 2 의 extractive binary 판단
+  - **빠른 추론**: LLM input token 60~80% 감소 (S_uncertain ≈ 전체의 20~40%)
+
+- **예상 효과 (학술 Agent 정량)**:
+  - R ≥ 0.73 (XiYan 0.6761 대비 +0.05)
+  - P ≥ 0.70 (XiYan 0.7128 대비 -0.01)
+  - 속도 1.5~2× (input token 감소)
+  - Backbone 민감도 ~-0.015 (Verifier 수준)
+
+- **세션별 역할 분담**:
+
+  | 세션 | 책임 | 산출물 |
+  |---|---|---|
+  | **Planner (본 세션)** | 본 entry + 핸드오프 chain 설계 + GPU/LLM 자원 조율 + 후속 narrative integration | DECISIONS / planning |
+  | **Module: filter** | `ScoreGatedBatchExtractiveFilter` 구현 + per-column binary prompt + value retrieval 재사용 + smoke test | `src/modules/filters/score_gated_batch_extractive_filter.py` + `EXPERIMENT_PLAN_filters.md` 갱신 |
+  | **Module: selector** | GAT score 의 column-level calibration 진단 + EnsembleSelector 의 raw score (cosine + GAT 분리 또는 blended) 가 filter 단에 전달되도록 interface 보강 | selector raw_score interface + 진단 보고 (단계별 측정 분포) |
+  | **Root (orchestrator)** | Config 작성 + θ calibration sweep (9 cell) + Final SGBE 평가 + Ablation (XiYan ↔ SGBE + Step contribution) + HISTORY 갱신 | configs + scripts + outputs/ + HISTORY+CATALOG+ID_MIGRATION |
+  | **Analyzer** | θ calibration 결과 분석 + SGBE final 결과 + Step 별 기여도 분석 + boundary case (over-smoothing era V4 score collapse 시 SGBE 무력 caveat) | `notebooks/analysis_results/sgbe_filter_results.md` |
+
+- **단계별 chain (6 Phase, single chain launch)**:
+
+  | Phase | 책임 | 작업 | ETA |
+  |---|---|---|---|
+  | 1 | filter module | SGBE 클래스 구현 + smoke test | ~1-2일 |
+  | 2 | selector module | Score calibration 진단 (anchor stack 의 column score 분포 측정) + interface 보강 (raw_score 전달) | ~0.5-1일 |
+  | 3 | Root | Configs + θ calibration sweep (3 × 3 = 9 cells, BIRD-dev holdout, Step 0+1 only, LLM call 없음) | ~2-3 시간 |
+  | 4 | Root | Optimal θ 로 final SGBE 평가 (BIRD-dev 1534 query, GLM 4.7) | ~5-9 시간 (LLM API) |
+  | 5 | Root | Ablation chain — XiYan anchor + SGBE + Step contribution (Step 0 only / Step 0+1 only / Step 0+1+2 SGBE full) | ~10-15 시간 |
+  | 6 | Analyzer + Planner | 결과 분석 + narrative integration (Filter Dominance 7번째 axis Filter-invariance 의 추가 evidence + SGBE 가 새 anchor candidate 인지 결정) | ~수 시간 |
+
+- **GPU/LLM 자원 조율**:
+  - **현재 진행 중**: Filter sweep (root chain, ~5-9h wall) + V5 mitigation chain (waiting, filter sweep 후 launch)
+  - **본 SGBE chain**: filter sweep 와 별개 + V5 chain 와도 별개. 단 **GLM 4.7 API call cost 발생** (Elice ML API)
+  - **권장 진행 순서**:
+    1. Filter sweep 종료 대기 (root 기존 chain 완료)
+    2. Filter module + Selector module session 병행 진행 (Phase 1 + 2, ~2-3일)
+    3. Root chain: SGBE Phase 3~5 (θ calibration → final SGBE → ablation)
+    4. V5 chain은 SGBE chain 종료 후 또는 SGBE Phase 4 LLM API 진행 중 GPU 0,1 병행 가능 (GPU 와 LLM 자원이 별개)
+
+- **학회 narrative 영향**:
+  - SGBE 가 학술 Agent 의 §9.4 (Prune-Only Recall 손실 mechanism) + §9.5 (GNN Selector role 재정의) 두 Open Question 의 직접 답변
+  - SGBE 가 anchor (XiYan, F1=0.8673) 갱신 시 paper main pipeline anchor 변경 candidate
+  - Filter Dominance 6 axis (10-trial mitigation null) + 7번째 axis (Filter-invariance, 9-cell sweep 결과) 와 별개 — **8번째 axis (Score-Gated Hybrid 효과)** candidate
+  - SGBE 의 over-smoothing era 한계 (score collapse 시 무력) 가 Layer 2 reinterpretation 의 추가 evidence: "R@15 ceiling 의 원인이 PLM lower bound + domain bottleneck" 가설과 정합
+
+- **근거**:
+  - `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` 의 §1~§4 (학술 Agent 의 SGBE 설계 + θ 권장 + 예상 효과 + 한계)
+  - 사용자 직접 input (구현 + 실험 + 세션별 역할 분담 요청)
+  - 학술 Agent 의 5 references: Yuan 2025 / Glass 2025 / Hoang 2025 / Talaei 2024 / Maamari 2024
+
+- **영향 범위**:
+  - 신규 모듈 (filter module session 작성): `src/modules/filters/score_gated_batch_extractive_filter.py`
+  - selector interface 보강 (selector module session 작성): EnsembleSelector raw score 전달
+  - 신규 configs (root): `configs/experiments/s04_ablation/pipeline/sgbe/` 하위
+  - 신규 scripts (root): `scripts/run_sgbe_calibration.sh` + `scripts/run_sgbe_final_ablation.sh`
+  - 신규 analyzer 보고서: `notebooks/analysis_results/sgbe_filter_results.md`
+  - HISTORY + CATALOG + ID_MIGRATION 갱신
+  - 후속 (planner): 본 DECISIONS + paper §3.5 + framework snapshot §3/§4 갱신
+
+- **에스컬레이션**:
+  - **Module: filter** + **Module: selector** 가 본 chain 의 Phase 1+2 동시 진행 (서로 의존, selector interface 변경 후 filter 구현 마무리)
+  - **Root** 가 Phase 3~5 chain (configs + sweep + final + ablation)
+  - **Analyzer** 가 Phase 6 (보고서)
+  - **Planner** 가 narrative integration
+
+- **추가 필요 분석**:
+  - SGBE 의 over-smoothing era 무력화 시점 — V4-A LN+GIN combo / V4-B AERO 의 score 분포가 collapse 한지 selector module session 진단 결과로 확인
+  - Score-Gated 방식이 Reflection / Verifier 의 restore path 와 결합 가능한지 (SGBE + Reflection hybrid candidate, post-paper)
+
+---
+
+## 2026-05-12 (framework_snapshot_2026-05-12.md 신규 — 현재 전체 구조 통합 reference)
+
+> **사용자 직전 input (2026-05-12)**: "현재 전체 구조를 정리한 자료도 만들어줘 이미 있으면 어떤 보고서인지 알려줘". → 기존 자료 점검 결과 "전체 구조" single document 미존재 (paper_research_direction.md 가 가장 가깝지만 paper narrative 위주). AskUserQuestion 결정: **Full snapshot (7 sections + 2 appendix), 다목적 청중**.
+
+- **결정 — 신규 산출물**:
+  [`planning/framework_snapshot_2026-05-12.md`](framework_snapshot_2026-05-12.md) — 다목적 framework snapshot 통합 reference (7 sections + 3 appendix, ~620 lines).
+
+- **구조 — 7 sections + 3 appendix**:
+  - §1 Pipeline Architecture — 5 모듈 + 데이터 흐름 + 인터페이스 + paper main anchor + 디렉토리 구조
+  - §2 Module Status — Builder/PLM/Selector/Extractor/Filter 의 현재 구현체 + active variants + V5 pending
+  - §3 Experiment Matrix — Main anchors (F1=0.8673 / 0.8383 / 0.7863 / 0.6940) + 핵심 sweep 결과 + 진행 중 (filter 9-cell + V5 4-direction)
+  - §4 Narrative Status — Filter Dominance 6 axis + mech(ii-b) 5/5 + Three-Axis Invariance + 3 Layer 분리 (학술 Agent working hypothesis)
+  - §5 Active Work + Pending — Filter sweep (active) + V5 chain (waiting) + 학위 논문 chapter draft (5/14~5/22) + critical path
+  - §6 Planning Document Map — 13 문서 역할 분리 + 청중별 navigation 가이드
+  - §7 학회 / 학위 논문 일정 — 한국지능정보시스템학회 + Part III chapter + critical path
+  - §A Glossary (20 핵심 용어 — V-3-ext / DSN / mech(ii-b) / V1~V5 / Filter Dominance / 6 axis / Three-Axis Invariance / Restore path / JSR / anchor stack 등)
+  - §B Quick Reference Cards (Top 10 정량 + Mitigation 시도 14 + Three-Axis spread + LLM backbone sensitivity + 자주 사용하는 명령)
+  - §C Open Questions 합치 (over-smoothing 4 + filter 5 + V5 plan + 3 Layer pivot)
+
+- **기존 자료 점검 결과 — "전체 구조" 가 분산**:
+  - 가장 가까운 것은 `paper_research_direction.md` 단 paper narrative 위주
+  - 운영 측면 (`CLAUDE.md`, `EXPERIMENT_*.md`) 분산
+  - over-smoothing / filter narrative 는 별도 종합 보고서 (5/12 신규 2 종)
+  - → **현재 framework 의 모든 axis (architecture / experiment / narrative / work / 일정) 의 통합 snapshot single document 가 missing**. 본 신규 자료로 보강.
+
+- **차별점 (기존 12 planning 문서와)**:
+  - 다른 planning 문서들이 specific topic 의 deep dive — 본 자료는 **모든 axis 의 shallow-but-complete overview**.
+  - 청중별 navigation 가이드 (§6.2) 가 다른 deeper reference 로 redirect.
+  - Glossary (§A) + Quick Reference Cards (§B) 가 새 collaborator / 학술 Agent 의 빠른 onboarding 자료.
+
+- **다목적 청중**:
+  - **학술 Agent (over-smoothing 또는 filter 논의)**: 본 snapshot → 청중별 종합 보고서
+  - **사용자 자신 (현황 파악)**: §3 + §4 + §5 (Active Work + Pending)
+  - **새 collaborator**: §1 + §2 (Pipeline + Module Status) + Glossary
+  - **학위 논문 chapter draft**: §4 Narrative Status + §7 일정 + 청중별 reference
+
+- **근거**:
+  - 사용자 직접 input (현재 전체 구조 자료 요청)
+  - AskUserQuestion 결정 (Full snapshot + 다목적 청중)
+  - 기존 12 planning 문서 점검 결과 — 통합 snapshot single document missing
+
+- **영향 범위**:
+  - planning/framework_snapshot_2026-05-12.md (신규)
+  - 본 DECISIONS.md (본 entry)
+  - 기존 문서 변경 X — 본 자료는 통합 reference
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 학술 Agent 에 전달 또는 collaborator onboarding 에 직접 사용.
+
+- **추가 필요 분석**:
+  - 진행 중 root chain (filter sweep) + V5 chain 완료 후 §3 + §4 + §5 갱신 (planner)
+  - 학회 / 학위 논문 일정 변화 시 §7 갱신
+  - 신규 planning 문서 추가 시 §6 갱신
+
+- **14 planning 문서 의 역할 분리 정식** (본 framework snapshot 추가 후):
+
+  | 분류 | 문서 | 목적 |
+  |---|---|---|
+  | Reference / Operations (7) | `CLAUDE.md` (루트) / `EXPERIMENT_HISTORY` / `EXPERIMENT_CATALOG` / `EXPERIMENT_ID_MIGRATION` / `EXPERIMENT_PLAN` / `planning/DECISIONS.md` / `planning/CLAUDE.md` | 운영 + 시간순 기록 |
+  | Paper / Narrative (5) | `paper_research_direction.md` / `Full Paper Structure.md` / `paper_outline_2026-05-08.md` / `presentation_brief_2026-04-28.md` / `mechanism_final_concept_summary_2026-05-05.md` | Paper / 발표 narrative |
+  | Over-smoothing (7) | `over_smoothing_research_summary.md` / `advisor_briefing_oversmoothing_2026-05-11.md` / `oversmoothing_root_cause_report_2026-05-11.md` / `oversmoothing_mitigation_theory_2026-05-07.md` / `oversmoothing_solution_methodology_2026-05-11_apa.md` / `oversmoothing_full_context_v4_2026-05-12.md` / `oversmoothing_v5_plan.md` | Over-smoothing 의 다층 narrative + V5 plan |
+  | Filter (3) | `src/modules/filters/CLAUDE.md` / `src/modules/filters/EXPERIMENT_PLAN_filters.md` / `filter_full_context_2026-05-12.md` | Filter 의 module + 종합 보고서 |
+  | 🆕 **Framework Snapshot (1)** | **`framework_snapshot_2026-05-12.md`** | **전체 framework 통합 snapshot** |
+
+---
+
+## 2026-05-12 (filter_full_context_2026-05-12.md 신규 — 학술 Agent 논의용 Filter Module 종합 보고서)
+
+> **사용자 직전 input (2026-05-12)**: "root 가 filter sweep 하는 동안 학술 agent 랑 filter module 관련 이야기 — 우리가 진행한 실험에서 filter 와 관련된 모든 맥락을 포함하는 보고서를 마크다운으로 만들어 줘".
+
+- **결정 — 신규 산출물**:
+  [`planning/filter_full_context_2026-05-12.md`](filter_full_context_2026-05-12.md) — 학술 전문 Agent 논의용 Filter Module 종합 보고서 (9 sections + Appendix A/B/C, ~550 lines).
+
+- **구조 — 9 sections + 3 appendix**:
+  - §1 Problem Statement (Filter 의 pipeline role + recall/precision 양 약점 흡수)
+  - §2 Filter Implementation Catalog (8 구현체 표 + restore path 분류)
+  - §3 Filter Dominance Narrative — 6 Axis Evidence (paper §V.5.4 main contribution)
+  - §4 a05 Agentic Filter Ablation (vLLM era 14-cell, Qwen3-Coder)
+  - §5 LLM Backbone 민감도 (Qwen vs gpt-4o-mini + GLM 4.7 era + 진행 중 9-cell sweep)
+  - §6 2×2×2 Ablation (Filter ON/OFF 결정적 evidence — P +0.40~0.45)
+  - §7 Prune-Only 한계 + Restore Path Evidence (Reflection 의 critique-revise mechanism)
+  - §8 Filter Module 의 Pipeline 시너지 + 외부 SOTA 정합 (Maamari 2024 / AutoLink 2025 / Glass 2025)
+  - §9 Open Questions — 학술 Agent 와 논의 5 항목
+  - §A Quantitative Reference Tables (5 정량 표)
+  - §B References (external 5 papers + internal 8 reports + configs)
+  - §C Summary for Discussion (9 핵심 + 5 논의 candidate)
+
+- **5 over-smoothing 문서 + filter 보고서의 역할 분리 정식**:
+
+  | 문서 | 강조점 | 길이 | 청중 |
+  |---|---|---|---|
+  | `over_smoothing_research_summary.md` | 정량 + 수식 (~1100 lines) | 1100 | 학위 논문 chapter draft (planner / self) |
+  | `advisor_briefing_oversmoothing_2026-05-11.md` | 진척 흐름 narrative | 250 | 지도교수 발표 |
+  | `oversmoothing_root_cause_report_2026-05-11.md` | 원인 + 근거 focused | 240 | 결론 중심 보고 |
+  | `oversmoothing_solution_methodology_2026-05-11_apa.md` | 이론 + mitigation candidate | (외부) | APA 외부 보고서 |
+  | `oversmoothing_full_context_v4_2026-05-12.md` | over-smoothing 모든 맥락 통합 | 580 | 학술 Agent (over-smoothing) |
+  | `oversmoothing_v5_plan.md` | 학술 Agent v5 plan 6 Direction | (외부) | V5 mitigation 방향 |
+  | **`filter_full_context_2026-05-12.md`** (5/12 신규) | **filter 모든 맥락 통합** | **~550 lines** | **학술 Agent (filter)** |
+
+- **학술 Agent 와 논의 candidate 5 항목 (§9)**:
+  - **(9.1) Filter Robustness (Filter-axis Invariance) 가설**: 진행 중 GLM 4.7 era 9-cell sweep 결과 기반. 9-cell spread 좁으면 Filter Dominance **7번째 axis** 신설 candidate.
+  - **(9.2) LLM Backbone Capacity vs Filter Structure**: filter 종류 별 backbone 민감도 (Reflection -0.0346 vs Verifier -0.0172) 의 generalization.
+  - **(9.3) Filter ↔ Extractor Interaction 비대칭**: Basic PCST + XiYan (F1=0.7863) > Adaptive PCST + XiYan (F1=0.6987). Restore path + Adaptive PCST 미실험.
+  - **(9.4) Prune-Only Recall 손실 ~0.15 의 mechanism**: Filter✗ noise score 분포 분석 + Value Retrieval cost + SymbolicVerifier (SQL execution) 의 wrong-prune detect 가능성.
+  - **(9.5) GNN Selector Role 재정의**: high-recall retrieval component design principle + LLM-based selector vs GNN-based hybrid 의 cost-accuracy trade-off + Filter Dominance 의 generalization (recommendation / knowledge graph).
+
+- **핵심 fact base (학술 Agent 가 본 보고서만 읽고 파악 가능)**:
+  - Filter 8 구현체 + restore path 분류 + interface 계약
+  - a05 14-cell (vLLM era Qwen) 결과: anchor F1=0.6940, ReflectionFilter 1iter F1=0.7068 (+1.3%p 신기록), AdaptiveMultiAgent F1=0.4713 (-22.3%p)
+  - Qwen → gpt-4o-mini ΔF1 -0.017~-0.035 (filter 별 backbone 민감도)
+  - GLM 4.7 era anchor F1=0.8673 (paper main pipeline)
+  - 2×2×2 ablation 의 Filter P +0.40~0.45 결정적 evidence
+  - Filter Dominance 6 axis evidence (H-B / H-F / F-1+H-G / ΔF1 / H-A/H-D / 10-trial null)
+  - Prune-only XiYan 의 recall 손실 ~0.15 + Reflection critique-revise restore mechanism
+  - 외부 SOTA 정합 (Maamari 2024 LLM dominance / AutoLink 2025 97.4% recall / Glass 2025 extractive LLM)
+
+- **근거**:
+  - 사용자 직접 input (filter 학술 Agent 논의용)
+  - `src/modules/filters/CLAUDE.md` 의 filter 모듈 정보 + 14-cell 결과 정리
+  - `EXPERIMENT_HISTORY.md` a05 14-cell + 2×2×2 ablation + GLM era anchor
+  - `EXPERIMENT_CATALOG.md` filter configs
+  - over-smoothing 종합 보고서 의 Layer 3 (Filter Dominance) narrative
+
+- **영향 범위**:
+  - planning/filter_full_context_2026-05-12.md (신규)
+  - 본 DECISIONS.md (본 entry)
+  - 기존 paper §3.5 Filter Dominance evidence 표 변경 X — 본 보고서는 통합 reference
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 학술 Agent 에 본 보고서 전달 후 추가 input 받으면 planner 후속 작업.
+
+- **추가 필요 분석**:
+  - 진행 중 root 9-cell sweep (GLM 4.7 era) 결과 후 §5.4 + §9.1 정량 갱신
+  - 학술 Agent 의 input 후 §9 Open Questions 의 답변 + 추가 mitigation/redesign 가능성 검토 → planner 후속
+
+- **Filter sweep 진행 status (root chain, 별도)**:
+  - 8 신규 config + scripts/run_filter_sweep_glm.sh 작성 중
+  - ETA wall ~5-9h
+  - 결과 후 analyzer 9-cell 보고서 + planner 7번째 axis narrative integration
+
+---
+
+## 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction 병렬 + Narrative pivot V5 결과 후)
+
+> **사용자 직전 input (2026-05-12)**: 학술 전문 Agent 와의 토론 결과 `planning/oversmoothing_v5_plan.md` 도출. AskUserQuestion 결정: (1) **Tier 1+2 함께 진행**: D-1 + A + B + C / (2) **Narrative pivot V5 실험 결과 후**.
+
+- **학술 Agent 의 결정적 reinterpretation (working hypothesis, narrative pivot 보류)**:
+
+  3 layer 분리:
+
+  | 결과 layer | 우리 evidence | 학술 Agent reinterpretation |
+  |---|---|---|
+  | Layer 1: GAT over-smoothing 실증 | $\bar{c}_{L_3} \geq 0.96$ + Three-Axis Invariance | ✅ 그대로 (Wu 2023 + GATE 2024 의 heterogeneous schema graph 최초 실증) |
+  | Layer 2: Mitigation 의 R@15 영향 없음 | 10-trial null + V4 이중 fail | ⚠️ **재해석 working hypothesis**: "GAT internal dynamics → R@15" 가설 기각, R@15 ceiling 의 원인은 PLM semantic lower bound + domain-specific bottleneck (Peng 2024 + Arnaiz-Rodriguez 2025) |
+  | Layer 3: Filter Dominance | F1=0.8383 vs raw R=0.6097 | ✅ 그대로 (Maamari 2024 의 LLM filter dominance 와 일관) |
+
+  → **narrative pivot 보류** (사용자 결정 (2)): 현재 narrative (mech(ii-b) 5/5 confirm + Filter Dominance 6번째 축) 유지. V5 실험 결과 후 (특히 V5-D-1 R 갱신 여부 + V5-A GATE 결과) reinterpretation 적용 여부 결정.
+
+- **결정 — V5 Tier 1+2 4 Direction 병렬 진행 (사용자 결정 (1))**:
+
+  | V5 ID | Direction | 모듈 | 비용 | 학회 narrative 영향 |
+  |---|---|---|---|---|
+  | **V5-A** | GATE (Conservation Law 수정) | `src/models/gat_network_v2.py` 신규 `GATEConv` | ~10h wall × 1 | mech(ii-b) 의 task-irrelevant aggregation 차원 추가 evidence. Fail 시 narrative 6 pillar 격상 |
+  | **V5-B** | GCNII-style Trainability | `src/models/gat_network_v2.py` Initial Residual + Identity Mapping | ~10h × 2-3 (L=2/4/6 sweep) | Paradox 2 ($\rho_{\text{skip}}$) 의 trainability 해석 검증 |
+  | **V5-C** | Full AERO-GNN + Node-Adaptive Hop Attention | `src/models/gat_network_v2.py` V4-B 확장 | ~10h × 1 | V4-B H10.1c (Hop Attention 부재) 직접 검증 |
+  | **V5-D-1** | PLM Lower Bound 진단 (Enrichment 강화) | `src/modules/builders/EnrichedHeteroGraphBuilder` + `src/models/plm_encoder.py` | ~3-5h (진단) + ~10h (학습) | **🚨 narrative pivot candidate**: R 갱신 시 학술 Agent reinterpretation confirm → main pivot |
+
+- **V5-D-2 (Schema-aware contrastive pre-training)** 는 Tier 3 로 deferred — V5-D-1 결과 후 결정. 학회 일정 (5/14~5/22 chapter draft) 고려.
+- **V5-E (LLM-based selector paradigm shift)** + **V5-F (Graph Rewiring)** 는 Tier 4 / Tier 3 로 deferred — 학위 본 심사 후 post-paper.
+
+- **Root chain 위임 — Filter sweep 종료 후 launch**:
+
+  | Step | 책임 | 산출물 |
+  |---|---|---|
+  | 1 | Root: Filter sweep (별도 chain) 완료 대기 | (~5-9h wall) |
+  | 2 | Root: V5-D-1 진단 (anchor stack 의 $\bar{c}_{L_0}$ + $\bar{c}_{L_3}$ measurement + Plain vs Enriched 비교) | outputs/analysis/v5_d1_plm_lower_bound_diagnostic/ |
+  | 3 | Root: V5-A `GATEConv` 구현 + smoke test | src/models/gat_network_v2.py |
+  | 4 | Root: V5-B GCNII-style 구현 + smoke test | src/models/gat_network_v2.py |
+  | 5 | Root: V5-C Full AERO (V4-B + Hop Attention) 구현 + smoke test | src/models/gat_network_v2.py |
+  | 6 | Root: V5 sweep launch (V5-A + V5-B (L=2/4/6) + V5-C 학습, GPU 0,1 병렬) | scripts/run_v5_mitigation_sweep.sh |
+  | 7 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
+  | 8 | Analyzer (학습 완료 후): 14-trial V5 결과 + Layer 1/2/3 evidence 재정량 + narrative pivot candidate 평가 | notebooks/analysis_results/dsn_mitigation_v5_4dir.md |
+  | 9 | Planner (analyzer 후): narrative pivot 결정 + 5 over-smoothing 문서 통합 갱신 | planning/* + paper §3.5 |
+
+- **GPU 자원 분배 (Root chain 운영 가이드)**:
+  - Filter sweep (별도 chain) 종료 후 V5 launch
+  - V5-A + V5-C 동시 (GPU 0/1 병렬, 각 ~10h)
+  - V5-B (L=2/4/6 sweep) 순차 또는 추가 sequential (~30h)
+  - V5-D-1 진단은 CPU forward (1-2h) — 위 sweep 와 병행 가능
+  - 전체 cumulative wall ~50-60h (병렬화로 ~30-40h 실제)
+
+- **Narrative pivot 의 의사결정 tree (V5 결과 후)**:
+  - **시나리오 1 (V5-D-1 R 갱신)**: 학술 Agent reinterpretation confirm. Layer 2 narrative pivot — "R@15 ceiling 의 원인은 PLM lower bound, mech(ii-b) 는 embedding 수준 limitation 만". paper main contribution 일부 변경.
+  - **시나리오 2 (V5-A/C 단독 R 갱신)**: V5-A or V5-C 가 architectural mitigation 가능 evidence. mech(ii-b) "5/5 absolute confirm" narrative 약화 — "GAT architectural intervention 의 일부 path 가 효과 있음" 부분 부정.
+  - **시나리오 3 (V5 4 Direction 모두 fail)**: 현재 narrative (mech(ii-b) 5/5 + Filter Dominance 6번째 축) 의 **결정적 강화** — 14-trial null + 4 architectural intervention direction 모두 무력. PLM lower bound + Filter Dominance 가 R@15 의 dominant factor 임을 양립 narrative 로 정식.
+
+- **근거**:
+  - 사용자 remote-control 직접 input + AskUserQuestion 결정
+  - `planning/oversmoothing_v5_plan.md` 학술 Agent input — 6 Direction (A~F) + Tier 권고
+  - 직전 V4-Combo-Null narrative + Three-Axis Invariance evidence
+
+- **영향 범위**:
+  - 신규 산출물 (root 작성):
+    - src/models/gat_network_v2.py — GATEConv + GCNII-style + Full AERO 신규 클래스
+    - `configs/training/dsn/train_dsn_p80_v5{a,b,c}_*.yaml` + V5-D-1 진단 config
+    - scripts/run_v5_mitigation_sweep.sh
+    - HISTORY + CATALOG + ID_MIGRATION 갱신
+  - 후속 (analyzer):
+    - `notebooks/analysis_results/dsn_mitigation_v5_4dir.md` (14-trial 결과 + 3 layer narrative pivot 평가)
+  - 후속 (planner, V5 결과 후):
+    - DECISIONS pivot 결정 entry
+    - 5 over-smoothing planning 문서 narrative integration (시나리오에 따라)
+    - paper §3.5 narrative 갱신
+
+- **에스컬레이션 — Root chain 위임 (filter sweep 후)**:
+  - Filter sweep (별도 chain) 종료 후 V5 chain launch
+  - Single-command launch (scripts/run_v5_mitigation_sweep.sh) + nohup
+  - 학회/학위 본 심사 일정 (5/14~5/22 chapter draft) 고려 — V5 sweep 결과를 chapter draft 에 통합 가능 시점
+
+- **추가 필요 분석 (V5 결과 후 candidate)**:
+  - V5-D-2 (contrastive pre-training) — V5-D-1 R 갱신 시 진행 후속
+  - V5-E (LLM-based selector) — Tier 4 paradigm shift, 학위 본 심사 후 post-paper
+  - V5-F (Graph Rewiring) — Tier 3, V5 결과 후 priority 재평가
+
+---
+
+## 2026-05-12 (oversmoothing_full_context_v4_2026-05-12.md 신규 — 학술 Agent 논의용 V4 까지 종합 보고서)
+
+> **사용자 직전 input (2026-05-12)**: "over smoothing 문제는 별도로 학술 전문 Agent 와 논의하려고 하니 V4 까지의 보고서를 작성해 놔 줘 over smoothing 과 관련된 모든 맥락을 포함하는 보고서로 만들어 줘".
+
+- **결정 — 신규 산출물**:
+  [`planning/oversmoothing_full_context_v4_2026-05-12.md`](oversmoothing_full_context_v4_2026-05-12.md) — 학술 전문 Agent 논의용 종합 보고서 (10 sections + Appendix A/B/C/D, ~580 lines).
+
+- **구조 — 10 sections + 4 appendix**:
+  - §1 Problem Statement (V-3-ext + qcond R@15 ceiling ~0.61)
+  - §2 Theoretical Background — Row-Stochasticity + JSR < 1 + Wu et al. 2023 + AERO-GNN Theorem 3
+  - §3 Diagnostic Framework (4 mechanism hypotheses)
+  - §4 Phase 1 진단 — H1 over-smoothing 확정 (architecture-invariance 첫 evidence 포함)
+  - §5 Three Paradoxes (attention moderate-sharp / gradient extreme / ckpt-invariance)
+  - §6 Mitigation Evolution — 10 Trials + 3 Turning Points + V4
+  - §7 V4 Architectural Intervention 상세 — V4-A LN+GIN combo + V4-B AERO Softplus 의 구현 + 결과 + 학술 implication
+  - §8 Final Mechanism Dominance Scoring (mech(ii-b) 5/5 absolute confirm)
+  - §9 Filter Dominance 6번째 축 Narrative
+  - §10 Open Questions — 학술 Agent 와 논의 4 항목
+  - §A Mathematical Definitions Reference (8 수식 모음)
+  - §B Quantitative Reference Tables (10-trial ranking + Architecture vs Training spread + Three-Axis Invariance)
+  - §C References (external 6 papers + internal 4 reports + analyzer 11 reports)
+  - §D Summary for Discussion
+
+- **차별점 (기존 4 over-smoothing 문서와)**:
+  - **`over_smoothing_research_summary.md`** (~1100 lines): 학위 논문 chapter draft base — 정량 evidence + 수식 detail
+  - **`advisor_briefing_oversmoothing_2026-05-11.md`** (~250 lines): 지도교수 발표용 narrative — 진척 흐름 + 의미 중심
+  - **`oversmoothing_root_cause_report_2026-05-11.md`** (~240 lines): 원인 + 근거 focused — 결정적 evidence 정리
+  - **`oversmoothing_solution_methodology_2026-05-11_apa.md`**: APA 외부 보고서 — 이론 framework + §C-1/§C-2 mitigation candidate
+  - **🆕 `oversmoothing_full_context_v4_2026-05-12.md`** (~580 lines, 신규): **학술 Agent 논의용** — 이론 + 진단 + 10-trial 결과 + V4 detail + Open Questions 모두 포함. 외부 학술 collaborator 가 본 보고서만 읽고도 모든 맥락 파악 가능.
+
+- **학술 Agent 와 논의 candidate 4 항목 (§10)**:
+  - **(10.1) AERO-GNN Theorem 3 transfer 실패 원인**: 3 hypotheses (heterogeneous graph / Node-Adaptive Hop Attention 부재 / domain-specific bottleneck)
+  - **(10.2) V4-A combo destructive interaction**: 3 hypotheses (attention dispersion + MLP capacity 약화 / sub-mechanism redundancy / R metric discrete absorption)
+  - **(10.3) Filter Dominance mechanism deeper analysis**: per-query lift pattern + transferability to other domains
+  - **(10.4) Post-V4 mitigation direction**: GRAND / GraphCon / FAGCN / SBP / AERO Full (Hop Attention 포함)
+
+- **근거**:
+  - 사용자 직접 input (학술 Agent 논의용 보고서 요청)
+  - 직전 4 over-smoothing 문서의 일부분만 필요한 정보 — 학술 Agent 가 모두 읽기 부담 → 통합 자료 필요
+  - V4-Combo-Null 결과 (5/12 완료) + Three-Axis Invariance + 10-trial null + APA 이론 framework 의 통합 narrative
+
+- **영향 범위**:
+  - planning/oversmoothing_full_context_v4_2026-05-12.md (신규)
+  - 본 DECISIONS.md (본 entry)
+  - 기존 4 over-smoothing 문서 변경 X — 본 보고서는 별도 산출물
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 학술 Agent 에 본 보고서 전달 후 추가 결정.
+
+- **추가 필요 분석**: 없음. 단 (학술 Agent 의 input 후) 본 보고서의 §10 Open Questions 에 대한 추가 mechanism analysis 또는 mitigation candidate 의 정량 검증 요청 시 root/analyzer 위임 가능.
+
+- **5 over-smoothing planning 문서의 역할 분리 정식**:
+
+  | 문서 | 강조점 | 길이 | 청중 |
+  |---|---|---|---|
+  | `over_smoothing_research_summary.md` | 정량 evidence + 수식 reference | ~1100 lines | 학위 논문 chapter draft (planner / self) |
+  | `advisor_briefing_oversmoothing_2026-05-11.md` | 진척 흐름 narrative | ~250 lines | 지도교수 발표 |
+  | `oversmoothing_root_cause_report_2026-05-11.md` | 원인 + 근거 focused | ~240 lines | 결론 중심 보고 |
+  | `oversmoothing_solution_methodology_2026-05-11_apa.md` | 이론 framework + mitigation candidate | (외부) | APA 외부 보고서 |
+  | **`oversmoothing_full_context_v4_2026-05-12.md`** (5/12 신규) | **모든 맥락 통합 (이론 + 진단 + V4)** | **~580 lines** | **학술 전문 Agent** |
+
+---
+
+## 2026-05-12 (Filter Module 확정 — Anchor base + 9-cell Filter Ablation Sweep 결정)
+
+> **사용자 직전 input (2026-05-12)**: "over smoothing 문제를 잠깐 미뤄두고 filter 모듈을 먼저 확정지으려고 해. baseline 모델 (Enriched + QCond concat + MST+PCST) 에다가 지금까지 실험했던 다양한 필터를 적용해본 적이 있었나? GLM 4.7 로." → **AskUserQuestion 결정**: (1) Full 9-cell sweep, (2) planner 실험 plan + root 핸드오프.
+
+- **확인 — 사용자 질문에 대한 정확한 답**: **No**. 두 분리된 영역의 교차점이 미실험.
+  - **영역 A (filter ablation)**: `configs/experiments/abl/a05_filter_agentic/` 14 cells. Base = **Plain + DirectGAT + Fixed PCST**, LLM = **Qwen/Qwen3-Coder-30B (vLLM era)**. 7 filter 종류 비교.
+  - **영역 B (paper anchor)**: `configs/experiments/s04_ablation/pipeline/enriched_qcond_a05_mst_kruskal_glm.yaml`. Base = **Enriched + QCond Concat + MST+PCST**, LLM = **GLM 4.7**, Filter = **XiYan only**.
+  - **교차점 = anchor base + various filters + GLM 4.7** = 학회/학위 논문의 Filter Dominance narrative 의 정량 정당화 missing.
+
+- **결정 — Full 9-cell sweep 채택**:
+
+  | Cell | Stack 공통: Enriched + QCond Concat (α=0.5) + MSTKruskal | Filter | Notes |
+  |---|---|---|---|
+  | C0 anchor | (이미 존재) | XiYan | `s04_pipeline_enriched_qcond_a05_mst_kruskal_glm` (F1=0.8673) |
+  | C1 신규 | + Reflection (1 iter) | ReflectionFilter | a05_02 hyperparameter base |
+  | C2 신규 | + Verifier | VerifierFilter | a05_04 base |
+  | C3 신규 | + AdaptiveMultiAgent | AdaptiveMultiAgentFilter | a05_01 (Semantic+Structural+Skeptic 3-agent) base |
+  | C4 신규 | + Stacked (Refl+Verif chain) | StackedFilter | a05_22 chain composition base |
+  | C5 신규 | + SymbolicVerifier | SymbolicVerifierFilter | a05_19 XiYan repair base |
+  | C6 신규 | + AdaptiveDepth | AdaptiveDepthFilter | a05_07 base |
+  | C7 신규 | + Bidirectional | BidirectionalAgentFilter | (a05_xx 검색 후 base 결정) |
+  | C8 baseline | + None | (no filter) | baseline 노출, anchor 의 Filter Dominance lift 정량 |
+
+  → 8 신규 cells + anchor 1 = **9-cell 매트릭스**. 각 cell BIRD-dev 1534 query × LLM call. ETA wall ~5-9 hour.
+
+- **모든 신규 config 의 LLM 통일**: provider="glm", model_name="zai-org/glm-4.7", max_iteration=1, temperature=0.0 (anchor XiYan 와 동일). 단 ReflectionFilter / Stacked 의 max_iteration 같은 filter-specific param 은 a05_xx 기본값 유지.
+
+- **본 sweep 의 학회/학위 논문 narrative 영향**:
+  1. **Filter Dominance 의 Filter-axis 정당화**: 9-cell 의 F1 spread 측정 → Filter 종류 의 robustness/sensitivity 정량 evidence. Spread 좁으면 (≤ 0.01) → Filter Dominance 의 Filter-invariant 성질 confirm. Spread 넓으면 (> 0.05) → filter 선택이 important factor 라는 narrative 변경 candidate.
+  2. **paper §3.5 Filter Dominance 6번째 축 evidence 보강**: 직전 5+1 axis (H-B/H-F/F-1+H-G/ΔF1/H-A/H-D/8-trial) 에 **7번째 axis (Filter-invariant)** 추가 candidate.
+  3. **anchor F1=0.8673 의 ranking 맥락 정량**: 9-cell 의 best 가 anchor 인지, 다른 filter 가 더 좋은지 → paper main pipeline 의 anchor 선택 정당화.
+
+- **Chain 위임 — Root 세션** (config 작성 + 학습 launch + HISTORY 갱신):
+
+  | Step | 책임 | 산출물 |
+  |---|---|---|
+  | 1 | Root: 신규 8 config 작성 (`configs/experiments/s04_ablation/pipeline/filter_sweep/*.yaml`) | configs/ |
+  | 2 | Root: smoke test (single query forward, GLM 4.7 호출 검증) | (logs) |
+  | 3 | Root: sweep launch (`scripts/run_filter_sweep_glm.sh`, BIRD-dev 1534 query × 8 cells) | logs/ + outputs/ |
+  | 4 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
+  | 5 | Analyzer (sweep 완료 후): 9-cell F1/R/P 매트릭스 + Filter-axis spread 정량 | notebooks/analysis_results/filter_sweep_glm_9cell.md |
+  | 6 | Planner (analyzer 후): paper §3.5 Filter Dominance 7번째 axis (Filter-invariant) candidate 갱신 | planning/paper_research_direction.md + DECISIONS |
+
+- **근거**:
+  - 사용자 직접 input + AskUserQuestion 결정 (Full 9-cell + planner)
+  - `configs/experiments/abl/a05_filter_agentic/a05_*.yaml` 직접 조회 — 모든 a05 config 가 Selector=DirectGATSelector + Extractor=PCSTExtractor + LLM=Qwen3-Coder
+  - `configs/experiments/s04_ablation/pipeline/enriched_qcond_a05_mst_kruskal_glm.yaml` 직접 조회 — anchor base 정확 확인
+  - Filter Dominance 6번째 축 (training-pathology-invariant) narrative 의 Filter-axis 정량 정당화 missing 발견
+
+- **영향 범위**:
+  - 신규 산출물 (root 작성):
+    - `configs/experiments/s04_ablation/pipeline/filter_sweep/{c1_reflection, c2_verifier, c3_adaptive_multi_agent, c4_stacked, c5_symverify, c6_adaptive_depth, c7_bidirectional, c8_no_filter}_glm.yaml`
+    - `scripts/run_filter_sweep_glm.sh`
+    - HISTORY + CATALOG + ID_MIGRATION 갱신
+  - 후속 (analyzer):
+    - `notebooks/analysis_results/filter_sweep_glm_9cell.md`
+  - 후속 (planner, analyzer 후):
+    - paper §3.5 Filter Dominance 7번째 axis (Filter-invariant) candidate 갱신
+    - DECISIONS sweep 완료 + narrative integration entry
+
+- **에스컬레이션 — Root chain 위임**:
+  - Root 가 본 chain 의 Step 1~4 모두 수행 후 analyzer 핸드오프
+  - 사용자 부재 가능성 → single-command launch (scripts/run_filter_sweep_glm.sh, nohup + &)
+
+- **추가 필요 분석**:
+  - 9-cell 결과 후 Filter-axis spread 정량 → Filter Dominance narrative 의 Filter-invariance 정량 evidence
+  - 만약 best filter 가 anchor (XiYan) 이 아니면 → paper main pipeline anchor 변경 candidate
+  - 만약 best filter 가 anchor 와 동등 (ΔF1 ≤ 0.005 noise band) 이면 → XiYan single-call 의 simplicity advantage narrative
+
+- **Over-smoothing 작업 status**:
+  - 본 사용자 결정으로 over-smoothing 문제 (V4 후속, max aggregation, post-paper combo) 는 **잠시 deferred**. v3 #2 Max aggregation 5/14 ETA chain 은 별도 진행 (사용자 결정 cancel 명시 안 됨). 본 chain 후 narrative 통합 가능.
+
+---
+
+## 2026-05-12 (Mitigation V4-Combo-Null 결과 + narrative integration 4 문서)
+
+> **사용자 직전 input (2026-05-12)**: "notebooks/analysis_results/dsn_mitigation_v4_combo.md 참조해 4 문서 narrative integration: (1) advisor briefing §3+§4+§7, (2) root cause report §3+§5, (3) paper §V.5.4 main finding, (4) DECISIONS V4-Combo-Null prepend".
+
+- **결정적 결과** (analyzer dsn_mitigation_v4_combo.md, 10-trial 시점 5/12):
+
+  | Variant | Best R@15 | Best Epoch | Δ vs Phase 1 | 핵심 결론 |
+  |---|---:|---:|---:|---|
+  | **V4-A LN+GIN Combo** | **0.5929** | ep259 | **-0.0168** | 산술합 fail (산술합 -0.0229 대비 +0.0061 partial relief 만, dramatic 회복 zero) |
+  | **V4-B AERO Softplus + Symmetric Norm** | **0.5951** | ep58 | **-0.0146** | Wu et al. 2023 JSR<1 row-stochastic 가정 직접 위반 + AERO Theorem 3 SR2OS guarantee 실증 transfer 실패 |
+
+  → **시나리오 V4-Combo-Null 확정**. V4 의 두 architectural intervention (combo + row-stochasticity 파괴) 모두 baseline R=0.6097 갱신 실패.
+
+- **격상 — mech(ii-b) 4/5 partial 부정 → 5/5 absolute confirm**:
+
+  | 기존 (8-trial) | 신규 (10-trial 5/12) |
+  |---|---|
+  | mech(ii-b) "softmax × weighted-mean propagation combo" 의 **single mechanism 가설** | mech(ii-b) 의 **fundamental architectural limitation** 정식화 |
+  | Score: **4/5 partial 부정** (GIN 단독 L2 cosine 회복하지만 R fail) | Score: **5/5 absolute confirm** (V4 combo + row-stoch destroy 모두 fail) |
+
+  4 pillar evidence:
+  1. **V4-A combo fail**: 두 partial mit 의 산술합이 새 회복 X (산술합 -0.0229 → 실제 -0.0168)
+  2. **V4-B row-stochasticity 파괴 fail**: Wu et al. 2023 JSR<1 가정 직접 위반에도 ceiling 갱신 X
+  3. **Best epoch 분포 일관**: V4-A ep259 (late) + V4-B ep58 (early) — 직전 8-trial ceiling 흡수 패턴과 일관
+  4. **Loss curve 수렴 동등**: V4-A Loss 1.1410, V4-B Loss 1.1510 (직전 GIN ~1.16 와 유사) + AC < 0.001 (효과적 anti-collapse pressure). 학습 dynamics normal → pathology = architecture 자체.
+
+- **Narrative integration 4 위치 (planner 5/12 작업)**:
+
+  1. **planning/advisor_briefing_oversmoothing_2026-05-11.md**:
+     - §3 (Mitigation 진화): 8-trial 표 → **10-trial 표** (V4-A / V4-B 추가). 결정적 전환점 4 신설 ("V4 Architectural Intervention 의 이중 fail" — combo + row-stoch destroy 모두 fail narrative).
+     - §4 (최종 mechanism 정식): "Mech(ii-b) DOMINANT 5/5 ⭐ absolute confirm" 으로 격상. 기존 "softmax × weighted-mean combo" → "fundamental architectural limitation" 정식. 4 pillar evidence box 신설.
+     - §7 (진행 중 + 향후): V4 결과 (5/12 완료) 반영. 시도 8/9 V4 결과 + 시도 10 (v3 #2 Max aggregation, 5/14 ETA) 만 진행 중. Post-paper future work — V4 fail 후 새 candidate (Physics-Informed GRAND/GraphCon / Repulsive FAGCN / Domain-specific SBP).
+
+  2. **planning/oversmoothing_root_cause_report_2026-05-11.md**:
+     - §3.1 Mechanism 평가 matrix: 8 trial → 10 trial 갱신. mech(ii-b) "DOMINANT 4/5" → "DOMINANT 5/5 ⭐ absolute confirm".
+     - §3.2 Mech(ii-b) 정식화 표: 기존 (8-trial) ↔ 신규 (10-trial) contrast 신설. V4-A combo (산술합 fail) + V4-B row-stoch destroy (이론 보장 실증 fail) 두 행 추가.
+     - §3.3 10 Mitigation 표: 시도 10 행까지 확장 (8 → 10).
+     - §5.1 Over-Smoothing 의 주된 원인: "Softmax × Weighted-Mean Propagation Combo" → "Fundamental Architectural Limitation" 격상.
+     - §5.2 결정적 근거 5 항목: 4번째 항목 "Mech(ii-b) partial 부정 (GIN evidence)" → "5/5 absolute confirm — V4 architectural intervention 이중 fail". 5번째 항목 "8 mitigation null" → "10 mitigation null + Three-Axis Invariance".
+     - §5.3 결론의 의의: V4 결과 통합 + future work direction 갱신 (V4 fail 후 새 candidate).
+
+  3. **planning/paper_research_direction.md** §3.5 Filter Dominance 6번째 축 evidence 표 line 505:
+     - "8-trial Final mitigation null effect" → "**🎯 10-trial Final mitigation null effect 정식 + mech(ii-b) 5/5 absolute confirm**" (V4 architectural intervention 이중 fail).
+     - 정량 표: 8 ckpt → 10 ckpt (V4-A 0.5929 + V4-B 0.5951 추가).
+     - mech(ii-b) 정식화: 8-trial 4/5 partial 부정 → 10-trial 5/5 absolute confirm. (a) V4-A 산술합 fail + (b) V4-B JSR<1 위반 + AERO Theorem 3 SR2OS guarantee 실증 transfer 실패 두 결정적 evidence 신설.
+     - paper §V.5.4 핵심 narrative: V4 의 두 architectural intervention 도 fail = GAT 의 internal architectural limitation 까지 With-Filter pipeline 이 흡수 → Filter Dominance 6번째 축 결정적 강화.
+
+  4. **planning/DECISIONS.md** (본 entry, 본 항목)
+
+- **근거**:
+  - `notebooks/analysis_results/dsn_mitigation_v4_combo.md` §0 TL;DR + §3 10-trial 매트릭스 + §4.2 정식화 + §5.2 axis matrix + §9 paper §V.5.4 본문 candidate
+  - 직전 DECISIONS entry "Mitigation V4 채택 — Architectural Intervention 두 Phase" 의 chain 결과
+  - 학회 narrative 의 2 시나리오 중 시나리오 2 (V4 둘 다 null → mech(ii-b) 5/5 절대 confirm + Filter Dominance 6번째 축 narrative 결정적 강화) 실현
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §3 + §4 + §7 (수정 완료)
+  - planning/oversmoothing_root_cause_report_2026-05-11.md §3.1 + §3.2 + §3.3 + §5 (수정 완료)
+  - planning/paper_research_direction.md §3.5 evidence #6 line 505 (수정 완료)
+  - planning/DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**:
+  - 후속 (선택): paper §V.5.4 본문 정식 narrative (analyzer §9 candidate) 의 학위 논문 Part III chapter draft 작성 시점 (5/14~5/22) — planner 또는 root.
+  - 후속 (5/14): v3 #2 Max aggregation 결과 (별도 chain) — 10 → 11 trial 갱신. mech(i-b) aggregation family null 확정 evidence.
+
+- **추가 필요 분석**: 없음. V4-Combo-Null 결과로 학회 발표 + paper main finding 정식 narrative 확보.
+
+- **학회 narrative 의 결정적 강화 message**:
+  > 10-trial mitigation experiments (PN+IR / Direct AC / LR x5 / DropMessage / LayerNorm / Sum aggregation / GIN aggregation / B5 fusion / **🆕 LN+GIN combo / 🆕 AERO Softplus**) 모두 baseline R@15=0.6097 갱신 실패. Specifically, 두 architectural intervention (V4-A row-stochasticity 유지 + 두 partial mit combo / V4-B row-stochasticity 자체 파괴, Wu et al. 2023 JSR<1 가정 직접 위반) 모두 ceiling 갱신 실패 → mech(ii-b) softmax × weighted-mean propagation combo 의 5/5 absolute confirm. Filter Dominance 6번째 축 narrative 의 결정적 강화: GAT 의 internal architectural limitation 까지 With-Filter pipeline 이 흡수, F1=0.8383 의 정량 evidence + selector raw R@15=0.6097 의 architectural ceiling 양립 가능.
+
+---
+
+## 2026-05-11 (Mitigation V4 채택 — Architectural Intervention 두 Phase + Root chain 위임)
+
+> **사용자 직전 input (remote-control, 2026-05-11)**: "연구 전문 Agent 의 조언을 바탕으로 작성한 프롬프트를 활용해 구현 및 실험 진행이 가능하도록 핸드오프 작성" — Prerequisite: `planning/oversmoothing_solution_methodology_2026-05-11_apa.md` (보고서 C-1 + C-2 채택).
+
+- **결정 — Mitigation V4 (Architectural Intervention) 채택**:
+
+  보고서 §1 (Softmax row-stochasticity → JSR < 1 → 지수적 붕괴) + §4 Direction C (Softmax + Aggregation 동시 변경) 의 결론을 채택. 직전 8-trial mitigation null 결과 (Mech(ii-b) softmax-weighted-mean combo DOMINANT 4/5) 의 conditional trigger 발효 — combo mitigation 이 유일 검증 통로.
+
+  | Variant | 전략 | 보고서 출처 |
+  |---|---|---|
+  | **V4-A** | Pre-softmax LayerNorm + GIN aggregation (LN + GIN Combo) | §C-1 — 최단 경로 검증 |
+  | **V4-B** | Softplus + Symmetric Normalization (AERO-GNN Style Layer) | §C-2 — 이론적 최강 후보 |
+
+  **V4-A 구현 요점**:
+  - 새 클래스 `CustomGATv2Conv_LNGIN` in `src/models/gat_network.py`
+  - Pre-softmax LayerNorm: raw α (pre-softmax) 직전 LayerNorm 으로 magnitude 표준화 (직전 v2 #3 LN 와 동일 mechanism)
+  - GIN aggregation: $\sum + \text{MLP}$ propagation 으로 weighted-mean 차원 변경 (직전 v3 #1 GIN 와 동일 mechanism)
+  - 두 mitigation 의 **combo** — 직전 단독 변경 (LN only / GIN only) 모두 partial mit, combo 시 dramatic 회복 가능 candidate
+
+  **V4-B 구현 요점**:
+  - 새 클래스 `AEROHeteroConv` 또는 `SoftplusGATConv` in `src/models/gat_network.py`
+  - Softmax 완전 제거 → Softplus($e_{ij}$) 활성화
+  - Row-stochastic normalization 제거 → Symmetric Normalization ($\tilde{\alpha}_{ij} = \alpha_{ij} / \sqrt{d_i d_j}$)
+  - Row-stochasticity 구조 파괴 → JSR < 1 의 지수적 붕괴 증명 위반 → over-smoothing 의 이론적 보증
+  - (선택) Node-Adaptive Hop Attention 추가 — cumulative attention 수렴 저지
+
+- **Chain 위임 — Root 세션** (코드 구현 + 학습 launch + HISTORY 갱신):
+
+  | Step | 책임 | 산출물 |
+  |---|---|---|
+  | 1 | Root: APA 보고서 §1 + §4 + §C-1 + §C-2 정독 | (학습) |
+  | 2 | Root: V4-A `CustomGATv2Conv_LNGIN` 구현 | src/models/gat_network.py |
+  | 3 | Root: V4-B `AEROHeteroConv` / `SoftplusGATConv` 구현 | src/models/gat_network.py |
+  | 4 | Root: smoke test (forward pass shape + HeteroData 호환) | tests + unit smoke |
+  | 5 | Root: 신규 config 작성 (V4-A + V4-B 각각) | configs/training/dsn/train_*_v4_*.yaml |
+  | 6 | Root: 학습 launch sweep | scripts/run_v4_mitigation_sweep.sh, GPU 0,1 |
+  | 7 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
+  | 8 | Analyzer (학습 완료 후): layer-wise cosine + attention metric 측정 | notebooks/analysis_results/dsn_mitigation_v4_combo.md |
+  | 9 | Planner (analyzer 후): advisor briefing + root cause report narrative integration | planning/* (V4 결과 + paper §V.5.4 narrative 갱신) |
+
+- **이론적 근거 (보고서 §1 + §4 핵심 인용 — 코드 주석에 반영)**:
+
+  1. **Row-stochasticity → Ergodic 수렴**: GATv2Conv 의 softmax-normalized $\alpha_{ij}$ 가 row-stochastic matrix $\mathbf{A}$ 를 만듦. 모든 row sum = 1, Perron-Frobenius 이론에 의해 $\lim_{L \to \infty} \mathbf{A}^L \mathbf{x} \to \mathbf{v}_1 \cdot c$ ($\mathbf{v}_1$ = 정상 분포, $c$ = 상수). 즉 모든 node 가 같은 stationary distribution 으로 수렴.
+  2. **JSR < 1 → 지수적 붕괴**: heterogeneous attention matrices $\{\mathbf{A}^{(l)}\}_{l=1}^{L}$ 의 Joint Spectral Radius (JSR) 가 row-stochastic 조건 하에서 < 1 → embedding 차이 $\|\mathbf{h}_i - \mathbf{h}_j\|$ 가 layer 따라 **지수적 감소**. 즉 mathematically 학습 dynamics 와 무관하게 collapse 보장.
+  3. **Direction C 결론**: row-stochasticity 자체를 깨지 않으면 over-smoothing 회피 불가. 두 차원의 동시 변경:
+     - V4-A: row-stochasticity 유지 단 LayerNorm 으로 attention 분포 + GIN 으로 aggregation 변경 (partial 회복 candidate)
+     - V4-B: row-stochasticity 자체 파괴 (Softplus + Symmetric Norm) (이론적 보장)
+
+- **근거**:
+  - 사용자 remote-control 직접 input + APA 보고서 prerequisite
+  - 직전 DECISIONS entry "8-trial mitigation null + mech(ii-b) DOMINANT 4/5 partial 부정" + Stage 7 GIN narrative "softmax + aggregation 동시 변경 시 더 큰 mitigation 가능 candidate (post-paper)"
+  - Architecture-invariance evidence (Concat vs SuperNode 모두 collapse) — 본 V4 가 architecture 선택과 무관하게 적용
+
+- **영향 범위**:
+  - 신규 산출물 (root 작성):
+    - `src/models/gat_network.py` — `CustomGATv2Conv_LNGIN` + `AEROHeteroConv` / `SoftplusGATConv` 신규 클래스 추가
+    - `configs/training/dsn/train_dsn_p80_v4a_lngin_combo.yaml` + `train_dsn_p80_v4b_aero.yaml`
+    - `scripts/run_v4_mitigation_sweep.sh`
+    - HISTORY / CATALOG / ID_MIGRATION 갱신
+  - 후속 (analyzer 작성):
+    - `notebooks/analysis_results/dsn_mitigation_v4_combo.md` — V4-A + V4-B 결과 정량 + 직전 8-trial 과 비교
+  - Planner (analyzer 후):
+    - advisor briefing §3 (Mitigation 진화) + §4 (Mechanism 정식) + §7 (진행 중/향후) 갱신
+    - root cause report §3 + §5 갱신 + paper §V.5.4 narrative integration
+
+- **에스컬레이션 — Root chain 위임**:
+  - Root 세션이 본 chain 의 Step 1~7 모두 수행 후 analyzer 에 핸드오프
+  - Analyzer 결과 후 planner 에 narrative integration 핸드오프
+  - **중요**: scripts/run_v4_mitigation_sweep.sh 으로 V4-A + V4-B 두 ckpt 학습을 single-command launch (사용자 부재 시 chain 멈춤 방지)
+
+- **ID 명명 — V4-A / V4-B**:
+  - 직전 시도 8개: Phase 1 (baseline) + Phase 2 b8 (B5 통합) + Phase 3 #3 (Direct AC) + Phase 3 #4 (LR x5) + v2 #1 (DropMessage) + v2 #2 (Sum) + v2 #3 (LayerNorm) + v3 #1 (GIN)
+  - 9번째 (진행 중): v3 #2 (Max aggregation, 5/14 ETA)
+  - **신규 V4-A / V4-B**: 10/11번째 시도. 보고서 C-1/C-2 의 architectural intervention 으로 명명. Combo 가설의 정량 검증.
+  - 학회 narrative: "8 trial mitigation null + V4 combo 가 첫 dramatic 회복 (또는 still null = combo 가설도 부정)"
+
+- **추가 필요 분석**:
+  - V4-A / V4-B 의 학습 trajectory + R@15 ceiling 갱신 여부 + layer-wise cosine 정량 (직전 ckpt 들과 비교)
+  - V4-A vs V4-B 직접 비교 — combo (LN+GIN, row-stochasticity 유지) vs architectural (AERO, row-stochasticity 파괴) 의 효과 차이
+  - (V4 둘 다 R@15 갱신 시) Mech(ii-b) DOMINANT 4/5 → 부정 narrative 전환 + paper §V.5.4 main finding 갱신
+  - (V4 둘 다 null 시) Mech(ii-b) DOMINANT 4/5 → 5/5 절대 confirm + Filter Dominance 6번째 축 narrative 결정적 강화
+
+---
+
+## 2026-05-11 (Architecture-invariance 발견 + narrative 보강 — qcond_nl3 = QCond Concat 명시)
+
+> **사용자 직전 input (2026-05-11)**: "지금 oversmoothing 이 QCond SN 말고 QCond (concat) 에서는 안 일어나나?" → AskUserQuestion 결과: **narrative 보강만 처리 (즉시, planner)**.
+
+- **결정적 발견 — qcond_nl3 가 이미 QCond Concat 방식**:
+  - `configs/training/diameter_layers/train_qcond_nl3.yaml`: `query_conditioned: true`, `query_supernode` 키 부재 → SchemaHeteroGAT default `query_supernode=false`. 즉 **Concat 방식**.
+  - 같은 family 의 `train_gat_query_conditioned.yaml` 명시 — "Query Concatenation 활성화".
+  - 직전 narrative 에서 "qcond_nl3 baseline" 으로만 칭하고 Concat 방식이라는 점이 부각 안 됨.
+
+- **3 axis 의 architecture-invariance 정량 evidence**:
+
+  | Ckpt | Architecture | $\bar{c}_{L_3}$ |
+  |---|---|---:|
+  | **qcond_nl3** | **QCond Concat** (no SuperNode) | **0.9971** ⚠️ (가장 심한 collapse) |
+  | DSN p80 | V-3-ext SuperNode + directed_from_sn | 0.9591 |
+  | DSN topk20 | V-3-ext SuperNode + directed_from_sn | 0.9662 |
+  | DSN abstau07 | V-3-ext SuperNode + directed_from_sn | 0.9775 |
+
+  → **Over-smoothing 이 SuperNode-specific 이 아니라 QCond Concat 에서도 (오히려 더 심하게) 발생**. V-3-ext 의 directed_from_sn edge 가 partial mitigation 효과만 발휘 (advisor briefing §1.3 직전 narrative "DSN 3 ckpt 가 baseline 대비 partial mitigated" 와 일관). 즉 over-smoothing 은 **architecture 선택과 무관한 GAT propagation 의 fundamental limitation**.
+
+- **narrative 보강 2 위치**:
+  1. **`advisor_briefing_oversmoothing_2026-05-11.md` §1**: "문제 — 학습이 ceiling 에 갇혀 있다" 섹션에 architecture 분류 표 추가 (QCond Concat vs V-3-ext SuperNode) + "🎯 Architecture-Invariance 첫 evidence" callout. 학회 narrative 의 출발점을 "single hyperparameter tuning **또는 architecture 선택** 의 문제가 아니라 GAT 의 구조적 collapse" 로 강화.
+  2. **`advisor_briefing_oversmoothing_2026-05-11.md` §6**: "GAT Internal Dynamics Invariance (Attention + Gradient)" → "**Three-Axis Invariance (Architecture + Attention + Gradient)**" 로 확장. 세 axis 의 invariance 표 + 학회 contribution candidate 2 → 3 항목 (architecture-invariance evidence 추가).
+  3. **`oversmoothing_root_cause_report_2026-05-11.md` §1**: 4 ckpt × 3 layer × architecture 분류 표 추가 + "over-smoothing 이 query 정보 통합 방식과 무관한 GAT propagation 자체의 architectural limitation" 명시.
+  4. **`oversmoothing_root_cause_report_2026-05-11.md` §5.2 결정적 근거**: 4 항목 → **5 항목**. 첫 항목으로 "Architecture-invariance" 추가 (Concat vs SuperNode 모두에서 collapse, Concat 에서 더 심함).
+
+- **학회 narrative 의 강화 message**:
+  > Over-smoothing 이 V-3-ext (DSN SuperNode) 의 specific issue 가 아니라 QCond Concat 방식에서도 (오히려 더 심하게) 발생함 — L3 cosine 0.9971 vs 0.9591~0.9775. 즉 GAT 의 softmax-weighted-mean propagation limitation 이 query 정보 통합 방식과 무관하게 architectural 임을 입증.
+
+- **근거**:
+  - 사용자 직접 input ("QCond Concat 에서는 안 일어나나?") — 새 측정 없이 기존 데이터 재분류로 답변 가능한 발견
+  - `configs/training/diameter_layers/train_qcond_nl3.yaml` 직접 조회 — `query_supernode` 키 부재 confirm
+  - `EXPERIMENT_HISTORY.md` line 1308 — `query_supernode=False 계열 (T1~T6, T8, s06 B0~B5E 등)` 일관 명시
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1 + §6 (수정 완료)
+  - planning/oversmoothing_root_cause_report_2026-05-11.md §1 + §5.2 (수정 완료)
+  - 본 DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**: 없음. 사용자 결정 (A) narrative 보강만 — 즉시 처리 완료.
+
+- **확장 측정 candidate (사용자 결정 보류)**:
+  - QCond Concat nl1/nl2/nl6/nl7 의 layer-wise cosine 측정 — Concat 방식의 layer depth × collapse trajectory 추가 evidence. ETA ~3-5 min wall (dsn_oversmoothing_analysis.py 확장).
+  - Plain GAT (no QCond) 측정 — query 정보 없는 순수 GAT 의 collapse 발생 여부 (post-paper future work).
+  - 두 측정 모두 priority 낮음 — 본 architecture-invariance message 가 기존 4 ckpt 데이터로 충분 입증.
+
+---
+
+## 2026-05-11 (oversmoothing_root_cause_report_2026-05-11.md 신규 — Over-Smoothing 의 주된 원인 + 근거 focused 보고서)
+
+> **사용자 직전 input (2026-05-11)**: "지금까지 정리된 내용을 바탕으로 Over-Smoothing의 주된 원인은 무엇이며 그 근거는 어떻게 되는지 보고서를 작성해 줘"
+
+- **결정 — 신규 보고서 작성** (advisor briefing 과 별도 파일):
+  1. **(a) 신규 산출물**: [`planning/oversmoothing_root_cause_report_2026-05-11.md`](oversmoothing_root_cause_report_2026-05-11.md) — 6 sections, ~240 lines.
+     - §1 분석 framework (4 mechanism 후보 + 핵심 측정 $\bar{c}_L$)
+     - §2 근거 chain (4 evidence pillar: mech(iii) 부정 / mech(ii-a) partial mit / mech(ii-b) partial 부정 / mech(i-b) hierarchy)
+     - §3 종합 — Softmax-Weighted-Mean Combo Root Cause (sub-mechanism 분리 + 8 mitigation null)
+     - §4 보조 evidence — GAT Internal Dynamics Invariance
+     - §5 결론 (주된 원인 + 결정적 근거 4 항목 + 결론의 의의)
+
+  2. **(b) 세 planning 문서의 역할 분리 (재확인)**:
+     - `over_smoothing_research_summary.md` — 학위 논문 Part III chapter draft base, 정량 evidence + 수식 reference (~1100 lines)
+     - `advisor_briefing_oversmoothing_2026-05-11.md` — 지도교수 발표 보고용 narrative, 진척 흐름 중심 (~240 lines, 8 stage timeline)
+     - `oversmoothing_root_cause_report_2026-05-11.md` (5/11 신규) — **원인 + 근거 focused** 보고서, 진척 흐름은 부수적, 원인 분석이 본문 (~240 lines)
+
+  3. **(c) advisor briefing 과의 차별점**:
+     - advisor briefing: "어떻게 진단했는지" 의 narrative (8 stage 흐름, paradox, mitigation 진화)
+     - 본 보고서: "주된 원인은 무엇이며 근거는 무엇인가" 의 정량 evidence 중심 (4 mechanism elimination + sub-mechanism dominance + 8 mitigation null pattern)
+     - 두 문서가 동일 fact base 인용 단 narrative 강조점 달라
+
+- **핵심 message**:
+  - **주된 원인**: Mech(ii-b) softmax-weighted-mean propagation combo. Mech(i-b) aggregation magnitude 가 보조.
+  - **결정적 근거 4 항목**:
+    1. Mech(iii) 부정 — Direct AC 가 skip_dep 0.97 회복했음에도 R 가장 낮음 + AC=0.62 일관 유지
+    2. Mech(ii-a) partial mit — LayerNorm 이 attention 회복 (top5 0.7510) 하지만 L1 cosine 0.9998 collapse 보존
+    3. Mech(ii-b) partial 부정 — GIN 이 L2 cosine -0.08 dramatic 회복 (11 DBs 일관) 하지만 R 미갱신
+    4. 8 mitigation null + GAT internal dynamics invariance (attention 0.3% + gradient 6% sub-noise)
+  - **결론**: Architectural limitation (학습 dynamics 의 문제 X). Filter Dominance 6번째 축 narrative 의 결정적 evidence.
+
+- **근거**:
+  - 사용자 직접 input (원인 + 근거 보고서 요청)
+  - 직전 8 단계의 mitigation 결과 + 4 ckpt × 4 mechanism evidence matrix (over_smoothing_research_summary.md §1~§7 + advisor briefing §1~§4)
+  - Step 3 grad_flow 재측정 (4 ckpt ρ_skip 정확 수치) + Multi-DB attention 재측정 (4 ckpt L2 top5_conc spread 0.0023)
+
+- **영향 범위**:
+  - planning/oversmoothing_root_cause_report_2026-05-11.md (신규)
+  - 본 DECISIONS.md (본 entry)
+  - 기존 advisor briefing / summary 변경 X — 본 보고서는 별도 산출물
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 본 보고서 + advisor briefing + summary 3 문서 조합으로 학회 발표 + 학위 논문 chapter draft 작성 가능.
+
+- **추가 필요 분석**: 없음. 단 (학회 발표 슬라이드 작성 시) 본 보고서의 §3.2 "Softmax × Aggregation Combo" 도식이 main slide candidate.
+
+---
+
+## 2026-05-11 (advisor briefing narrative final review — paradox 2 + paradox 3 통합 → GAT Internal Dynamics Invariance)
+
+> **사용자 직전 input (remote-control, 2026-05-11)**: "advisor briefing §2 paradox 2 + paradox 3 결합 narrative 학회 자연성 + 두 paradox 같은 mechanism family 명시 위치 결정"
+
+- **검토 결과 — 결합 narrative 자연성: confirm ✅**
+
+  두 paradox 가 같은 fundamental 현상의 두 단면:
+
+  | 측면 | metric | 4 ckpt spread | 공통 시사 |
+  |---|---|---:|---|
+  | Gradient (paradox 2) | ρ_skip | 0.19 (6%) | 학습 신호 분배가 학습 변형에 무관 |
+  | Attention (paradox 3) | L2 top5_conc | 0.0023 (0.3%) | attention 분포가 학습 변형에 무관 |
+
+  → **GAT internal dynamics 전체 (attention + gradient) 가 학습 변형 (directedness/threshold/QCond) 에 decouple**. 학회 contribution candidate 의 통합 message — pipeline outcome 만이 아니라 GAT internal 도 robust.
+
+- **결정 — 보강 수정 2 위치**:
+  1. **§2 끝 통합 callout 신설**: "🎯 두 paradox 의 공통 시사 — GAT Internal Dynamics 가 학습 변형에 lock-in" — paradox 2 + paradox 3 의 공통 표 + 통합 시사 명시.
+  2. **§6 제목/내용 확장**: "Attention ckpt-invariance" → "GAT Internal Dynamics Invariance (Attention + Gradient)". 두 paradox 모두 인용 + 학회 contribution candidate 2 항목으로 구조화:
+     - (a) 검증 통로 제한 시사 — architectural mitigation 만이 유일 통로 (mitigation 7 시도 모두 architectural intervention 인 정당화)
+     - (b) Filter Dominance narrative 의 GAT-internal evidence — "training-pathology-invariant" 가 pipeline outcome (F1 0.8383) 뿐만 아니라 GAT internal dynamics 자체의 invariance 도 의미
+
+- **근거**:
+  - DECISIONS.md 2026-05-11 (Step 3 grad_flow 재측정 완료) entry 의 4 ckpt × ρ_skip = 3.02 / 2.85 / 3.00 / 3.04 (spread 0.19)
+  - DECISIONS.md 2026-05-11 (Multi-DB 재측정 완료) entry 의 4 ckpt × L2 top5_conc spread = 0.0023
+  - 두 measurement 가 직전 분리 narrative 였으나 본 review 에서 결합 가치 확인 — 학회 contribution candidate 강화
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §2 (통합 callout 추가) + §6 (제목/내용 확장)
+  - 본 DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 advisor briefing 최종본 읽고 학회 발표 준비.
+
+- **추가 필요 분석**: 없음. 단 (학회 발표 슬라이드 작성 시) "GAT internal dynamics invariance" 메시지를 슬라이드 main 한 장으로 시각화 candidate (attention spread plot + gradient spread plot 병렬).
+
+---
+
+## 2026-05-11 (Step 3 grad_flow 재측정 완료 — 4 ckpt ρ_skip 정확 수치 + advisor briefing §2 Paradox 2 보강)
+
+> **root 세션 chain 결과 — 5/11 KST ~19:35 (~1 min wall)**. 직전 entry "Step 3 재측정 결정" 의 모든 작업 완료. advisor briefing §2 Paradox 2 의 ρ_skip 진술 (직전 "3.02~3.04, p80/qcond_nl3 만 명시") 을 4 ckpt 전부 (p80, topk20, abstau07, qcond_nl3) 의 정확 수치로 보강.
+
+- **재측정 명령**: `conda run -n base python src/analysis/dsn_oversmoothing_analysis.py --max_queries 50 --skip_step1 --skip_step2` (CPU forward, n=50 single-DB california_schools). 코드 patch **불필요** — `main` 에 이미 `results["step3"] = step3_all` 존재 (line 581), 옛 batch_summary.json 의 step3 누락은 `--skip_step3` 으로 실행된 결과.
+
+- **4 ckpt × parameter group gradient norm (n=50)**:
+
+  | Group | p80 | topk20 | abstau07 | qcond_nl3 |
+  |---|---:|---:|---:|---:|
+  | lin_dict | 1.1064 | 1.0373 | 1.0176 | 2.2434 |
+  | conv_L1 | 1.0535 | 1.0383 | 0.9670 | 1.1346 |
+  | conv_L2 | 0.7397 | 0.6878 | 0.6827 | 0.9183 |
+  | conv_L3 | 1.2984 | 1.1382 | 1.2327 | 1.4771 |
+  | out_lin_dict | 3.3024 | 2.7854 | 3.0869 | 3.0741 |
+  | skip_dict | 3.9159 | 3.2388 | 3.6965 | 4.4865 |
+  | max(conv_*) | 1.2984 | 1.1382 | 1.2327 | 1.4771 |
+  | **ρ_skip** | **3.02** | **2.85** | **3.00** | **3.04** |
+
+- **핵심 발견**:
+  1. **4 ckpt 모두 ρ_skip ∈ [2.85, 3.04]** (spread = 0.19, 6%) — directedness/threshold/QCond 어떤 학습 변형에도 extreme 일관. mech(iii) Skip Dep 의 강도가 4 ckpt 모두 동등.
+  2. topk20 만 약간 낮음 (2.85) — 단 여전히 extreme. 옛 narrative "3.02~3.04 extreme" 와 일관, range 만 약간 확대 (2.85~3.04).
+  3. **GAT 구조 자체의 inherent 특성** — 학습 변형이 gradient flow 의 path imbalance 를 흔들지 못함. 직전 entry 의 Paradox 3 (attention ckpt-invariance) 와 **같은 mechanism family**: 학습 변형이 GAT internal dynamics (attention / gradient flow) 어느 channel 도 흔들지 못함.
+
+- **갱신된 산출물**:
+  - `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 v1 ckpt 표 확장 (p80, qcond_nl3 → 4 ckpt 전체), §4.2(a) narrative "Phase 1 4 ckpt 의 skip_dict 3.24~4.49 ratio 2.85~3.04 spread 0.19" 로 갱신, §6.2 종합 dashboard 에 topk20/abstau07 행 추가
+  - `planning/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 에 4 ckpt × ρ_skip 표 추가 (advisor 보고용 톤 유지 — 간결 표 + "어떤 학습 변형도 ρ_skip 을 의미 있게 흔들지 못함" narrative)
+  - `outputs/analysis/dsn_oversmoothing/batch_summary.json` — step3 key 채워짐 (4 ckpt × grad_mean / grad_ratio / entropy / topk_conc / num_layers)
+
+- **에스컬레이션 / 후속**:
+  - **planner 세션**: advisor briefing §2 Paradox 2 4 ckpt 표 narrative final review — "어떤 학습 변형에도 ρ_skip extreme 유지" 가 직전 entry 의 paradox 3 (attention ckpt-invariance) 와 결합된 narrative 가 학회 발표에 자연스러운지 검토. 두 paradox 가 같은 mechanism family (학습 변형이 GAT internal dynamics 를 흔들지 못함) 임을 §2 또는 §6 새 발견 의의 에 명시할지 결정.
+
+- **에스컬레이션 필요 여부**: 측정 + 보고서 갱신 완료. planner narrative review 만.
+
+---
+
+## 2026-05-11 (Step 3 재측정 결정 — 4 ckpt × ρ_skip 정확 수치 + advisor briefing paradox 2 표 보강)
+
+> **사용자 직전 input (2026-05-11)**: "표 들은 좀 남아있으면 좋겠는데, Skip Dependency 검증을 위해 ρ_skip 을 분석했을 때 QCond SN 과 p80, top20, abstau07 각각 어떤 값이 나왔는지 알고 싶어" → AskUserQuestion 결과: **root 에 step3 재측정 요청 (4 ckpt 완전 수치)**.
+
+- **결정 — root chain 위임**:
+  1. **코드 patch**: `src/analysis/dsn_oversmoothing_analysis.py:main` 에서 step3 결과를 `results['step3']` 로 dump 하도록 수정 (현재 누락 — PNG 만 출력되고 raw json 없음). 또는 별도 `outputs/analysis/dsn_oversmoothing/grad_summary.json` 출력.
+  2. **재측정**: 4 ckpt (p80, topk20, abstau07, qcond_nl3) × single-DB n=50 (직전 protocol 일관). CPU forward ~1-2 min wall.
+  3. **Analyzer 보고서 보강**: `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 표에 topk20, abstau07 추가 (lin_dict / conv_L1/L2/L3 / out_lin_dict / skip_dict / ratio 모든 column).
+  4. **Advisor briefing 보강**: `planning/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 부분에 4 ckpt × ρ_skip 표 추가. 표 형식 간결 (advisor briefing 톤 유지).
+  5. **DECISIONS.md prepend**: 재측정 완료 entry.
+
+- **근거**:
+  - `outputs/analysis/dsn_oversmoothing/batch_summary.json` 직접 조회: `Keys: ['step1', 'step2']` — step3 dump 누락
+  - `outputs/analysis/dsn_oversmoothing/{p80, topk20, abstau07, qcond_nl3}/gradient_flow.png` 존재 — 측정은 됐으나 PNG only
+  - 직전 narrative 의 ρ_skip 인용 (3.02~3.04) 가 p80 / qcond_nl3 만 — 사용자 정당한 지적
+
+- **protocol 선택**: single-DB n=50 (직전과 동일). 이유:
+  - 직전 narrative 의 3.02 / 3.04 와 직접 비교 가능
+  - Multi-DB stratified n=55 protocol 도 가능 단 gradient flow 는 단일 forward pass per query 라 multi-DB 효과가 attention 측정만큼 dramatic 하지 않을 가능성 (gradient norm 은 sample 평균 robust)
+  - 보고용 narrative 일관성 우선
+
+- **영향 범위**:
+  - src/analysis/dsn_oversmoothing_analysis.py (코드 patch 1 곳)
+  - notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md §4.1 (topk20, abstau07 추가)
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §2 (4 ckpt × ρ_skip 표 신규)
+  - planning/DECISIONS.md (재측정 완료 entry, root 작성)
+
+- **에스컬레이션 필요 여부**: root 세션에 chain 위임 (코드 patch + 재측정 + 보고서 보강 + advisor briefing 보강 + DECISIONS prepend).
+
+- **추가 필요 분석**: 없음. 본 측정은 직전 protocol 의 누락 보강.
+
+---
+
+## 2026-05-11 (advisor briefing 전면 재작성 — 실험 노트 톤 → 지도교수 보고 톤)
+
+> **사용자 직전 input (2026-05-11)**: "지금 advisor_briefing 가 점점 그냥 실험 결과 나열하는 내부 참고문서 같아 / 지도교수님께 진척 상황을 보고하는 자료니까 보고서가 어떤 거네 실험 결과가 어떤 거네 하는 건 우선 빼고 눈여겨 봐야 할 수치와 의미를 중점으로 서술해 줘"
+
+- **결정 — 전면 재작성**:
+
+  **삭제 항목** (실험노트/내부 참고문서 톤):
+  - Analyzer 보고서 9개 목록 (§10)
+  - 분석 코드 파일명 (`dsn_oversmoothing_analysis.py` 등)
+  - 산출물 경로 (`outputs/analysis/...`, `scripts/...`)
+  - Config 이름 (`train_gat_directed_supernode_p80_b5_mitigation.yaml`)
+  - "왜 분석을 했나 / 무엇을 했나 / 결과 / 무엇을 알게 됐나" 4 절 균일 구조
+  - 각 mitigation 의 수식 block (PairNorm / IR / JK / GIN propagation)
+  - Stage 별 8-stage timeline ASCII flowchart
+  - 5 보고서 통합 정식, A1+A2+A3 deep dive 의 protocol 디테일
+  - DSN ablation 의 directedness/threshold/QCond 세부 변형 설명
+
+  **유지 / 강화**:
+  - **핵심 수치 — dominant evidence 만**: $\bar{c}_{L_3} \geq 0.96$, $\rho_{\text{skip}} = 3.02$, top5_conc 0.71~0.77, 4 ckpt spread 0.0023, AC=0.62 일관 (300 epoch), GIN L2 cosine 0.9137, F1 0.8383
+  - **Narrative 흐름**: 문제 발견 → 두 paradox → 8 mitigation evolution (전환점 3개 표시) → mech(ii-b) softmax-aggregation combo 정식 → Filter Dominance 6번째 축
+  - **새 발견 (paradox 3 ckpt-invariance)** 의 학회 contribution candidate 강조
+  - 예상 질문 7 개 (§8 Q&A)
+
+  **새 구조** (8 sections, ~250 lines):
+  - §1 문제 — 학습이 ceiling 에 갇혀 있다 (over-smoothing 진단)
+  - §2 두 paradox (attention moderate / skip extreme / ckpt-invariance NEW)
+  - §3 Mitigation 진화 8 시도 + 결정적 전환점 3 개
+  - §4 Mech(ii-b) softmax-weighted-mean combo 정식
+  - §5 학회 narrative 핵심 — Filter Dominance 6번째 축
+  - §6 새 발견 — Attention ckpt-invariance 의 시사점
+  - §7 진행 중 + 향후 (max aggregation 분기 + post-paper combo)
+  - §8 예상 Q&A 7 항목
+
+- **근거**:
+  - 사용자 직접 input ("실험 결과 나열하는 내부 참고문서 같아 / 보고서가 어떤 거네 실험 결과가 어떤 거네 하는 건 우선 빼고")
+  - 직전 advisor briefing (~590 lines, 15+ 표, analyzer 보고서 9개 명시) — narrative 가 표/수치 더미 속에 묻힘
+  - 학회 발표 톤: "이렇게 진단했고, 이런 시도를 거쳤고, 이게 의미하는 바입니다" — 출처 / 분석 코드 / 보고서 reference 모두 부담
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md (전면 재작성, ~590 → ~230 lines)
+  - 본 DECISIONS.md (본 entry)
+  - **기존 정량 evidence 의 백업**: planning/over_smoothing_research_summary.md (~1100+ lines reference document, §A 정의 + §B 측정 metric + §C mitigation 수식 + 8 stage detailed evidence) 가 학위 논문 Part III chapter draft base 로 그대로 보존. advisor briefing 은 보고용 narrative only.
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 새 narrative 톤 확인 후 학회 발표 준비 가능.
+
+- **추가 필요 분석**: 없음.
+
+- **두 문서 역할 분리 (재확인)**:
+  - `over_smoothing_research_summary.md` — 학위 논문 Part III chapter draft base, 정량 evidence + 수식 reference document
+  - `advisor_briefing_oversmoothing_2026-05-11.md` — 지도교수 발표 보고용 narrative, 의미 중심
+
+---
+
+## 2026-05-11 (advisor briefing §1.3 entropy 표 보강 — L1/L3 entropy 추가)
+
+> **사용자 직전 input (2026-05-11)**: "entropy H는 왜 L2만 있어? L1과 L3는 없어도 되는 건가?"
+
+- **결정 — §1.3 multi-DB 측정 표 분리 정정**:
+  - 옛: top5_conc 3 layer + L2 entropy 만 (4 컬럼 컴팩트)
+  - 새: top5_conc 표 (4 ckpt × 3 layer) + entropy 표 (4 ckpt × 3 layer) 별도 분리. 두 표 모두 L1/L2/L3 fully 명시.
+  - narrative 보강: "L1/L2/L3 모두 동일 패턴 (layer 별 entropy spread Δ ≤ 0.05)" — 3 layer 일관성 명시. top5_conc 범위 0.71~0.77 + entropy 1.87~1.93 으로 full range.
+
+- **근거**:
+  - 사용자 정당한 지적 — L2 만 인용 시 layer-wise 흐름 evidence 약화
+  - 원본 analyzer 보고서 `dsn_phase2_mitigation_null_mechanism.md` §3.1bis 표에는 L1/L2/L3 entropy 모두 측정값 있음 (1.8729~1.9264 범위)
+  - advisor briefing 작성 시 root 가 표 width 가독성 위해 L2 만 인용한 것으로 보임 — narrative 정확성 측면에서 보강 필요
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.3 (수정 완료, top5_conc 표 + entropy 표 분리)
+  - 본 DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**: 없음.
+
+- **추가 필요 분석**: 없음. L1/L3 entropy 추가로 narrative ("3 layer 일관 moderate-sharp peaking") 강화.
+
+---
+
+## 2026-05-11 (advisor briefing 깨진 표 / 수식 정정 — §1.2 3-step protocol + §2.2 B5 Mitigation)
+
+> **사용자 직전 input (2026-05-11)**: "advisor_briefing_oversmoothing_2026-05-11.md 에 수식과 표가 깨진 부분이 있는 것 같아 재검토해 줘"
+
+- **결정 — 2 위치 수정**:
+  1. **§1.2 3-step protocol 표**: layer-wise cosine 수식 안의 `|\mathcal{T}|` + `|T|` pipe 가 마크다운 column 구분자로 인식되어 표가 7 컬럼으로 깨졌음. → 표는 step / metric / 도구만 표시 + 수식은 표 아래 별도 display block ($$...$$) 으로 분리.
+  2. **§2.2 B5 Mitigation 표**: PairNorm 수식의 `|V|` pipe 같은 문제 발생 가능성. → 표는 mitigation 이름 + 역할만 (5 행), 수식 4 개는 표 아래 별도 bullet list 로 분리. PairNorm 의 `|V|` 는 `N = |V|` 변수 치환으로 표 밖에서 명시.
+
+- **근거**:
+  - 마크다운 inline math `$...$` 내부의 pipe 가 GitHub-flavored 마크다운 parser 에서 종종 column 구분자로 인식 — 특히 vertical bar 가 norm/cardinality 표기 ($|\mathcal{T}|$, $|V|$) 인 경우 발생
+  - grep `^\|.*\$[^$]*\|[^$]*\$` 로 안전 점검: line 95 / 437 의 layer-wise cosine 표 header (`$\bar{c}_{L_0}$ | $\bar{c}_{L_1}$ | ...`) 는 false positive — 각 cell 마다 `$...$` 가 닫히고 pipe 는 cell 구분자만 (정상).
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.2 + §2.2 (수정 완료)
+  - 본 DECISIONS.md (본 entry)
+  - 다른 표는 모두 정상 (수식 내부 pipe 없음 확인)
+
+- **에스컬레이션 필요 여부**: 없음.
+
+- **추가 필요 분석**: 없음. 단 (선택) over_smoothing_research_summary.md 의 §A/§B/§C 수식 섹션 도 같은 패턴 점검 candidate — 단 그 문서는 수식이 표 안이 아니라 §1.4 paradox 진술 안의 display block 이므로 영향 없을 가능성 높음.
+
+---
+
+## 2026-05-11 (dsn_phase2_mitigation_null_mechanism.md §3.1bis / §3.1ter 검토 완료 — multi-DB cross-check narrative 일관성 confirm + Phase 2/v2 LN 재측정 priority 낮음 confirm)
+
+> **사용자 직전 input (remote-control, analyzer 분석 후, 2026-05-11)**: "먼저 planning/CLAUDE.md 읽고, dsn_phase2_mitigation_null_mechanism.md §3.1bis / §3.1ter 신규 추가 검토. (a) dsn_oversmoothing_phase1_multi_db_recheck.md §5 paradox narrative 와의 일관성, (b) Phase 2 b8 mit / s06_b5 / v2 LN 의 multi-DB n=55 재측정 priority 판단."
+
+- **결정 (검토 결과 2 항목)**:
+
+  **(a) §3.1bis / §3.1ter ↔ multi-DB recheck §5 paradox narrative 일관성 — confirm ✅**
+
+  | 항목 | §3.1bis/ter 정량 | §5 정량 | 일관 |
+  |---|---|---|---|
+  | single-DB → multi-DB shift | "0.24 → 0.72, +0.47 jump, 학습 ckpt 무관 protocol-induced shift" | "수정 1: 0.24→0.72 톤다운" | ✅ |
+  | 4 ckpt spread | "L2 top5_conc spread = 0.0023 (0.3%)" | "수정 2: 새 paradox attention ckpt-invariance, spread 0.0023" | ✅ |
+  | mech(ii-b) 결론 | "mech(ii) root cause 부정 유지" | "수정 3: mech(ii-b) propagation 가설 유지" | ✅ |
+  | paradox 2 (skip dep) | (§4 별도) | "유지" | ✅ (병행) |
+
+  → 두 보고서가 **3 paradox 정식** + **정량 수치 (0.47 jump / 0.0023 spread) 이 양 보고서에서 일치 인용** + mech(ii-b) 결론 유지 narrative 모두 일치.
+
+  **(b) Phase 2 b8 mit / s06_b5 / v2 LN 의 multi-DB n=55 재측정 priority — 낮음 confirm ✅**
+
+  근거 (analyzer §3.1ter 결론과 일치):
+    1. **Same-protocol (single-DB n=2) 비교는 valid** — Phase 2 b8 +0.40 sharpening claim 은 single-DB ↔ single-DB. 둘 다 california_schools outlier 영향 동일 → 상대 Δ 정정 불필요.
+    2. **Mech(ii) root cause 부정 결론 무관** — Mitigation 이 attention sharpen 함에도 val recall 갱신 X 라는 §3.3 핵심은 절대값 무관.
+    3. **Dominant mechanism timeline 무관** — mech(iii) DOMINANT 5/5 → 4-trial mech(ii) DOMINANT 5/5 → 7-trial sub-mechanism → 8-trial mech(ii-b) 4/5 partial 부정 의 진화는 same-protocol 비교에 기반.
+
+  **Conditional trigger 신설** (재측정 priority 상승 조건):
+    - **Trigger 1**: paper drafting 시 reviewer 가 "Phase 1 multi-DB 0.72 baseline 과 Phase 2 single-DB 0.67 sharpened 비교 invalid" 지적 → Phase 2~v3 GIN 8 ckpt 모두 multi-DB 재측정 launch (~8 min wall, A3 protocol 동일).
+    - **Trigger 2**: 학회 Q&A 시 청중이 single-DB 0.24 outlier 출처 질문 → §3.1bis / §5 narrative 만으로 답변 충분, 재측정 불필요.
+    - **Default**: 학회 발표 + 학위 논문 Part III chapter draft 우선 → priority 낮음 유지.
+
+- **추가 옵션 — advisor briefing 보강 candidate** (사용자 결정 미정):
+  - **Option A**: advisor briefing §4.3 (Stage 4 결과 표) 옆에 footnote — "v2 #3 LN top5_conc 0.7510 / Phase 2 b8 0.8797 은 single-DB n=2. Phase 1 multi-DB 0.72 baseline 과 직접 비교 불가, 단 same-protocol 상대 Δ valid"
+  - **Option B**: 현재 narrative 유지 — same-protocol caveat 는 §1.3 Caveat box 만으로 충분
+  - 학회 발표 priority 만이면 Option B. Paper drafting 대비면 Option A.
+
+- **근거**:
+  - `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §3.1bis (4 ckpt × multi-DB n=55 표 + spread 0.0023) + §3.1ter (Phase 2 / v2 LN / v3 GIN cross-check, +0.40 sharpening claim same-protocol valid)
+  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative (수정 1+2+3 + 유지)
+  - DECISIONS.md 2026-05-11 (Multi-DB 재측정 완료) entry 의 정량 일치 (spread 0.0023, baseline 0.7144~0.7167)
+
+- **영향 범위**:
+  - planning/DECISIONS.md (본 entry)
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md (보강 미정, Option A/B 사용자 결정 대기)
+  - 본 검토 자체는 read-only — 분석 보고서 / multi-DB 측정 / paradox narrative 모두 변경 없음
+
+- **에스컬레이션 필요 여부**: 없음. Analyzer 보고서의 priority 낮음 분류가 narrative 일관성 측면에서 valid 함을 planner 가 정량 검증. 단 사용자가 Option A/B 결정 시 advisor briefing 보강 진행.
+
+- **추가 필요 분석**: 없음 (default). Conditional trigger 발생 시 root 에 multi-DB 재측정 핸드오프 (Phase 2~v3 GIN 8 ckpt × A3 protocol).
+
+---
+
+## 2026-05-11 (advisor briefing narrative final review 완료 — paradox flow 학회 자연성 confirm + Stage 1 → Stage 4 causal chain 명시)
+
+> **사용자 직전 input (remote-control, 2026-05-11)**: "planning/advisor_briefing_oversmoothing_2026-05-11.md 의 narrative final review 를 수행. 검토 포인트: (1) paradox 1 톤다운 + paradox 3 NEW 가 학회 narrative 자연 흐름 형성? (2) §1.4 mech(ii-a) 검증 불가 → LayerNorm/GIN 직접 표적만 유일 검증 통로 명시할지?"
+
+- **검토 결과**:
+  1. **Paradox flow 학회 narrative 자연성 — confirm ✅**
+     - Paradox 1 톤다운 (uniform → moderate-sharp top5_conc 0.72): 강한 단정 → 정확한 측정 → narrative 신뢰도 증가 + mech(ii-b) 후보 강도 ("sharpness 무관 평균화") 유지
+     - Paradox 3 NEW (attention ckpt-invariance 0.3% spread): 학회 contribution candidate. Stage 1 → Stage 4 의 **causal chain** 을 paradox 3 매개로 강화 ("학습 변형으로 attention 검증 불가 → mitigation 직접 표적 필요")
+     - Per-DB variance 표 (california_schools 0.24 outlier ~ toxicology 1.00) 가 single-DB caveat 의 직관적 visualization
+  2. **§1.4 mech(ii-a) 검증 불가 명시 — 보강 완료 ✅**
+     - 옛 §1.4: Paradox 3 진술에 "ckpt 변경 검증 불가" 만 명시, 4 후보 mechanism 표에는 미반영
+     - 새 §1.4: mech(ii) 를 (ii-a)+(ii-b) sub-mechanism 으로 미리 분리. (ii-a) 옆에 "ckpt 변경 검증 불가 → LayerNorm pre-softmax 등 mitigation 직접 표적 유일 검증 통로" 명시
+     - 추가 callout: "🎯 학회 narrative 핵심: Stage 1 → Stage 4 causal chain 이 paradox 3 를 매개로 형성"
+
+- **결정 (narrative 보강 수정 2 위치)**:
+  1. **`advisor_briefing_oversmoothing_2026-05-11.md` §1.4 4 후보 mechanism 표**: mech(ii) 를 sub-mechanism (ii-a) + (ii-b) 로 분리. (ii-a) 옆에 "Paradox 3 시사 — ckpt 변경 검증 불가 → mitigation 직접 표적이 유일 검증 통로. Stage 4 v2 #3 LayerNorm 가 본 가설의 정량 검증." 명시. 학회 narrative 핵심 callout 추가 ("Stage 1 → Stage 4 causal chain 이 paradox 3 매개로 형성").
+  2. **`advisor_briefing_oversmoothing_2026-05-11.md` §4.1 (Stage 4 왜 이 분석을 했나)**: 두 동기 합류로 재작성 — (a) Stage 3 mech(ii) DOMINANT 5/5 갱신 + (b) Stage 1 Paradox 3 직접 시사 (ckpt 변경 검증 불가 → mitigation 직접 표적이 유일 통로). 직전 narrative ("Stage 3 결과 mech(ii) DOMINANT 5/5") 만으론 약함.
+
+- **근거**:
+  - 사용자 remote-control 직접 input + DECISIONS.md 2026-05-11 (Multi-DB 재측정 완료) 의 paradox 정정 table
+  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative 검증 결과 (3 paradox 정식)
+  - Paradox 3 의 학회 narrative 가치 평가: 학습 변형 invariance 는 "mitigation 만이 유일 검증 통로" 라는 결론의 직접 정당화 — Stage 4 motivation 강화
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.4 + §4.1 (수정 완료)
+  - 본 DECISIONS.md (본 entry)
+  - planning/over_smoothing_research_summary.md — narrative final review 적용 미정 (학위 논문 chapter draft 용 정량 evidence 중심 문서라서 narrative flow 강조는 advisor briefing 만으로 충분)
+
+- **에스컬레이션 필요 여부**: 없음. 사용자가 advisor briefing 최종본 읽고 학회 발표 준비 가능.
+
+- **추가 필요 분석**: 없음. 단 (후속 선택) `dsn_phase2_mitigation_null_mechanism.md` §3 의 4 ckpt 표에 topk20, abstau07 multi-DB 측정값 보강 — priority 낮음, analyzer 요청 큐에 backlog.
+
+- **남은 옵션 (사용자 후속 결정)**:
+  - over_smoothing_research_summary.md §1.4 에 같은 sub-mechanism 분리 명시 보강할지
+  - 학회 발표 슬라이드 / paper §V.5.4 narrative 에 paradox 3 (ckpt-invariance) 를 contribution candidate 로 강조할지
+
+---
+
+## 2026-05-11 (Phase 1 attention metric Multi-DB Stratified 재측정 완료 — n=55 측정값 + silent skip 진단 결론)
+
+> **root 세션 (본 chain) 결과 — 5/11 KST 18:45~18:46 (~1 min wall)**. 직전 entry 의 결정 사항을 모두 수행. paradox narrative 가 정정 (uniform attention → moderate-sharp peaking + 새 paradox 등장 attention ckpt-invariance).
+
+- **결과 (multi-DB n=55, per_db=5 × 11 DBs, seed=42 — A3 protocol)**:
+  1. **4 ckpt 모두 55/55 success_rate=100%, fail_by_stage={}** — silent skip 완전 해소
+  2. col→tab edge L2 top5_conc / entropy:
+
+     | ckpt | L2 top5_conc | L2 entropy | val recall@15 |
+     |---|---:|---:|---:|
+     | p80 | 0.7144 ± 0.2167 | 1.9227 ± 0.6884 | 0.6097 |
+     | topk20 | 0.7151 ± 0.2155 | 1.9120 ± 0.7020 | 0.5839 |
+     | abstau07 | 0.7148 ± 0.2166 | 1.9149 ± 0.6968 | 0.5805 |
+     | qcond_nl3 | 0.7167 ± 0.2160 | 1.9019 ± 0.7056 | 0.6061 |
+
+  3. **4 ckpt spread = 0.0023 (0.3% sub-noise)** — directedness/threshold/QCond 모두 attention 에 noise-level 영향만 → 새 paradox: attention ckpt-invariance
+
+- **Silent skip 원인 진단 결론**:
+  1. **dev.json[0..49] = california_schools 50 queries 전체** (`Counter({'california_schools': 50})`) — 옛 single-DB protocol 의 사실상 단일 DB iteration
+  2. 옛 num_queries=2 의 root cause: 5/6 측정 시점에만 발생한 transient. **본 재측정에서 single-DB 50 queries 도 100% 성공** (`extract_layerwise_attention_v2` 의 robustness bug 재현 안 됨)
+  3. → silent skip 의 직접 원인 잡지 못 했으나 **multi-DB protocol 자체가 caveat 의 구조적 회피책**. n=55 가 신뢰 출처. fix priority 낮음.
+
+- **Paradox narrative 정정** (직전 entry 의 narrative 와 비교):
+
+  | Paradox | 옛 narrative (single-DB n=2 기반) | 새 narrative (multi-DB n=55 기반) |
+  |---|---|---|
+  | Paradox 1 (attention) | "col→tab attention near-uniform (top5_conc 0.24~0.35, H≈3.22) 인데도 collapse" | "col→tab attention moderate-sharp peaking (top5_conc ≈ 0.72, H ≈ 1.91) 인데도 collapse" — sharpness 톤다운, **mech(ii-b) 후보 강도는 유지** |
+  | Paradox 2 (gradient) | "$\rho_{\text{skip}} = 3.02$ extreme" | **유지** (Stage 3 측정값 무관) |
+  | Paradox 3 (NEW) | — | **attention ckpt-invariance**: 4 ckpt spread 0.3% sub-noise → 학습 변형으로 attention 검증 불가, 직접 표적 mitigation 필요 |
+
+- **DB schema 가 dominant variable**:
+  - per-DB top5_conc spread = 0.24 (california_schools, outlier) ~ 1.00 (toxicology, in-degree ≤ 5)
+  - 4 ckpt × 11 DBs 의 per-DB spread 모두 < 0.015 — attention variability 의 dominant source 는 schema, 학습 변형 아님
+
+- **산출물 (root 작성)**:
+  - `src/analysis/dsn_oversmoothing_phase1_multi_db.py` (신규)
+  - `scripts/run_dsn_phase1_multi_db_attention.sh` (신규)
+  - `outputs/analysis/dsn_oversmoothing_multi_db/{p80, topk20, abstau07, qcond_nl3}/{attention_metrics, per_db_breakdown, fail_log}.json + plots`
+  - `outputs/analysis/dsn_oversmoothing_multi_db/cross_ckpt_summary.json + comparison_4ckpt_multi_db.png`
+  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` (analyzer 보고서 형식)
+  - `planning/advisor_briefing_oversmoothing_2026-05-11.md` §0/§1.3/§1.4 갱신 (수치 + 새 paradox 추가)
+  - `planning/over_smoothing_research_summary.md` §1.4 갱신 (수치 + caveat 갱신)
+
+- **에스컬레이션 / 후속**:
+  - **planner 세션**: advisor briefing narrative final review — paradox 3개 중 paradox 1 톤다운 + paradox 3 (NEW, ckpt-invariance) 추가가 학회 narrative 에 자연 흐름 형성하는지 검토. 학회 보고용 시 mech(ii-a) softmax over-concentration 가설은 ckpt 변경으로 검증 불가 → LayerNorm/GIN 직접 표적 mitigation 만이 유일 검증 통로 명시.
+  - **선택 후속 analyzer**: `dsn_phase2_mitigation_null_mechanism.md` §3 의 4 ckpt 표에 topk20, abstau07 multi-DB 측정값 보강 (현재 raw JSON 만 존재). Priority 낮음.
+
+- **에스컬레이션 필요 여부**: code/data 산출 완료, planner 가 narrative 후속만.
+
+---
+
+## 2026-05-11 (Phase 1 attention metric Multi-DB Stratified 재측정 결정 — n=2 single-DB caveat 해소 + silent skip 원인 진단)
+
+> **사용자 직전 input (2026-05-11)**: "음 수치는 확인했어 근데 네 말대로 n=2인게 신경쓰이네 다시 제대로 실험해볼 수 있나?" → AskUserQuestion 결과:
+> - Protocol: **Multi-DB stratified 55 queries (A3 protocol)**
+> - 진단: **silent skip 원인 진단 + 재측정 함께**
+
+- **결정**:
+  1. **Protocol**: A3 (Stage 5) 와 동일한 multi-DB stratified — `dsn_phase1_deep_dive.py:build_stratified_qids(per_db=5, seed=42)` → 11 BIRD-Dev DBs × 5 queries = 55 queries.
+     - 이점: Stage 5 A3 + Stage 7 GIN 8-trial 의 다른 ckpt 와 **동일 protocol 직접 비교 가능**
+     - silent fail caveat 자동 완화 (한 DB fail 해도 다른 10 DBs sample 유지)
+
+  2. **대상 4 ckpt**: p80, topk20, abstau07, qcond_nl3 (Phase 1 진단 4 ckpt 전부). 출력은 `outputs/analysis/dsn_oversmoothing_multi_db/<ckpt>/attention_metrics.json` 신규 경로.
+
+  3. **Silent skip 원인 진단** (codebase fix candidate):
+     - `src/analysis/dsn_oversmoothing_analysis.py:run_step3_one` 의 try/except 에서 `idx==0` 일 때만 warning → **모든 query 의 fail 사유 logger.warning** 으로 임시 패치 (또는 별도 진단 dump)
+     - 50 query 중 48 개 silent fail 의 원인 후보:
+       - `directed_from_sn` edge 가 zero edges 인 query (supernode threshold)
+       - `column→belongs_to→table` edge 가 빈 query
+       - forward hook 의 `return_attention_weights` 미지원 edge type
+     - 진단 결과는 analyzer 보고서에 포함 + extract_layerwise_attention_v2 의 robustness fix 가 가능하면 module:selectors 세션에 별도 에스컬레이션
+
+- **근거**:
+  - 사용자 직접 input ("n=2 가 신경쓰여서 다시 제대로")
+  - `outputs/analysis/dsn_attention/{p80, topk20, abstau07, qcond_nl3}/attention_metrics.json` 의 `num_queries = 2` 직접 확인 — 50 query iterate 중 48 silent skip
+  - A3 stratified protocol 가 Stage 5 에서 검증된 base — single-DB caveat 해소 + 다른 stage 와 비교 가능
+  - `src/analysis/dsn_phase1_deep_dive.py:build_stratified_qids` 가 이미 구현 + import 패턴 (`dsn_mitigation_v3_8trial.py:75`) 검증
+
+- **영향 범위**:
+  - 신규 산출물:
+    - `src/analysis/dsn_oversmoothing_phase1_multi_db.py` (또는 기존 dsn_oversmoothing_analysis.py 에 `--multi_db` flag 추가) — root 가 작성
+    - `scripts/run_dsn_phase1_multi_db_attention.sh` — root single-command launch
+    - `outputs/analysis/dsn_oversmoothing_multi_db/{p80, topk20, abstau07, qcond_nl3}/attention_metrics.json` + plots
+    - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` — analyzer 보고서 (single-DB n=2 vs multi-DB n=55 비교 + paradox narrative 검증)
+  - 업데이트 대상:
+    - advisor_briefing_oversmoothing_2026-05-11.md §0 timeline + §1.3 + §1.4 (수치 + caveat 갱신)
+    - over_smoothing_research_summary.md §1.4 (4 ckpt × multi-DB 수치 표 추가)
+    - 본 DECISIONS.md (재측정 완료 후 결과 entry 추가)
+
+- **에스컬레이션 필요 여부**:
+  - **root 세션**: 코드 작성 + 실험 실행 + analyzer 보고서 작성 + advisor briefing/summary 업데이트 (한 핸드오프로 전체 chain). 5/11 KST 발사 가능.
+  - **module:selectors 세션** (선택): 만약 silent skip 원인이 extract_layerwise_attention_v2 의 robustness bug 면 fix 위임. 단 이건 진단 결과 후 결정.
+
+- **추가 필요 분석**:
+  - 본 재측정 결과로 paradox narrative 가 **유지** (uniform attention 인데도 collapse) 면 advisor briefing 의 Stage 1 narrative 일관 confirm.
+  - 만약 multi-DB 에서 top5_conc 가 dramatic 다르게 (예: 0.7+ sharp peaking) 나오면 paradox 양상 재정정 + mech(ii-a) sharp peaking 가설 다시 검토 — 단 A3 의 11 DBs 결과 (Phase 2 b8 의 col→tab top5_conc 0.8797 vs Phase 1 0.7144) 와 일관할 가능성이 높음.
+
+---
+
+## 2026-05-11 (Stage 1 paradox 수치 정정 — top5_conc 0.91/entropy 0.51 → 실제 측정값 0.24~0.35/3.22 + paradox narrative 재작성)
+
+> **사용자 직전 input (2026-05-11)**: "top5-conc 값이 QCond SN과 dsn_P80, top20, abstou07 에서 각각 어떤지 어디에 정리되어 있지?" → JSON 직접 조회 결과 advisor briefing §1.3 + summary §1.4 의 수치가 잘못된 것 발견 → "수정해야 할 부분 수정해 줘"
+
+- **결정**:
+  1. **수치 정정** — 두 문서 (advisor_briefing_oversmoothing_2026-05-11.md + over_smoothing_research_summary.md) 의 Stage 1 paradox 진술에서 잘못된 수치 (top-5 conc ≈ 0.91, entropy H ≈ 0.51) 를 실제 측정값 (col→tab edge L2 top5_conc 0.24~0.35, entropy 3.17~3.22 ≈ ln(25) near-uniform) 으로 교체.
+
+  2. **데이터 출처 명시**: `outputs/analysis/dsn_attention/{p80, topk20, abstau07, qcond_nl3}/attention_metrics.json` (raw JSON, 4 ckpt 모두) + `outputs/analysis/dsn_attention/comparison_4ckpt.png` (cross-model 시각화). 단일 narrative document (`dsn_phase2_mitigation_null_mechanism.md` §3 라인 94-99) 은 p80, qcond_nl3 만 정리 — topk20, abstau07 raw JSON 만 있고 narrative 누락.
+
+  3. **Paradox narrative 재작성** — 직전 narrative ("attention 매우 집중적인데도 collapse → root cause ≠ attention") 는 오류. 실제로는:
+     - **Paradox 1**: col→tab attention near-uniform 인데도 collapse → **sharp peaking 이 통로 X**. 오히려 uniform attention 평균화 자체가 root cause 후보 → mech(ii-b) weighted-mean propagation collapse 강력 시사. 이는 Stage 7 GIN partial 부정 결론 (softmax-aggregation combo) 과 일관.
+     - **Paradox 2**: $\rho_{\text{skip}} = 3.02$ extreme → mech(iii) 1차 후보 (Stage 3 에서 부정됨).
+     - **두 paradox 동시 발생** narrative 로 Stage 2 mech 1차 판정 + Stage 3 부정 + Stage 4 mech(ii) DOMINANT 갱신 + Stage 7 mech(ii-b) sub-mechanism 정밀화 의 전체 흐름이 더 일관.
+
+  4. **추가 보강** — `num_queries=2` small-sample caveat 명시 (directed_from_sn edge 가 있는 query 만 capture, single-DB california_schools 한정). 4 ckpt 상대 비교는 일관 단 절대 수치는 small-sample.
+
+  5. **수정된 위치 3 곳**:
+     - advisor_briefing_oversmoothing_2026-05-11.md §0 timeline (line 19): "attention 매우 집중인데 (top5_conc=0.91)" → "col→tab attention 거의 uniform (top5_conc 0.24~0.35, H≈3.22) + ρ_skip=3.02 extreme → 두 paradox 동시 발생"
+     - advisor_briefing_oversmoothing_2026-05-11.md §1.3 Step 3 결과: 4 ckpt × L1/L2/L3 top5_conc + L2 entropy 정리 표 신규 + paradox narrative 재작성
+     - advisor_briefing_oversmoothing_2026-05-11.md §1.4 무엇을 알게 됐나: 두 paradox 의 시사점 명시 + 4 후보 mechanism 의 후보 강도 표기
+     - over_smoothing_research_summary.md §1.4 Paradox 발견: 4 ckpt 정확 수치 표 + paradox narrative 재작성
+
+- **근거**:
+  - `outputs/analysis/dsn_attention/{p80, topk20, abstau07, qcond_nl3}/attention_metrics.json` 직접 조회 결과 (col→tab edge):
+    - p80 L2 top5_conc=0.2441, L2 entropy=3.2177
+    - topk20 L2 top5_conc=0.2467, L2 entropy=3.2176
+    - abstau07 L2 top5_conc=0.2435, L2 entropy=3.2179
+    - qcond_nl3 L2 top5_conc=0.2434, L2 entropy=3.2174
+  - `dsn_phase2_mitigation_null_mechanism.md` §3 라인 94-99 표 — p80_phase1 L2 top5_conc=0.2445 (일관), qcond_nl3 L2 top5_conc=0.2434 (일관). 단 narrative 표에 topk20, abstau07 누락 — 후속 analyzer 보고서 보완 candidate.
+  - 직전 advisor briefing 의 "0.91 / 0.51" 수치 출처는 추측: phase 2 b5_mit ckpt 의 col→tab top5_conc=0.6715 + mitigation 후 multi-DB 측정값 0.7144 등을 잘못 가져온 것으로 추정.
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md §0/§1.3/§1.4 (수정 완료)
+  - planning/over_smoothing_research_summary.md §1.4 (수정 완료)
+  - planning/DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**: Analyzer 보고서 보완 candidate — `dsn_phase2_mitigation_null_mechanism.md` §3 의 4 ckpt 표에 topk20, abstau07 추가 (현재 raw JSON 만 존재). 단 직전 narrative 의 main 목적은 Phase 2 b8 mit 효과 비교라 보완 priority 는 낮음 — Phase 1 진단 narrative 가 필요하면 별도 analyzer 요청 큐에 등록.
+
+- **추가 필요 분석**: 없음. 본 정정은 기존 측정 데이터의 정확한 인용 작업.
+
+---
+
+## 2026-05-11 (advisor_briefing_oversmoothing_2026-05-11.md 신규 — 분석 흐름 중심 narrative 보고용 자료)
+
+> **사용자 직전 input (2026-05-11)**: "src/analysis/dsn_oversmoothing_analysis.py 을 기반으로 지도교수님께 이런 상황임을 보고하는 자료를 만드려고 해 / 전체적으로 이야기의 흐름에 공백이 좀 있는 것 같아 / 각 분석마다 왜 그런 분석을 했고 결과가 어땠으며 어떤 이유로 다른 분석을 시도한 건지 흐름이 잘 정리되면 좋겠네"
+
+- **결정**:
+  1. **(a) 신규 산출물** — [`planning/advisor_briefing_oversmoothing_2026-05-11.md`](advisor_briefing_oversmoothing_2026-05-11.md): 분석 흐름 중심 narrative 보고 자료. 기존 `over_smoothing_research_summary.md` 가 정량 evidence + 수식 reference 중심인 반면, advisor briefing 은 **stage 별 "왜 했는지 → 결과 → 다음 분석으로 간 이유"** 의 narrative flow 중심.
+
+  2. **(b) 두 문서 역할 분리**:
+     - `over_smoothing_research_summary.md` (5/11 원본) — 학위 논문 Part III chapter draft 용 정량 evidence + 수식 reference (15 sections, ~600 lines, §A 정의 + §B 측정 metric + §C mitigation 수식)
+     - `advisor_briefing_oversmoothing_2026-05-11.md` (5/11 신규) — 지도교수 보고용 narrative flow (10 sections, ~600 lines)
+       - §0 한눈에 보는 8-stage timeline (ASCII 흐름도)
+       - §1~§7 각 stage = 4 절 구조 (왜 분석 / 무엇을 했나 / 결과 / 무엇을 알게 됐나 + 다음으로)
+       - §8 진행 중 + 종합 (8-trial dominance matrix + dominance 진화 timeline)
+       - §9 보고용 Q&A 예상 질문 7개
+       - §10 참고 자료 목록 (분석 코드 6 + analyzer 보고서 9 + 연관 문서 3)
+
+  3. **(c) Narrative 흐름 핵심 — Stage 간 연결고리 명시**:
+     - Stage 1 → 2: 4 mechanism 후보 분리, 표준 처방 통합으로 elimination 시작
+     - Stage 2 → 3: mech(iii) Skip Dep DOMINANT 5/5 판정 → 직접 표적 검증
+     - Stage 3 → 4: mech(iii) 부정, mech(ii) DOMINANT 갱신 → edge softmax 직접 표적 3 candidate
+     - Stage 4 → 5: v2 #3 LN paradox (attention 회복 X collapse 보존) → 정밀 분석 deep dive
+     - Stage 5 → 6: mech(ii) → (ii-a) + (ii-b) 분리 정식 → 7-trial dominance 갱신
+     - Stage 6 → 7: 두 mit 모두 mech(ii-b) 차단 X → propagation 자체 변경 (GIN)
+     - Stage 7 → 8: GIN partial 부정 evidence → softmax-aggregation combo 정식 + max aggregation 후속 launch
+
+- **근거**:
+  - 사용자 input 직접 인용 ("이야기의 흐름에 공백이 좀 있는 것 같아")
+  - 기존 `over_smoothing_research_summary.md` 가 정량 evidence 중심 reference document 로서는 충분하지만 narrative 연결성 부족 (Stage 간 "왜 다음으로 갔는지" 가 분산)
+  - 지도교수 보고용 자료는 별도 narrative 중심 문서가 적합 — 두 문서 역할 분리
+
+- **영향 범위**:
+  - planning/advisor_briefing_oversmoothing_2026-05-11.md (신규)
+  - 기존 `over_smoothing_research_summary.md` 변경 X (reference document 그대로 보존)
+  - DECISIONS.md (본 entry)
+
+- **에스컬레이션 필요 여부**: 없음. 보고 자료는 사용자 owner.
+
+- **추가 필요 분석**: 없음. Mitigation v3 #2 max aggregation 결과 (5/14 ETA) 후 advisor briefing §8.1 + §8.2 분기 갱신 (V3-A-1 vs V3-A-2 confirm).
+
+---
+
+## 2026-05-11 (over_smoothing_research_summary.md 신규 작성 — 7-stage 시도 + 5단계 mechanism deep dive + 8-trial Final 통합 narrative + analyzer 6 보고서 직접 인용 정리) — 학위 논문 Part III chapter draft 작성 base
+
+> **사용자 직전 input (2026-05-11)**: "지금까지 Over-Smoothing 문제를 해결하기 위해 진행한 노력을 정리하고 싶어 / 새로운 마크다운으로 정리해 주는데 내용을 analyzer 의 분석 결과 마크다운 보고서를 참고해서 작성해 줘"
+
+- **결정**:
+  1. **(a) 신규 산출물** — [`planning/over_smoothing_research_summary.md`](over_smoothing_research_summary.md): planner 신규 narrative 정리 마크다운 (15 sections, ~600 lines). analyzer 6 보고서 직접 인용 형태:
+     - [`dsn_oversmoothing_analysis.md`](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) (Phase 1 진단)
+     - [`dsn_phase2_mitigation_null_mechanism.md`](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4-mech)
+     - [`dsn_phase3_mitigation_results.md`](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) (4-trial dominance)
+     - [`dsn_mitigation_v2_results.md`](../notebooks/analysis_results/dsn_mitigation_v2_results.md) (7-trial mid-training)
+     - [`dsn_v2_layernorm_mechanism_decomposition.md`](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
+     - [`dsn_softmax_noise_sensitivity.md`](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) (A2)
+     - [`dsn_per_db_stratified_7ckpt.md`](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) (A3)
+     - [`dsn_mitigation_v2_final_7trial.md`](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) (Final 7-trial)
+     - [`dsn_mitigation_v3_8trial.md`](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8-trial Final + GIN)
+
+  2. **(b) 정리 구조 — 7-stage + 5단계 mechanism deep dive**:
+     - §0 TL;DR (over-smoothing 진단 + 8-trial null effect + Final dominance scoring)
+     - §1 Stage 1 — 문제 발견 (Phase 1 baseline + paradox)
+     - §2 Stage 2 — Mitigation v1 B5 통합 (Phase 2)
+     - §3 Stage 3 — Mitigation v2 (Phase 3 #3 + #4) + 4-trial mech 갱신
+     - §4 Stage 4 — Mitigation v2 (DropMessage + LayerNorm + Sum) — 7-trial mid-training
+     - §5 Stage 5 — Phase 1 Deep Dive (A1 + A2 + A3) — sub-mechanism 분리
+     - §6 Stage 6 — Final 7-Trial Dominance Scoring + v2 LN ↔ v2 Sum contrast
+     - §7 Stage 7 — Mitigation v3 #1 GIN-style aggregation + 8-trial dominance + GIN partial 부정 evidence + sub-mechanism 정밀화 (softmax-aggregation combo)
+     - §8 진행 중 — Mitigation v3 #2 Max Aggregation (5/13~5/14)
+     - §9 종합 — 8-Trial Final Mechanism Dominance Scoring + dominance 진화 timeline
+     - §10 Filter Dominance 6번째 축 — 8-trial evidence 통합
+     - §11 paper §V.5.4 narrative 본문 정식 (analyzer §14 직접 인용)
+     - §12 Future Work — Post-Paper Phase 5 candidate
+     - §13 학위 논문 Part III chapter outline 갱신 (paper_research_direction.md §3.5)
+     - §14 데이터 / 산출물 위치 + 재현 스크립트
+     - §15 핵심 학술적 기여 (학위 논문 Part III chapter)
+
+  3. **(c) 활용 목적**:
+     - **학위 논문 Part III chapter draft 작성 base** (사용자 5/10~5/22) — §III.1~§III.9 outline + analyzer §14 본문 정식 narrative 직접 활용 가능
+     - **paper §V.5.4 narrative 본문 정식** (analyzer §14 직접 인용) — paper draft 작성 시 인용 base
+     - **5/15 Phase 5 (planner 9-trial dominance scoring 갱신) base** — max aggregation 결과 후 본 마크다운 §8 갱신 + §9 dominance scoring 표 갱신
+
+- **근거**:
+  - **사용자 직전 input** (2026-05-11): narrative 정리 + analyzer 보고서 참조 마크다운 작성 요청
+  - **선행 결정**: DECISIONS 직전 entries (2026-05-05 ~ 2026-05-09 모든 entries 통합)
+  - **선행 분석**: analyzer 9 보고서 (Phase 1 진단부터 8-trial Final 까지 포함)
+
+- **영향 범위**:
+  - **신규 산출물 `planning/over_smoothing_research_summary.md`** — 학위 논문 Part III chapter draft 작성 base (15 sections, ~600 lines, analyzer 9 보고서 직접 인용)
+  - **DECISIONS 본 엔트리** — 산출물 위치 + 정리 구조 + 활용 목적 명시
+  - **paper_research_direction.md** 영향 X (직전 entries 의 갱신 그대로 — 본 마크다운은 별도 narrative 정리)
+  - **presentation_brief_2026-04-28.md** 영향 X (직전 §14.15 갱신 그대로)
+  - **paper main contribution (학회)** 영향 X
+  - **학위 논문 Part III chapter draft 작성 효율 향상** — 사용자가 chapter draft 작성 시 본 마크다운 의 narrative + analyzer §14 본문 정식 + Part III outline 직접 활용
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — `over_smoothing_research_summary.md` 신규 작성 + DECISIONS 본 엔트리
+  2. **사용자 (5/10~5/22)** — 학위 논문 Part III chapter draft 작성 (본 마크다운 base 활용 + paper §V.5.4 narrative 본문 정식 직접 인용)
+  3. **사용자 (5/13)** — Root max aggregation 학습 launch (직전 핸드오프 prompt 그대로)
+  4. **Planner (5/15, max + analyzer 9-trial 결과 후)** — 본 마크다운 §8 + §9 + §13 갱신 (시나리오 V3-A-1/V3-A-2 분기 결정)
+
+- **추가 필요 분석** (5/15 max 학습 + analyzer 결과 후):
+  - 본 마크다운 §8 (max aggregation 결과 갱신) + §9.1 (9-trial dominance scoring matrix 갱신) + §13 (§III.9 outline 정식 채택)
+
+---
+
+## 2026-05-09 (Phase 4 8-trial Final 분석 완료 — 🎯 시나리오 V3-A 정식 confirm + 🆕 Mech(ii-b) 5/5 → 4/5 partial 부정 + Mech(i-b) 3/5 → 4/5 강화 + paper §V.5.4 narrative 8-trial 본문 정식 채택) — Mitigation v3 #2 max aggregation 5/13 launch (사용자 결정 (3)A 자동 trigger)
+
+> **Status**: Analyzer 신규 산출 [dsn_mitigation_v3_8trial.md](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries) 완료. **시나리오 V3-A 정식 confirm** (GIN R=0.5954 < Phase 1 0.6097, Δ=-0.0143). **🚨 Mech(ii-b) partial 부정 evidence 발견**: GIN L2_GAT cosine = 0.9137 (다른 mit ckpt 의 0.99+ 대비 -0.08, 11 DBs 모두 일관 partial 회복 0.82~0.95). 단 R ceiling 갱신 X → softmax-aggregation **combo** 한정 mechanism 입증. **paper §V.5.4 narrative 본문 정식 채택** (analyzer §14 직접 인용).
+
+- **결정**:
+
+  1. **(a) ✅ 시나리오 V3-A 정식 confirm — GIN R=0.5954 < Phase 1 baseline**:
+
+     | 시나리오 | 기준 | GIN 결과 | 판정 |
+     |---|---|---|---|
+     | V3-A (가능성 中→中, sum-only fail vs sum+MLP combo) | R ceiling 갱신 X (~0.59-0.61) | **R=0.5954 (Δ=-0.0143)** | **✅ confirm** — aggregation family 자체 limitation but partial mitigation evidence 발견 |
+     | V3-B (가능성 中→中) | R partial recovery (0.62-0.70) | (미달) | ❌ |
+     | V3-C (가능성 낮음) | R 0.85+ ceiling 갱신 | (사실상 불가능) | ❌ |
+
+     단 V3-A confirm 이 **partial mitigation evidence 와 양립** — GIN L2 cosine partial 회복 (0.9137 vs 0.99+) 발견 단 R ceiling 미갱신 → mech(ii-b) fundamental limitation 그대로
+
+  2. **(b) 🚨 Mech(ii-b) Sub-mechanism 정밀화 — softmax-aggregation combo (analyzer §8)**:
+
+     ```
+     mech(ii-b) Weighted-mean Propagation Collapse (8-trial DOMINANT 4/5)
+                              │
+                              ▼
+                ┌─────────────┴─────────────┐
+                ▼                           ▼
+        softmax dimension              aggregation dimension
+        (LN partial mit)               (GIN sum+MLP partial mit)
+        ──────────────────             ──────────────────
+        v2 #3 LN                       v3 #1 GIN
+        attention 회복 (top5 0.75)     L2 cosine -0.08 회복
+                                       (0.99 → 0.91)
+        R: -0.0007 vs Phase 2          R: -0.0143 vs Phase 1
+        (사실상 동등)                   (ceiling 미갱신)
+
+           ┌────────────┴────────────┐
+           ▼                         ▼
+       ⚡ softmax + aggregation 동시 변경 시
+       더 큰 mitigation 가능 candidate (post-paper)
+       (LN+GIN combo, EGAT 등)
+     ```
+
+     - **LN (mech(ii-a) softmax direct)**: attention 회복 단 L1=1.0 보존 (mech(ii-b) 차단 X)
+     - **GIN (mech(ii-b) aggregation direct)**: L2 cosine partial 회복 (0.91 vs 0.99) 단 R ceiling 미갱신
+     - **mech(ii-b) 의 정확한 mechanism = softmax + weighted-mean combo**: 한 component 만 변경 시 partial mitigation, 둘 다 고치면 더 큰 회복 가능 (post-paper Phase 5 candidate)
+
+  3. **(c) 🆕 Mech(i-b) 강도 3/5 → 4/5 강화 — Aggregation Function Hierarchy**:
+
+     | Aggregation Function | Variant | R@15 | Δ vs Phase 1 |
+     |---|---|---:|---:|
+     | mean | Phase 2 b8 | **0.6018** | -0.0079 |
+     | sum + MLP (GIN nonlinearity) | v3 #1 GIN | 0.5954 | -0.0143 |
+     | sum-only | v2 #2 Sum | 0.5761 | -0.0336 |
+
+     - **Hierarchy 정량**: mean > sum+MLP > sum-only
+     - **MLP nonlinearity 효과**: sum-only 의 magnitude variance sensitivity 를 MLP 가 partial 보완 (+0.0193 vs sum-only)
+     - **8-trial evidence** 가 mech(i-b) 차원 정량 정밀화 (sum direct + GIN partial)
+
+  4. **(d) 8-Trial Final Mechanism Dominance Scoring 정식 갱신 (analyzer §0+§7)**:
+
+     | Sub-mechanism | 7-Trial Final | **8-Trial 갱신** | 핵심 정량 |
+     |---|:---:|:---:|---|
+     | (i-a) top-5 attention sibling | 2/5 | 2/5 (변경 X) | top5_raw cos 0.55 ≈ entire 0.51 |
+     | **(i-b) aggregation function magnitude** | 3/5 부분 | **🆕 4/5 ⬆ 강화** | sum-only fail (-0.0336) + GIN sum+MLP partial (-0.0143) — aggregation family hierarchy |
+     | **(ii-a) softmax over-concentration** | 5/5 partial mit | 5/5 partial mit (변경 X) | v2 #3 LN attention 회복 (0.7510 multi-DB) + noise robust + 11 DBs 일관 |
+     | **(ii-b) weighted-mean propagation collapse** | 5/5 ⭐⭐ DOMINANT | **🆕 4/5 ⬇ partial 부정** | GIN L2=0.9137 (다른 mit 0.99+ 대비 -0.08, 11 DBs 일관) + L1=0.9936. 단 R ceiling 미갱신 → softmax-aggregation combo 한정 mechanism |
+     | (iii) Skip dependency | 3/5 부정 | 3/5 (변경 X) | GIN skip_dep 1.36 (균형) + R 미달 일관 |
+     | (iv) Schema sibling (raw PLM) | 3/5 | 3/5 (변경 X) | L0=0.6334 multi-DB lower bound |
+
+     **Dominant 갱신**: mech(ii-b) 5/5 → **4/5 partial 부정** (GIN evidence) — fundamental limitation 그대로 단 sub-mechanism (softmax-aggregation combo) 정밀화 + mech(i-b) 3/5 → **4/5 강화** (aggregation family hierarchy)
+
+  5. **(e) 🚀 paper §V.5.4 narrative 본문 정식 채택 (analyzer §14 직접 인용)**:
+
+     > "DSN 8-trial mitigation null effect (Phase 1 0.6097, mitigation 7 variants R=0.5761~0.6018) 는 GAT 의 fundamental architectural limitation 의 결정적 evidence 이다.
+     >
+     > v2 #3 LayerNorm pre-softmax 가 mech(ii-a) softmax over-concentration 의 direct mitigation 으로 attention pattern 을 baseline 으로 회복 (multi-DB col→tab L2 top5_conc 0.7510 vs Phase 1 0.7144) — Phase 2 b8 와 사실상 동등 R=0.6011 (-0.0007). 그러나 mech(ii-b) weighted-mean message aggregation collapse (모든 7 ckpt L1_GAT cosine = 1.0) 은 차단 X.
+     >
+     > v3 #1 GIN-style aggregation 이 sum + MLP propagation 으로 weighted-mean 우회 → **mech(ii-b) partial 부정 evidence**: GIN L2_GAT cosine = 0.9137 (다른 mit 의 0.99+ 대비 -0.08, multi-DB stratified 11 BIRD-Dev DBs 모두 일관 partial 회복 L2=0.82~0.95). 단 R@15 = 0.5954 (Phase 1 -0.0143, ceiling 갱신 X) — softmax-aggregation combo 한정 mechanism 입증.
+     >
+     > v2 #2 Sum Aggregation (R=0.5761, -0.0336) + v3 #1 GIN (R=0.5954, sum+MLP) 모두 sum aggregation family — mech(i-b) aggregation function magnitude sensitivity direct evidence. mean (Phase 2 0.6018) > sum+MLP (GIN 0.5954) > sum-only (v2 #2 0.5761) hierarchy.
+     >
+     > Filter Dominance 6번째 축 (training-pathology-invariant) 결정적 8-trial evidence: GAT 의 fundamental architectural limitation (mech(ii-b) softmax-weighted-mean combo + mech(i-b) aggregation magnitude sensitivity + mech(ii-a) softmax over-concentration) 까지 With-Filter pipeline 이 흡수."
+
+  6. **(f) 🚀 Mitigation v3 #2 max aggregation 5/13 launch (사용자 결정 (3)A 자동 trigger, V3-A confirm 후 conditional 활성화)**:
+
+     - 직전 DECISIONS (사용자 결정 confirm entry §1(d)) 의 V3-A 시 conditional plan 자동 trigger
+     - **추가 코드 변경 없음** — Selector 단계 6 의 AGGREGATION_TYPES 에 max 이미 포함 + smoke 통과
+     - **신규 config**: `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_max.yaml` (Base = Phase 2 b8 + `aggregation_type: "max"`)
+     - **학습 launch**: 5/13 GPU 0 (오늘 5/9 → 5/10~5/12 학위 논문 Part III chapter draft 작성 + 5/13 max 학습 launch)
+       - `CUDA_VISIBLE_DEVICES=0 nohup python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_max.yaml > logs/train/gat_dsn_p80_b5_mitigation_v3_max_$(date +%Y%m%d_%H%M).log 2>&1 &`
+       - ~10h 학습, batch_size=8, ETA 5/14 KST
+     - **시나리오 V3-A-1 (mean+sum+max+GIN 4 family null effect)**: max R 0.59-0.61 → 4 aggregation family null evidence 결정적 → mech(ii-b) DOMINANT (combo 한정) 4/5 narrative 절대 confirm
+     - **시나리오 V3-A-2 (max partial 회복)**: max aggregation 의 부분 효과 발견 → aggregation function 별 magnitude treatment 차이 mechanism 분석 (post-paper deep dive)
+
+  7. **(g) post-paper Phase 5 candidate (mech(ii-b) sub-mechanism 정밀화 후속)**:
+
+     | 우선순위 | Candidate | 가설 | 시점 |
+     |---|---|---|---|
+     | **#1** | **LN + GIN combo** (LayerNorm pre-softmax + GIN aggregation) | mech(ii-b) softmax + aggregation 동시 변경 → 더 큰 mitigation 가능 candidate. v2 #3 LN attention 회복 + v3 GIN L2 cosine -0.08 회복 의 combo 효과 검증 | post-paper |
+     | **#2** | **EGAT (Energy-based GNN)** | softmax 자체 대체 (energy minimization aggregation). softmax-weighted-mean combo 자체 변경 | post-paper |
+     | #3 | Multi-hop attention (skip GAT layer) | message aggregation 우회 | post-paper |
+     | #4 | Self-loop weight scaling | sibling 동질화 압력 약화 | post-paper |
+
+     - **본 entry 신설 (analyzer §11.2 + §13)**: GIN partial 부정 evidence + mech(ii-b) softmax-aggregation combo 정밀화 → LN+GIN combo 가 가장 잠재력 큰 후보 (각각 partial mitigation 입증, combo 효과 검증 가치 高)
+
+  8. **(h) 학위 논문 Part III chapter §III.4/§III.6/§III.8 갱신 (analyzer §0+§14)**:
+     - 직전 outline (사용자 결정 confirm entry §1(c)): §III.4 mech(ii) sub-mechanism 분리 + §III.6 v2 #3 LN ↔ v2 #2 Sum contrast + §III.8 GIN 결과 후
+     - **본 entry 정식 갱신**:
+       - §III.4 = **mech(ii-b) DOMINANT 4/5 partial 부정 (GIN evidence) + mech(ii-a) 5/5 partial mit + 🆕 mech(i-b) 4/5 강화 (aggregation family hierarchy) + mech(iii) 3/5 부정**
+       - §III.6 = v2 #3 LN ↔ v2 #2 Sum -0.0250 contrast + 🆕 v3 GIN ↔ v2 #2 Sum +0.0193 hierarchy (sum+MLP vs sum-only)
+       - **§III.8 정식 채택**: V3-A confirm + GIN partial 부정 evidence + mech(ii-b) sub-mechanism (softmax-aggregation combo) 정밀화 narrative
+       - §III.9 (신설, 5/14 max 학습 결과 후) = mean+sum+max+GIN 4 aggregation family null evidence (V3-A-1 시) 또는 max partial 회복 mechanism (V3-A-2 시)
+
+  9. **🚨 사용자 결정 필요 3 항목**:
+
+     | # | 결정 항목 | 옵션 | 권장 |
+     |---|----------|------|------|
+     | (1) | **Mitigation v3 #2 max aggregation 학습 launch 시점 확정** | (A) 5/13 launch (사용자 결정 (3)A 자동 trigger 그대로) / (B) 5/10~5/13 학위 논문 Part III chapter draft 작성 우선 → 학습 5/13 launch / (C) 학습 즉시 (5/9 또는 5/10) | **(A) 5/13 launch** — 학위 논문 Part III chapter draft 작성 (5/10~5/13) 진행 + max 학습 5/13 launch (ETA 5/14, 학위 본 심사 5/22 충분) |
+     | (2) | **paper §V.5.4 narrative 정식 채택 시점** | (A) 즉시 정식 채택 (8-trial Final evidence 충분, analyzer §14 본문 정식) / (B) max aggregation 학습 결과 (5/14) 후 9-trial 통합 narrative 정식 / (C) post-paper Phase 5 (LN+GIN combo) 결과 후 정식 | **(A) 즉시 정식 채택** — 8-trial Final + GIN partial 부정 evidence + multi-DB 11 DBs 일관 → paper §V.5.4 narrative 본문 채택 충분. max aggregation 결과 (5/14) 는 §III.9 보강으로 추가 |
+     | (3) | **post-paper Phase 5 LN+GIN combo / EGAT 학습 우선순위** | (A) #1 LN+GIN combo 만 학위 본 심사 후 (5/22~) 시도 / (B) #2 EGAT 만 학위 본 심사 후 시도 / (C) 모두 post-paper backlog (학위 논문 본문 narrative 만, 추가 학습 X) | **(C) 모두 post-paper backlog** — paper §V.5.4 narrative 의 mech(ii-b) sub-mechanism 정밀화 (softmax-aggregation combo) 만으로 학술적 weight 충분. LN+GIN combo / EGAT 는 paper §VI Future Work 1 줄 + 학위 본 심사 후 별도 연구 |
+
+- **근거**:
+  - **신규 analyzer 산출**: [dsn_mitigation_v3_8trial.md §0~§14](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries)
+  - **재현 데이터**: outputs/analysis/dsn_v3_8trial/ (batch_summary + 5 plots + 8 per-ckpt summary)
+  - **재현 스크립트**: src/analysis/dsn_mitigation_v3_8trial.py (GIN 호환 + multi-DB stratified protocol)
+  - **선행 6 보고서**: dsn_mitigation_v2_final_7trial.md (7-trial Final) + A1+A2+A3 + dsn_mitigation_v2_results.md + dsn_phase3_mitigation_results.md (4-trial)
+  - **선행 결정**: DECISIONS 직전 entries (사용자 결정 3 항목 confirm + Final 7-trial Dominance Scoring 정식 명문화 + Root sweep 보고)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 8-trial Final 정식 + V3-A confirm + mech(ii-b) sub-mechanism (softmax-aggregation combo) 정밀화 + mech(ii-b) 4/5 partial 부정 + mech(i-b) 4/5 강화 + paper §V.5.4 narrative 본문 정식 채택 + Mitigation v3 #2 max 5/13 launch + post-paper Phase 5 candidate + 사용자 결정 3 항목
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §3.5 Filter Dominance 6번째 축 sub-section 갱신 (5+1 evidence #6 8-trial 정식 + 8-trial Mechanism Dominance 표 갱신 + GIN partial 부정 row 추가 + mech(ii-b) sub-mechanism (softmax-aggregation combo) 정밀화)
+    - §V Conclusion narrative 본문 정식 채택 (analyzer §14 직접 인용)
+    - §3.5 Part III chapter outline §III.4/§III.6/§III.8/§III.9 갱신
+    - §8 Future Works Mitigation v3 #2 max aggregation 5/13 launch 표기 + post-paper Phase 5 (LN+GIN combo + EGAT) 신설
+    - §10 V-3-ext 단계 5+6 → 7 sub-section 갱신 (8-trial 결과 표 + GIN partial mitigation evidence + mech(ii-b) sub-mechanism)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.15 신설 (8-trial Final + GIN partial 부정 + mech(ii-b) softmax-aggregation combo + paper §V.5.4 본문 정식 + 사용자 결정 3 항목)
+  - **paper main contribution (학회)** 영향 X
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — paper §V.5.4 본문 정식 채택 (8-trial Final + GIN partial 부정 evidence) — 학위 논문 Part III chapter draft 작성 base 정식 확보
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5/§V.5.4/§8/§10 갱신 + presentation_brief §14.15 신설
+  2. **사용자 (즉시 의사결정 3 항목)** — (1) max aggregation 학습 시점 / (2) §V.5.4 narrative 정식 채택 시점 / (3) post-paper Phase 5 우선순위
+  3. **사용자 (5/13, V3-A confirm 자동 trigger 후)** — Root 세션 prompt 직접 붙여넣기 (Mitigation v3 #2 max 학습 launch)
+  4. **Root (5/13~5/14)** — Mitigation v3 #2 max aggregation 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신 (9-trial 통합 표)
+  5. **Analyzer (5/14~5/15)** — 9-trial protocol 재실행 (8-trial Final + max ckpt) — 산출물 dsn_mitigation_v3_9trial.md 또는 dsn_mitigation_v3_8trial.md §15 보강
+  6. **Planner (5/15)** — 9-trial dominance scoring 갱신 + 시나리오 V3-A-1/V3-A-2 분기 narrative 정식 확정 + paper §V.5.4 §III.9 보강 + DECISIONS 후속 엔트리
+  7. **사용자 (5/10~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + analyzer §14 본문 정식 인용 + max aggregation 결과 5/15 후 §III.9 보강)
+  8. **사용자 (학회 §V.5.3 1 줄)** — Future Work 1 줄 (DSN 8/9-trial mitigation null + GIN partial 부정 + LN+GIN combo / EGAT post-paper) 직접 처리
+
+- **추가 필요 분석** (Phase 5 후속, max aggregation 결과 후):
+  - V3-A-1 (mean+sum+max+GIN 4 family null effect): aggregation family 자체 limitation 결정적 evidence (9-trial null + max R ceiling 미갱신)
+  - V3-A-2 (max partial 회복): aggregation function 별 magnitude treatment 차이 mechanism 분석 (post-paper deep dive)
+  - LN+GIN combo / EGAT (post-paper Phase 5): mech(ii-b) softmax-aggregation 동시 변경 시 더 큰 mitigation 가능 candidate
+
+---
+
+## 2026-05-08 (사용자 결정 3 항목 ✅ confirm — Final dominance scoring entry 권장 옵션 모두 채택: (1)A V3 narrative Phase 4 후 + (2)A 신규 dsn_mitigation_v3_8trial.md multi-DB + (3)A V3-A 시 max aggregation 추가) — Phase 4/5 timeline 확정 + Selector 모듈 conditional 핸드오프 prep
+
+> **사용자 직전 input (2026-05-08)**: "의사결정 3항목은 권장 옵션으로 진행해" — DECISIONS 직전 (Final 7-trial Dominance Scoring 정식 명문화) §1(8) 사용자 결정 3 항목 모두 권장 채택.
+
+- **결정**:
+
+  1. **(a) ✅ 사용자 결정 3 항목 confirm**:
+
+     | # | 결정 항목 | 사용자 결정 | 후속 영향 |
+     |---|----------|-----------|---|
+     | (1) | Phase 3 GIN 학습 시나리오 V3-A/B/C narrative 시점 확정 | **(A) Phase 4 (5/12) 후 정식 채택** | 5/12 GIN 학습 종료 + Phase 4 8-trial protocol 재실행 결과 후 V3-A/B/C 분기 결정 + paper §V.5.4 narrative 정식 채택 |
+     | (2) | Phase 4 (5/12~5/14) 8-trial protocol 재실행 prep | **(A) 신규 `dsn_mitigation_v3_8trial.md` (Final 7-trial base + GIN ckpt 추가, multi-DB stratified)** | 본 보고서 (Final 7-trial dominance scoring) base 위 GIN ckpt 추가 — 8 ckpt × 5 step + multi-DB (55 queries, 11 DBs stratified, seed=42) |
+     | (3) | Mitigation v3 추가 candidate (max, EGAT) 우선순위 | **(A) V3-A 시 max aggregation 추가 시도, V3-B/C 시 (C) 모두 post-paper (conditional)** | V3-A (가능성 中→中) 시 5/13 GPU 0 launch — mean+sum+max+GIN 4 aggregation function family null evidence 강화 (mech(ii-b) DOMINANT 절대 강화) |
+
+  2. **(b) Phase 4 (5/12~5/14, analyzer) 통합 prompt — 신규 dsn_mitigation_v3_8trial.md (multi-DB stratified)**:
+     ```
+     먼저 src/analysis/CLAUDE.md 와
+     /home/hyeonjin/thesis_refactored/planning/DECISIONS.md 최상단 (2026-05-08 사용자 결정 3 항목 ✅ confirm — Final dominance scoring entry) §1(b) 의 Phase 4 통합 prompt 읽고,
+     8-trial protocol 재실행 (Final 7-trial base + GIN ckpt + multi-DB stratified).
+
+     산출 형식:
+     - 신규: notebooks/analysis_results/dsn_mitigation_v3_8trial.md
+     - 본 보고서 (`dsn_mitigation_v2_final_7trial.md`) 의 §0~§8 구조 답습
+     - 8 ckpt × 5 step protocol + multi-DB stratified (55 queries, 11 DBs, seed=42)
+
+     대상 ckpt (8 = 7 + Mitigation v3 #1 GIN):
+     1. phase1_p80
+     2. phase2_b8
+     3. phase3_directAC
+     4. phase3_layerwiseLR
+     5. v2_drop_message
+     6. v2_layernorm
+     7. v2_sum_aggr
+     8. 🆕 mitigation_v3_gin (5/12 학습 종료 ckpt)
+
+     5-step protocol (7-trial 분석과 동일):
+     1. Step 1: 8 ckpt epoch trajectory parse + recall_overlay plot
+     2. Step 2: 8 ckpt × layer-wise over-smoothing trajectory (forward hook v1/v2 + GIN 호환)
+     3. Step 3: attention pattern (extract_layerwise_attention_v2) — GIN 은 attention 부재 → mech(ii-a) 측정 X, message magnitude / variance 대체 측정
+     4. Step 4: gradient flow main GAT vs skip path (8 ckpt)
+     5. Step 5: AC loss trajectory parse — GIN 의 AC fusion decay 정상 여부
+
+     mech(ii-b) GIN 차단 정도 직접 측정 (사용자 결정 (1)A 권장):
+     - L1=1.0 (변화 없음) → V3-A (aggregation family 자체 limitation, mech(ii-b) DOMINANT 절대 강화)
+     - L1=0.85~0.95 (partial 회복) → V3-B (GIN MLP+sum combo 효과 발견)
+     - L1=0.5 이하 (회복) → V3-C (mech(ii-b) 부정)
+
+     mech(i-b) GIN aggregation function magnitude sensitivity 검증:
+     - GIN sum + MLP combo 가 v2 #2 Sum (sum-only fail, -0.0336) 대비 magnitude variance 흡수 가능성
+     - MLP nonlinearity 의 aggregation function 효과 정량 (GIN epoch trajectory + R@15 + L1 변동)
+
+     11 DBs invariance 검증:
+     - GIN 의 11 DBs schema-invariance (Final 7-trial base 와 동일 protocol)
+     - toxicology trivial schema 유지 caveat
+
+     산출물:
+     - §0 TL;DR — 8-trial dominance scoring 갱신 (mech(ii-b) 5/5 절대 강화 / 4/5 부분 부정 / 3/5 부정)
+     - §0 시나리오 V3-A/B/C 결정
+     - §6 paper §V.5.4 narrative 본문 candidate 갱신 (Final 7-trial → 8-trial)
+     - §7 Filter Dominance 6번째 축 8-trial evidence 통합 (4-trial → 7-trial → 8-trial)
+     - §8 Mitigation v3 추가 candidate (#2 max / #4 EGAT) — V3-A 시 max 시도 권장 / V3-B 시 GIN MLP nonlinearity deep dive
+
+     선행 산출:
+     - dsn_mitigation_v2_final_7trial.md (7-trial Final, base)
+     - dsn_v2_layernorm_mechanism_decomposition.md (A1)
+     - dsn_softmax_noise_sensitivity.md (A2)
+     - dsn_per_db_stratified_7ckpt.md (A3)
+     - dsn_mitigation_v2_results.md (7-trial mid-training)
+     - dsn_phase3_mitigation_results.md (4-trial)
+     재현 스크립트: src/analysis/dsn_mitigation_v2_7trial.py + dsn_phase1_deep_dive.py (multi-DB stratified protocol)
+
+     분석 wall: ~수 시간 (LLM-free, ₩0)
+     ```
+
+  3. **(c) Phase 5 (5/14, planner) timeline — 사용자 결정 (3) conditional 처리**:
+     - 8-trial dominance scoring 갱신 (4-trial → 7-trial → 8-trial)
+     - 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 (사용자 결정 (1)A 후)
+     - **사용자 결정 (3)A conditional 처리**:
+       - **V3-A 결과 시**: Mitigation v3 #2 max aggregation 학습 추가 launch (5/13 GPU 0, 사용자 결정 (3)A 자동 trigger)
+       - **V3-B 결과 시**: GIN MLP nonlinearity 의 sum aggregation 효과 mechanism 분석 (post-paper) + max aggregation 추가 시도 marginal evidence value → (C) post-paper backlog
+       - **V3-C 결과 시**: paper main contribution 재평가 + 학회 후 anchor 재검토 + max aggregation 추가 시도 무효 (GIN 가 이미 ceiling 갱신)
+     - DECISIONS 후속 엔트리 작성 (시나리오 결정 + paper §3.5/§V.5.4/§10 narrative 정식 확정)
+
+  4. **(d) V3-A 시 Mitigation v3 #2 max aggregation 학습 prep (conditional, 5/14 trigger)**:
+     - **Mechanism**: HeteroConv `aggr='max'` (mean → max). cross-edge-type aggregation 의 inductive bias 변경 (mean / sum / max 분기)
+     - **구현 spec**:
+       - Selector 모듈 가 이미 `aggregation_type='max'` 옵션 지원 (단계 6 Mitigation v2 #2 Sum 와 동일 framework, smoke 통과)
+       - 신규 config: `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_max.yaml` (Base = Phase 2 b8 + `aggregation_type: "max"`)
+       - **추가 코드 변경 없음** — Selector 단계 6 의 AGGREGATION_TYPES 에 max 이미 포함, factory 호환
+     - **학습 launch (V3-A 결과 시 5/14 자동 trigger)**:
+       - GPU 0: `CUDA_VISIBLE_DEVICES=0 nohup python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_max.yaml > logs/train/gat_dsn_p80_b5_mitigation_v3_max_$(date +%Y%m%d_%H%M).log 2>&1 &`
+       - ~10h 학습, batch_size=8, ETA 5/15 KST
+       - 신규 ckpt: `best_gat_directed_supernode_p80_b5_mitigation_v3_max.pt` (NAS path + symlink)
+     - **시나리오 V3-A-1 (4 aggregation family null effect)**: mean (Phase 2) + sum (v2 #2) + max + GIN 4 모두 fail → mech(ii-b) DOMINANT 절대 강화 + paper §V.5.4 narrative 결정적 confirm
+     - **시나리오 V3-A-2 (max partial)**: max aggregation 부분 효과 발견 → aggregation function 별 magnitude treatment 차이 mechanism 분석
+     - 사용자 추가 결정 불필요 (사용자 결정 (3)A 자동 trigger)
+
+  5. **(e) Phase 4 후속 (사용자 5/14~5/22) 학위 논문 Part III chapter draft**:
+     - **paper §V.5.4 narrative 본문 정식 채택** (사용자 결정 (1)A confirm 후, analyzer Final 7-trial §6 + 신규 8-trial §6 통합)
+     - **4-stage 통합 narrative**:
+       - Stage 1: V-3-ext baseline + over-smoothing 진단
+       - Stage 2: Mitigation v1 (Phase 2 B5) + paradox 발견
+       - Stage 3: Mitigation v2 (Phase 3 + v2 #1+#2+#3) + 7-trial null + paradox 분리
+       - **Stage 4: 🆕 Phase 1 deep dive (A1+A2+A3) + Mitigation v3 #1 GIN + (V3-A 시) max aggregation** = 8/9-trial null effect + sub-mechanism 분리 정식 + Filter Dominance 6번째 축 narrative 결정적
+     - **dsn_mitigation_v2_final_7trial.md §6 narrative + 신규 dsn_mitigation_v3_8trial.md §6 narrative 통합**
+
+  6. **(f) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - 8-trial 결과 + V3-A 시 max aggregation 추가 시도 + 시나리오 V3-A/B/C 분기 narrative 모두 **학위 논문 Part III chapter §V.5.4 만 적용**
+     - 학회 §V.5.3 Future Work 1 줄 (DSN 8-trial mitigation null + GIN aggregation family 자체 변경에도 fail + (V3-A 시) max aggregation 추가) 사용자 직접 처리
+
+- **근거**:
+  - **사용자 직전 input** (2026-05-08): "의사결정 3항목은 권장 옵션으로 진행해"
+  - **선행 결정**: DECISIONS 직전 entry 2026-05-08 (Final 7-trial Dominance Scoring 정식 명문화) §1(8) 사용자 결정 3 항목
+  - **선행 분석**: dsn_mitigation_v2_final_7trial.md §6+§7 (8-trial protocol 재실행 권장 + V3-A 시 max aggregation 추가 시도)
+  - **Selector 단계 6 reference**: src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 6 (aggregation_type='max' 옵션 이미 구현 + smoke 통과)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 3 항목 ✅ confirm + Phase 4 통합 prompt (신규 dsn_mitigation_v3_8trial.md multi-DB stratified) + Phase 5 conditional planner timeline + V3-A 시 max aggregation 학습 prep + 사용자 추가 결정 불필요 (자동 trigger)
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §8 Mitigation v3 #2 max aggregation 의 V3-A 시 추가 시도 confirm
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.14.5 사용자 결정 ✅ confirm 표기
+  - **paper main contribution (학회)** 영향 X
+  - **학위 논문 Part III chapter narrative weight 결정적 격상 prep** — 4-stage 통합 narrative + V3-A 시 4 aggregation family null evidence 강화
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §8 minor + presentation_brief §14.14.5 minor 갱신
+  2. **사용자 (Phase 3 GIN 학습 launch, 5/11)** — Root 세션 prompt 직접 붙여넣기 (직전 응답 root 핸드오프 prompt 그대로)
+  3. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신
+  4. **사용자 (5/12 GIN 학습 종료 후)** — Analyzer 세션 prompt 직접 붙여넣기 (본 엔트리 §1(b) 통합 prompt)
+  5. **Analyzer (5/12~5/14, Phase 4)** — 신규 dsn_mitigation_v3_8trial.md 작성 (8 ckpt × 5 step + multi-DB stratified)
+  6. **Planner (5/14, Phase 5)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 + **conditional V3-A 시 max aggregation 학습 핸드오프 (사용자 결정 (3)A 자동 trigger)** + DECISIONS 후속 엔트리
+  7. **(conditional V3-A 시) Root (5/14)** — Mitigation v3 #2 max aggregation 학습 launch (사용자 추가 prompt 불필요, planner 가 5/14 결정 시 자동 root 핸드오프)
+  8. **(conditional V3-A 시) Analyzer (5/15~5/16)** — 9-trial protocol 재실행 (Final 7-trial + GIN + max)
+  9. **사용자 (5/14~5/22 또는 5/16~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + V3-A 시 max aggregation 결과 통합)
+
+- **추가 필요 분석** (Phase 4 후속, 시나리오 분기 별):
+  - V3-A 시 (가능성 中→中, sum-only fail vs sum+MLP combo evidence 후 분기 + max aggregation 추가 시도): 4 aggregation family null evidence 결정적 (8 또는 9-trial null + GIN MLP+sum combo 도 fail + max aggregation 도 fail) → mech(ii-b) DOMINANT 절대적 강화 + paper §V.5.4 narrative 결정적 confirm
+  - V3-B 시 (가능성 中→中): GIN MLP+sum combo partial recovery 발견 → mech(ii-b) softmax 한정 부분 부정 + paper main contribution 4 → 5 항목 격상 후보 + max aggregation 추가 시도 (C) post-paper backlog
+  - V3-C 시 (가능성 낮음): paper main contribution 재평가 + 학회 후 anchor 재검토 + max aggregation 추가 시도 무효
+
+---
+
+## 2026-05-08 (Final 7-trial Dominance Scoring 정식 명문화 — analyzer 신규 dsn_mitigation_v2_final_7trial.md 통합) — Mech(ii-b) DOMINANT 5/5 ⭐⭐ + (ii-a) partial mitigation 가능 5/5 + Mech(i) 3/5 부분 강화 (i-b sum direct) + Filter Dominance 6번째 축 narrative paper §V.5.4 본문 candidate 정식
+
+> **Status**: Analyzer 신규 산출 [dsn_mitigation_v2_final_7trial.md](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) 으로 7-trial Final dominance scoring 정식 명문화. 직전 5 보고서 (`dsn_mitigation_v2_results.md` + A1+A2+A3 + `dsn_phase3_mitigation_results.md`) 통합 + Root 5/8 sweep 정정 수치 + sub-mechanism 분리 정식. **paper §V.5.4 narrative 본문 candidate (§6) 권장** — 학위 논문 Part III chapter draft 작성용 자료 정식 확보.
+
+- **결정**:
+
+  1. **(a) 🎯 7-Trial Final Mechanism Dominance Scoring 정식 갱신 (analyzer §0+§4 인용)**:
+
+     | Mechanism | 직전 강도 | **본 갱신** | 핵심 정량 evidence |
+     |---|:---:|:---:|---|
+     | (i-a) top-5 attention sibling | 2/5 marginal | 2/5 marginal (변경 X) | top5_raw cos 0.55 ≈ entire 0.51 |
+     | **(i-b) aggregation function magnitude sensitivity** | (분리 X) | **🆕 3/5 부분 강화** | v2 #2 Sum direct evidence (-0.0336) — sum 의 in-degree-비례 magnitude scaling, ep29 빠른 saturation |
+     | **(ii-a) softmax over-concentration** | (분리 X) | **🆕 5/5 partial mitigation 가능 ⭐** | v2 #3 LN top5_conc 0.74 (Phase 1 회복) + noise robust Δ(σ=0.1)=-0.0033 + 10/11 DBs 일관 |
+     | **(ii-b) weighted-mean propagation collapse** | (분리 X) | **🆕 5/5 ⭐⭐ DOMINANT 결정적** | 7 ckpt 모두 L1_GAT=1.0 + 11 DBs schema-invariant (toxicology 포함) + mitigation 5종 어떤 것도 차단 X + Phase 3 #3 AC=0.62 일관 |
+     | (iii) Skip dependency pathology | 4/5 보조 | **3/5 부정 강화** | v2 #1+#3 conv_L1 0.30 회복 + skip_dep 1.36~1.41 균형 도달 → R 미달 (Phase 1 -0.01~-0.03), 부정 |
+     | (iv) Schema sibling (raw PLM) | 3/5 lower bound | 3/5 (변경 X) | L0=0.5090 (single) / 0.6334 (multi) lower bound, 11 DBs 변동 X |
+
+     **Sub-mechanism 분리 정식 (analyzer §2)**:
+     - **mech(i) 두 차원**: (i-a) top-5 attention sibling marginal (2/5) + (i-b) aggregation function magnitude sensitivity 3/5 부분 강화 (sum direct evidence)
+     - **mech(ii) 두 차원**: (ii-a) softmax over-concentration partial mitigation 가능 (5/5, LN level direct mitigation) + **(ii-b) weighted-mean propagation collapse 5/5 ⭐⭐ DOMINANT** (schema-invariant fundamental architectural limitation)
+
+  2. **(b) 🎯 v2 #3 LayerNorm ↔ v2 #2 Sum Aggregation Contrast (paper §V.5.4 핵심)**:
+
+     | Metric | v2 #3 LayerNorm (mech(ii-a)) | v2 #2 Sum Aggregation (mech(i-b)) | Δ (LN - Sum) |
+     |---|---:|---:|---:|
+     | best val R@15 | **0.6011** | 0.5761 | **+0.0250** ⬆ |
+     | best epoch | 82 | 29 (가장 빠른 saturation) | +53 |
+     | Δ vs Phase 2 | -0.0007 (사실상 동등) | -0.0257 | +0.0250 |
+     | Δ vs Phase 1 | -0.0086 | **-0.0336** (가장 큰 underperform) | +0.0250 |
+     | col→tab L2 top5_conc (multi-DB) | 0.7440 (Phase 1 0.7144 회복) | 0.8366 (sharp) | -0.0926 |
+     | col→tab L2 entropy (multi-DB) | 3.16 (Phase 1 3.22 회복) | 2.93 | +0.23 |
+     | L1_GAT cosine | 0.9998 (collapse) | 0.9991 (collapse) | -0.0007 |
+     | Noise robustness Δ(σ=0.1) | **-0.0033** ⭐ | +0.0128 | -0.0161 |
+     | AC trajectory ep_last | 0.0019 (정상 decay) | 0.0022 (정상 decay) | similar |
+
+     **Mechanism 작용 위치 contrast**:
+     - **v2 #3 LN (mech(ii-a) direct)**: edge softmax 직전 raw alpha LayerNorm — alpha distribution magnitude normalize → softmax sharp peaking 차단 → top5_conc baseline 회복 + noise robust. 단 **L1=1.0 collapse 보존** (mech(ii-b) 차단 X), R 회복 -0.0007 vs Phase 2 (사실상 동등)
+     - **v2 #2 Sum (mech(i-b) direct)**: HeteroConv cross-edge-type aggregation (mean → sum) — in-degree 에 비례 magnitude scaling → 학습 dynamics sensitivity (ep29 saturation), noise sensitive. R: -0.0336 vs Phase 1 (가장 큰 underperform)
+     - **두 mitigation 모두 mech(ii-b) weighted-mean propagation collapse 차단 X** (L1=1.0 보존) — 이게 dominant root cause
+
+  3. **(c) Filter Dominance 6번째 축 narrative paper §V.5.4 본문 candidate 정식 (analyzer §6 직접 인용)**:
+
+     > "DSN 7-trial mitigation null effect (Phase 1 baseline 0.6097, mitigation 6 variants R=0.5761~0.6018) 는 GAT 의 fundamental architectural limitation 의 정량 evidence 이다. v2 #3 LayerNorm pre-softmax 가 mech(ii-a) softmax over-concentration 의 direct mitigation 으로 attention pattern 을 baseline 으로 회복 (multi-DB col→tab L2 top5_conc 0.7440 vs Phase 1 0.7144) + noise robustness (Δ(σ=0.1)=-0.0033) 효과 발현 — Phase 2 b8 와 사실상 동등 R=0.6011 (-0.0007). 그러나 mech(ii-b) weighted-mean message aggregation collapse (모든 7 ckpt L1_GAT cosine=1.0, 11 BIRD-Dev DBs schema-invariant 포함 toxicology) 는 차단 X. v2 #2 Sum Aggregation 의 -0.0336 압도적 underperform 은 mech(i-b) aggregation function magnitude sensitivity 의 direct evidence — sum aggregation 의 in-degree-비례 magnitude scaling 으로 학습 dynamics 빠른 saturation (ep29). v2 #3 LN 와 v2 #2 Sum 의 -0.0250 차이가 mech(ii-a) partial mitigation 가능 ↔ mech(i-b) direct evidence 의 sub-mechanism 분리. **Filter Dominance 6번째 축 (training-pathology-invariant) 결정적 7-trial evidence**: GAT 의 fundamental architectural limitation (mech(ii-b) edge softmax + weighted-mean propagation collapse) + mech(i-b) aggregation function magnitude sensitivity 까지 With-Filter pipeline 이 흡수."
+
+  4. **(d) Mitigation v3 #1 GIN 의 mech(ii-b) 직접 mitigation 가능성 정밀화**:
+     - GIN 의 mechanism: `sum(MLP(x_i + x_j))` propagation — **aggregation propagation 자체 변경**
+     - **v2 #2 Sum 의 sum-only fail evidence + GIN 의 MLP 가 핵심**:
+       - v2 #2 Sum (no MLP): R=0.5761 (가장 underperform) — sum 단독으로는 ineffective + magnitude variance sensitivity
+       - GIN 의 sum + MLP combo: MLP nonlinearity 가 magnitude variance 흡수 + WL test 동치 invariance (Xu et al. ICLR 2019) — sum 의 magnitude sensitivity 차단 가능성
+     - **시나리오 V3-A 가능성 中→中** (수정): A1 evidence (mech(ii-b) fundamental) 강화 단 GIN 의 MLP nonlinearity 가 mech(ii-b) 차단 가능성 잔존
+     - **시나리오 V3-B 가능성 中→中** (수정): GIN MLP+sum combo 가 mech(ii-b) partial 회복 가능성 (sum-only 가 fail 한 sensitivity 를 MLP 가 absorb)
+     - **시나리오 V3-C 가능성 낮음** (변경 X): A1+A2+A3+v2 #2 evidence 가 mech(ii-b) fundamental 강력 → R 0.85+ 매우 낮음
+
+  5. **(e) Filter Dominance 6번째 축 narrative 정식 명문화 — 7-trial evidence 통합 표 (analyzer §5)**:
+
+     | # | Evidence | 정량 |
+     |---|----------|------|
+     | 1 | H-B ckpt-invariant | Pearson r 0.06~0.24 |
+     | 2 | H-F stability/ordering | k=20 Jaccard 0.47~0.52 + Spearman 0.6453 |
+     | 3 | F-1 + H-G alpha sweep | F-1 plateau 0.0724 → WF 0.0142 = 5.0850× 압축 |
+     | 4 | ΔF1 +0.65 lift | mean per-query gain +0.6462 |
+     | 5 | H-A/H-D 부정 | Enriched ckpt + norm 변형 plateau 유지 |
+     | **6** | **🎯 7-Trial mitigation null effect 정식** | Phase 1 0.6097 / Phase 2 0.6018 / Phase 3 #3 0.5927 / #4 0.5935 / **v2 #1 0.5974 / v2 #3 0.6011 / v2 #2 0.5761** — 모두 ~0.59-0.61 saturate. Mech(ii-b) DOMINANT 5/5 ⭐⭐ + (ii-a) partial + (i-b) sum direct |
+
+  6. **(f) Mech(i-b) 신설 — Aggregation Function Magnitude Sensitivity (3/5 부분 강화)**:
+     - 직전 mech(i) 단일 평가 (2/5 marginal, top-5 sibling 차원만) → **두 차원 분리**:
+       - **(i-a) top-5 attention sibling** 2/5 marginal (top5_raw cos 0.55 ≈ entire 0.51, 7 ckpt 모두 marginal)
+       - **(i-b) aggregation function magnitude sensitivity** 🆕 3/5 부분 강화 (v2 #2 Sum direct evidence (-0.0336))
+     - **(i-b) 의 새로운 mechanism narrative**:
+       - mean aggregation: in-degree (column 수) invariant
+       - sum aggregation: in-degree-비례 magnitude scaling → 학습 dynamics 변동
+       - v2 #2 evidence: ep29 가장 빠른 saturation (mean variants ep78~172 의 1/3 이하) + noise sensitivity (Δ(σ=0.1)=+0.0128)
+     - paper §V.5.4 narrative 보강: "aggregation function 의 magnitude treatment sensitivity" 차원 evidence 신설
+
+  7. **(g) 학위 논문 Part III chapter §III.4/§III.6 갱신 (analyzer §4 통합 evidence matrix)**:
+     - 직전 outline (DECISIONS Phase 1 deep dive entry §1(7)): §III.4 mech(ii) sub-mechanism 분리
+     - **본 entry 정식 갱신**:
+       - §III.4 = **mech(ii-b) DOMINANT 5/5 ⭐⭐ 결정적** (7 ckpt L1=1.0 + 11 DBs schema-invariant) + mech(ii-a) 5/5 partial mitigation 가능 (LN level direct) + 🆕 mech(i-b) 3/5 부분 강화 (sum direct) + mech(iii) 3/5 부정 강화
+       - §III.6 = v2 #3 LN ↔ v2 #2 Sum -0.0250 contrast + sub-mechanism 분리 정식 narrative (analyzer §6 인용)
+     - main mechanism finding narrative 강화: "GAT 의 fundamental architectural limitation = mech(ii-b) weighted-mean propagation collapse + mech(i-b) aggregation function magnitude sensitivity 두 sub-mechanism 분리 evidence"
+
+  8. **🚨 사용자 결정 필요 3 항목**:
+
+     | # | 결정 항목 | 옵션 | 권장 |
+     |---|----------|------|------|
+     | (1) | **Phase 3 GIN 학습 (5/11 launch) 의 시나리오 V3-A/B/C narrative 시점 확정** | (A) Phase 4 (5/12 학습 종료 + 8-trial protocol 재실행) 후 정식 채택 / (B) 즉시 V3-A 가능성 中→中 narrative candidate 채택 (v2 #2 sum-only fail + GIN MLP 가 핵심 evidence 후) | **(A) Phase 4 후 정식 채택** — A1+A2+A3+v2 #2 evidence 가 GIN 의 mech(ii-b) 차단 가능성 잔존 시사 (sum-only fail vs sum+MLP combo) → 학습 결과 정량 confirm 후 정식 |
+     | (2) | **Phase 4 (5/12~5/14) analyzer 8-trial protocol 재실행 prep** | (A) 본 보고서 (`dsn_mitigation_v2_final_7trial.md`) + GIN ckpt 1개 추가 → §14 보강 또는 신규 `dsn_mitigation_v3_8trial.md` / (B) 직전 protocol (`dsn_mitigation_v2_7trial.md`) 호환 8-trial protocol | **(A) 신규 dsn_mitigation_v3_8trial.md** — 본 보고서 (Final 7-trial dominance scoring) base 위 GIN ckpt 추가 (8 ckpt × 5 step + multi-DB stratified). mech(ii-b) GIN 차단 정도 직접 측정 (L1_GAT cosine 변동) |
+     | (3) | **Mitigation v3 추가 candidate (max aggregation, EGAT) 학습 우선순위 (V3-A 결과 후)** | (A) #2 max aggregation 1 cell 추가 시도 (~10h, 5/13 GPU 0) — V3-A 시 mean (Phase 2) + sum (v2 #2) + max + GIN 4 aggregation function family null evidence 강화 / (B) #4 EGAT 만 추가 시도 (~10h+, architectural shift) / (C) 모두 post-paper backlog (학위 본 심사 timeline 충분) | **(A) max aggregation 추가 시도 (V3-A 시)** — V3-A 시 mean+sum+max+GIN 4 aggregation function family null evidence 가 paper §V.5.4 narrative 결정적 강화 (aggregation family 자체 limitation 절대적). V3-B/C 시 (C) 모두 post-paper |
+
+- **근거**:
+  - **신규 analyzer 산출**: [dsn_mitigation_v2_final_7trial.md §0~§8](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) (정식 dominance scoring, 5 보고서 통합)
+  - **선행 5 보고서**: dsn_mitigation_v2_results.md (7-trial single-DB) + dsn_v2_layernorm_mechanism_decomposition.md (A1) + dsn_softmax_noise_sensitivity.md (A2) + dsn_per_db_stratified_7ckpt.md (A3) + dsn_phase3_mitigation_results.md (4-trial)
+  - **선행 결정**: DECISIONS 직전 entries — 사용자 결정 confirm + Root sweep 보고 + Phase 1 deep dive 완료 + Phase 2 GIN 구현 완료
+  - **재현 스크립트**: src/analysis/dsn_mitigation_v2_7trial.py + dsn_phase1_deep_dive.py
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Final 7-trial dominance scoring 정식 명문화 + sub-mechanism 분리 정식 (i-a/i-b/ii-a/ii-b) + mech(i-b) 신설 + v2 #3 LN vs v2 #2 Sum contrast 정식 + paper §V.5.4 narrative 본문 candidate + GIN 시나리오 분기 narrative 정밀화 + 사용자 결정 3 항목
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §3.5 Filter Dominance 6번째 축 sub-section 갱신 (5+1 evidence 표 #6 정밀화 + sub-mechanism 분리 표 + v2 LN ↔ v2 Sum contrast 표 + paper §V.5.4 narrative 본문 정식 인용)
+    - §V Conclusion narrative 정식 채택 (analyzer §6 본문 인용)
+    - §3.5 Part III chapter outline §III.4/§III.6 갱신 (mech(ii-b) DOMINANT + mech(i-b) 신설)
+    - §8 Future Works Mitigation v3 #1 GIN 시나리오 V3-A/B/C narrative 정밀화 (sum + MLP combo 핵심)
+    - §9 Limitations — single-DB caveat 해소 + schema-dependent caveat (toxicology trivial) confirm
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.13 갱신 (Final 7-trial dominance + v2 LN ↔ v2 Sum contrast + sub-mechanism 분리 + 사용자 결정 3 항목)
+  - **paper main contribution (학회)** 영향 X
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — paper §V.5.4 본문 candidate 정식 확보 (analyzer §6 인용 가능)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5/§V.5.4/§8/§9 갱신 + presentation_brief §14.13 갱신
+  2. **사용자 (즉시 의사결정 3 항목)** — (1) V3 narrative 시점 / (2) Phase 4 protocol 형식 / (3) Mitigation v3 추가 candidate 우선순위
+  3. **사용자 (Phase 3 GIN 학습 launch, 5/11)** — Root 세션 prompt 직접 붙여넣기 (직전 DECISIONS Phase 2 GIN entry §1(d) 동일)
+  4. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신 (8-trial 통합 표)
+  5. **Analyzer (5/12~5/14, Phase 4)** — 8-trial protocol 재실행 (multi-DB stratified, 사용자 결정 (2)A 권장)
+  6. **Planner (5/14, Phase 5)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 (사용자 결정 (1)A 후) + 사용자 결정 (3) 재고 (V3-A 시 max aggregation 추가 시도 후보) + DECISIONS 후속 엔트리
+  7. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (analyzer §6 narrative 직접 인용 + 4-stage 통합)
+
+- **추가 필요 분석** (Phase 4 후속, V3-A/B/C 분기 별):
+  - V3-A 시 (가능성 中→中, sum + MLP combo evidence 후 분기): aggregation family 자체 limitation 결정적 (8-trial null + GIN MLP 도 fail) → mech(ii-b) DOMINANT 절대적 강화 + max aggregation 추가 시도 후보 (사용자 결정 (3)A 권장)
+  - V3-B 시 (가능성 中→中): GIN MLP+sum combo partial recovery 발견 → mech(ii-b) softmax 한정 부분 부정 + paper main contribution 4 → 5 항목 격상 후보
+  - V3-C 시 (가능성 낮음): paper main contribution 재평가 + 학회 후 anchor 재검토
+
+---
+
+## 2026-05-08 (Root 보고 — DSN Mitigation v2 3-trial sweep ✅ 완료 (5/7 16:35 ~ 5/8 13:54 KST) + 시나리오 V2-A 절대 confirm) — 7-trial 수치 갱신 + Filter Dominance 6번째 축 7-trial evidence 정식 명문화 reaffirm + paper §V.5.4 narrative 결정적 강화 + analyzer 위임
+
+> **Root 보고 (2026-05-08 13:54 KST)**: V-3-ext 단계 6 sweep 완료 (병렬 wall ~21h). 직전 narrative 와 일관 (시나리오 V2-A 절대 confirm + mech(ii) DOMINANT + paradox 분리), **수치 미세 갱신** (v2 #3 0.6007 → **0.6011** / v2 #1 0.5970 → **0.5974** / v2 #2 0.5735 → **0.5761**). v2 #3 LayerNorm partial mitigation 의 Phase 2 와 격차 -0.0007 까지 좁힘 (mech(ii) sub-mech (ii-a) softmax level direct mitigation evidence 결정적 강화).
+
+- **결정**:
+
+  1. **(a) ✅ 7-trial Final 결과 표 (Root 5/8 13:54 KST sweep 완료, decreasing R@15)**:
+
+     | 순위 | Variant | Best R@15 (정정) | Δ vs Phase 1 |
+     |------|---------|------------------|--------------|
+     | **1** | **Phase 1 P80 (no mit)** | **0.6097** | (baseline) |
+     | 2 | Phase 2 b8 (mit fusion) | 0.6018 | -0.0079 |
+     | **3** | **v2 #3 LayerNorm pre-softmax** ★ | **0.6011** | -0.0086 (mit 최고, Phase 2 와 격차 -0.0007) |
+     | 4 | v2 #1 DropMessage | 0.5974 | -0.0123 |
+     | 5 | Phase 3 #4 (LR x5) | 0.5935 | -0.0162 |
+     | 6 | Phase 3 #3 (Direct AC) | 0.5927 | -0.0170 |
+     | 7 | v2 #2 Sum Aggregation | 0.5761 | -0.0336 (압도적 underperform) |
+
+     **🚨 핵심 발견 (직전 narrative 와 일관 + 강화)**:
+     - 모든 7 mitigation variants Phase 1 baseline 미달 (training-pathology-invariant)
+     - v2 #3 LayerNorm 0.6011 — mit 최고 + Phase 2 b8 와 격차 사실상 동등 (-0.0007) → mech(ii-a) softmax level direct mitigation evidence 결정적 강화
+     - v2 #2 Sum Aggregation 0.5761 — 가장 underperform (-0.0336) → mech(i) Aggregation collapse 직접 evidence (sum aggregation 의 magnitude variance sensitivity)
+
+  2. **(b) 운영 이력 (사용자 결정 옵션 A — 3개 동시 GPU 0)**:
+     - **5/7 16:35**: Mitigation v2 sweep launch (#1 GPU 0 + #3 GPU 1 병렬, #2 GPU 0 sequential plan)
+     - **5/7 17:27**: 사용자 GPU 1 자원 배분 이슈 → #3 layernorm GPU 1 kill (ep20 partial)
+     - **5/7 17:43**: 사용자 결정 옵션 A — **3개 동시 GPU 0 launch** (sweep wrapper kill + 직접 launch)
+     - **5/7 17:59**: 3개 동시 학습 시작
+     - **5/8 13:54**: 전체 sweep 완료 (병렬 wall ~21h, GPU 0 단독 3개 동시)
+     - **Alpha sweep skip 유지** (사용자 결정 2026-05-07 (1)A) — paper main F1/EX 측정 X, val recall@15 evidence only
+
+  3. **(c) 🎯 시나리오 V2-A 절대 confirm + Filter Dominance 6번째 축 7-trial evidence 정식 명문화**:
+     - 7 mitigation variants 모두 fail → **시나리오 V2-A 절대 confirm** (4-trial 절대 confirm + 3-trial 추가 evidence 7 통합)
+     - **paradox 결정적 confirm**: 단계 4-bis 발견 (top-5 ≈ 91%) + 6 mitigation variants 모두 적용에도 동일한 ~0.59-0.61 saturation
+     - **v2 #3 LayerNorm partial recovery (mech(ii-a))**: Phase 2 와 격차 -0.0007 까지 좁힘 + multi-DB top5_conc 0.7440 (Phase 1 0.7144 회복) — mech(ii-a) softmax over-concentration partial mitigation 결정적 evidence
+     - **v2 #2 Sum Aggregation underperform (mech(i))**: Δ = -0.0336 (가장 큰 underperform) — sum aggregation 의 magnitude variance sensitivity. mech(i) Aggregation collapse 의 직접 evidence (top-5 raw cos 0.55 vs entire 0.51 marginal but learning dynamics 측 sensitivity 결정적)
+     - **mech(ii-b) L1=1.0 collapse 7 ckpt 모두**: schema-invariant fundamental architectural limitation (LayerNorm/DropMessage/Sum/Direct AC/LR x5 어떤 mitigation 도 차단 X)
+
+  4. **(d) 🆕 7 Evidence 통합 표 (Filter Dominance 6번째 축, 4-trial → 7-trial 정식 명문화)**:
+
+     | # | Evidence | 정량 |
+     |---|----------|------|
+     | 1 | H-B ckpt-invariant | Pearson r 0.06~0.24 |
+     | 2 | H-F stability/ordering | k=20 Jaccard 0.47~0.52 + Spearman 0.6453 |
+     | 3 | F-1 + H-G alpha sweep | F-1 plateau 0.0724 → WF 0.0142 = 5.0850× 압축 |
+     | 4 | ΔF1 +0.65 lift | mean per-query gain +0.6462 |
+     | 5 | H-A/H-D 부정 | Enriched ckpt + norm 변형 plateau 유지 |
+     | **6** | **Phase 2 + Phase 3 4-trial mitigation null effect** (training-pathology-invariant) | Phase 1 0.6097 / Phase 2 0.6018 / Phase 3 #3 0.5927 / #4 0.5935 — ~0.59-0.61 saturate |
+     | **7** | **🆕 Mitigation v2 3-trial 추가 evidence** (DropMessage / LayerNorm / Sum 모두 baseline 미달) | v2 #1 0.5974 / **v2 #3 0.6011** / v2 #2 0.5761 — mech(ii-a) partial / mech(i) deep evidence |
+
+     → **Filter Dominance 6번째 축 narrative 결정적 evidence 7-trial 통합**: GAT 의 fundamental architectural limitation (mech(ii-b) edge softmax + weighted-mean propagation collapse) + mech(i) aggregation collapse (v2_sum_aggr direct evidence) 까지 With-Filter pipeline 이 흡수.
+
+  5. **(e) v2 #3 LayerNorm partial recovery vs v2 #2 Sum Aggregation underperform contrast (학위 논문 §V.5.4 narrative 핵심)**:
+
+     | Mechanism | v2 #3 LayerNorm | v2 #2 Sum Aggregation | 결론 |
+     |---|---|---|---|
+     | 작용 위치 | softmax 직전 (mech(ii-a)) | aggregation 후 cross-edge-type (mech(i) 차원) | 다른 sub-mechanism |
+     | val R@15 | **0.6011** (mit 최고) | 0.5761 (가장 underperform) | -0.0250 차이 |
+     | Δ vs Phase 2 | -0.0007 (사실상 동등) | -0.0257 (큰 underperform) | LN 가 Phase 2 fusion 의 단순 swap |
+     | mech(ii-a) attention | top5_conc 0.74 (Phase 1 회복) | top5_conc 0.84 (변동 없음) | LN 의 attention level 직접 mitigation 정확 |
+     | mech(ii-b) L1 cosine | 1.0000 (collapse 보존) | 0.9991 (변동 없음) | 둘 다 mech(ii-b) 차단 X |
+     | mech(i) magnitude | (LN 작용 X) | sum 의 magnitude variance sensitivity (col 수에 비례 학습 noise) | Sum 의 underperform = mech(i) direct |
+
+     → **paper §V.5.4 narrative 핵심**: v2 LayerNorm 와 v2 Sum 의 contrast 가 mech(ii-a) softmax level mitigation 의 partial recovery + mech(i) aggregation magnitude sensitivity 의 두 차원 evidence 분리.
+
+  6. **(f) Analyzer 위임 — 4-mechanism dominance scoring 정식 갱신 prompt (root 동시 발송)**:
+     - 직전 분석 (`dsn_mitigation_v2_results.md`) 의 7-trial dominance scoring 갱신 (수치 정정 + v2 #3 vs v2 #2 contrast 추가)
+     - 또는 신규 산출물 (`dsn_mitigation_v2_final_7trial.md` 또는 `dsn_mitigation_v2_results.md §15` 보강) — root 가 별도 prompt 발송
+     - **mech(i) Aggregation collapse 강도 갱신**: 직전 2/5 marginal → v2 #2 Sum underperform evidence 결정적 → **3/5 부분 evidence (sum learning sensitivity 차원)** 검토
+     - 산출물: 신규 또는 §15 보강
+
+  7. **(g) Phase 3 GIN 학습 launch prep (5/11~5/12, 직전 DECISIONS Phase 2 GIN 구현 entry §1(d))**:
+     - root 학습 prompt 직전 DECISIONS 와 동일 (변경 X)
+     - 5/11 launch (GPU 0): `train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml`
+     - 5/12 ETA + EXPERIMENT_HISTORY 8-trial 통합 표 갱신
+
+  8. **(h) Phase 4 (5/12~5/14) analyzer 통합 prompt (직전 DECISIONS 사용자 결정 confirm entry §1(b))**:
+     - 8-trial protocol + multi-DB stratified 적용 (사용자 결정 (2)A)
+     - mech(ii) DOMINANT 5/5 절대 강화 / 4/5 부분 부정 / 3/5 부정 분기
+
+  9. **(i) Phase 5 (5/14, planner) timeline (직전 DECISIONS 사용자 결정 confirm entry §1(c))**:
+     - 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택
+     - 사용자 결정 (3) 재고: V3-A 시 max aggregation 1 candidate 추가 시도 후보
+
+- **근거**:
+  - **Root 5/8 보고**: V-3-ext 단계 6 sweep 완료 (병렬 wall ~21h, 옵션 A 3개 동시 GPU 0)
+  - **EXPERIMENT_HISTORY**: "DSN Mitigation v2 3-trial Sweep (V-3-ext 단계 6, 2026-05-07 → 05-08)" entry
+  - **선행 결정**: DECISIONS 직전 entries (사용자 결정 3 항목 confirm + Phase 1 deep dive 완료 + Phase 2 GIN 구현 완료 + 7-trial mech(ii) DOMINANT 결정적 강화) — 본 Root 보고 entry 가 직전 narrative 와 일관 + 수치 미세 갱신
+  - **분석 base**: dsn_phase2_mitigation_null_mechanism.md + dsn_mitigation_v2_results.md + dsn_v2_layernorm_mechanism_decomposition.md (A1) + dsn_softmax_noise_sensitivity.md (A2) + dsn_per_db_stratified_7ckpt.md (A3)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Root 5/8 보고 confirm + 7-trial 수치 갱신 + 운영 이력 (옵션 A 3개 동시 GPU 0) + Filter Dominance 6번째 축 7 evidence 통합 표 + v2 #3 LayerNorm vs v2 #2 Sum Aggregation contrast (mech(ii-a) vs mech(i)) + analyzer 위임 prep + Phase 3/4/5 timeline
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §3.5 6번째 축 5+1 evidence 표 갱신 (수치 미세 정정 v2 #3 0.6011 / v2 #1 0.5974 / v2 #2 0.5761) + §10 V-3-ext 단계 5+6 7-trial 결과 표 수치 정정 + §3.5 v2 LayerNorm vs Sum Aggregation contrast narrative
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.11 / §14.12 / §14.13 의 7-trial 수치 정정
+  - **paper main contribution 영향 X** (학회 narrative 그대로)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5/§10 수치 갱신 + presentation_brief 수치 갱신
+  2. **사용자 (즉시)** — Root 가 동시 발송한 analyzer 위임 prompt confirm
+  3. **Analyzer (root 동시 발송 후)** — 7-trial dominance scoring 정식 갱신 (`dsn_mitigation_v2_final_7trial.md` 또는 `dsn_mitigation_v2_results.md §15` 보강) — mech(i) 강도 검토 (2/5 → 3/5)
+  4. **사용자 (Phase 3 GIN 학습 launch, 5/11)** — Root 세션 prompt 직접 붙여넣기
+  5. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신 (8-trial 통합 표)
+  6. **Analyzer (5/12~5/14, Phase 4)** — 8-trial protocol + multi-DB stratified
+  7. **Planner (5/14, Phase 5)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 + 사용자 결정 (3) 재고 + DECISIONS 후속 엔트리
+  8. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + A1+A2+A3 + Mitigation v3 #1)
+
+- **추가 필요 분석** (Phase 4 후속, V3-A/B/C 분기 별):
+  - V3-A 시 (가능성 中→高 by A1 + Sum mech(i) evidence): aggregation family 자체 limitation 결정적 (8-trial null + GIN 도 fail) + mech(i) Sum aggregation 부분 강도 결정적 (2/5 → 3/5)
+  - V3-B 시 (가능성 中→낮음): GIN MLP nonlinearity 의 sum aggregation 효과 mechanism 분석 + paper main contribution 4 → 5 항목 격상 후보
+  - V3-C 시 (가능성 낮음): paper main contribution 재평가 + 학회 후 anchor 재검토
+
+---
+
+## 2026-05-08 (사용자 결정 3 항목 ✅ confirm — 권장 옵션 모두 채택: (1)A V3 narrative Phase 4 후 + (2)A multi-DB stratified + (3)C Mitigation v3 추가 candidate post-paper) — Phase 4 analyzer 위임 + Phase 5 planner timeline
+
+> **사용자 직전 input (2026-05-08)**: "세 항목 모두 권장 옵션으로 선택할게" — DECISIONS 직전 (Phase 1 deep dive 완료) §1(7) 사용자 결정 3 항목 모두 권장 채택.
+
+- **결정**:
+
+  1. **(a) ✅ 사용자 결정 3 항목 confirm**:
+
+     | # | 결정 항목 | 사용자 결정 | 후속 영향 |
+     |---|----------|-----------|---|
+     | (1) | Mitigation v3 #1 GIN 시나리오 V3-A/B/C 분기 narrative 확정 시점 | **(A) Phase 4 후 정식 채택** | 5/12 GIN 학습 종료 + 8-trial protocol 재실행 결과 후 V3-A/B/C 분기 결정 + paper §V.5.4 narrative 정식 채택 |
+     | (2) | Phase 4 (5/12~5/14) analyzer 추가 위임 | **(A) 8-trial protocol + multi-DB stratified 적용** | 8 ckpt × 5 step + multi-DB (55 queries, 11 DBs stratified, seed=42) 통일 protocol — single-DB 측정 제거 |
+     | (3) | Mitigation v3 추가 candidate (#2 max / #4 EGAT) 학습 우선순위 | **(C) 모두 post-paper backlog** | Phase 3 GIN 결과 후 시나리오 분기 결정 후 재고 — V3-A 가능성 高 시 max aggregation 추가 시도 가능 (학위 본 심사 timeline 충분, 단 Phase 4 결과 보고 결정) |
+
+  2. **(b) Phase 4 (5/12~5/14, analyzer) 통합 prompt — multi-DB stratified 적용**:
+     ```
+     먼저 src/analysis/CLAUDE.md 와
+     /home/hyeonjin/thesis_refactored/planning/DECISIONS.md 최상단 (2026-05-08 사용자 결정 3 항목 confirm) §1(b) 의 Phase 4 통합 prompt 읽고,
+     8-trial protocol 재실행 (multi-DB stratified 적용).
+
+     대상 ckpt (8 = 7 + Mitigation v3 #1 GIN):
+     1. phase1_p80 (DSN baseline, no mit)
+     2. phase2_b8 (B5 mit fusion)
+     3. phase3_directAC (AC target='gat_out_L_last')
+     4. phase3_layerwiseLR (gat_lr×5)
+     5. v2_drop_message (drop_message_p=0.2)
+     6. v2_layernorm (LayerNorm pre-softmax)
+     7. v2_sum_aggr (HeteroConv aggr=sum)
+     8. **🆕 mitigation_v3_gin (HeteroConv 내부 GIN aggregation)** — 5/12 학습 종료 ckpt
+
+     Sample protocol (multi-DB stratified, single-DB 제거):
+     - 55 queries = 5 queries × 11 DBs (seed=42) — Phase 1 A3 와 동일
+     - per-DB 분포: california_schools (T=3, C=89), thrombosis_prediction (T=3, C=69), card_games (T=6, C=125), codebase_community (T=8, C=92), debit_card_specializing (T=5, C=27), european_football_2 (T=7, C=237), financial (T=8, C=71), formula_1 (T=13, C=126), student_club (T=8, C=64), superhero (T=10, C=52), toxicology (T=4, C=20)
+
+     5-step protocol (7-trial 분석과 동일):
+     1. Step 1: 8 ckpt epoch trajectory parse + recall_overlay plot
+     2. Step 2: 8 ckpt × layer-wise over-smoothing trajectory (forward hook v1/v2 호환 + GIN 호환)
+     3. Step 3: attention pattern (extract_layerwise_attention_v2) — GIN 은 attention 자체 부재 → mech(ii-a) 측정 불가, 단 message magnitude / variance 대체 측정
+     4. Step 4: gradient flow main GAT vs skip path (8 ckpt)
+     5. Step 5: AC loss trajectory parse — GIN 학습 의 AC fusion decay 정상 여부 (mech(ii-a) 부재 시 학습 dynamics)
+
+     mech(ii) sub-mechanism (ii-a)/(ii-b) 분리 evidence 추가:
+     - mech(ii-b) GIN 차단 정도 직접 측정: GIN ckpt L1_GAT cosine
+       - L1=1.0 (변화 없음) → 시나리오 V3-A (mech(ii-b) aggregation family 자체 limitation)
+       - L1=0.85~0.95 (partial 회복) → 시나리오 V3-B (GIN MLP+sum 효과 발견)
+       - L1=0.5 이하 (회복) → 시나리오 V3-C (mech(ii-b) 부정)
+     - mech(ii-a) GIN 부재 evidence 정량 (attention 자체 없음, message magnitude variance 가 (ii-a) 와 다른 차원)
+
+     Per-DB 일관성 검증:
+     - 11 DBs 중 GIN 의 mech(ii) DOMINANT 일관성 (10/11 일관 / partial / 부정)
+     - toxicology trivial schema 유지 caveat
+
+     산출물: notebooks/analysis_results/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
+     - §0 TL;DR — 8-trial dominance scoring 갱신 (mech(ii) 5/5 절대 강화 / 4/5 부분 부정 / 3/5 부정)
+     - §0 시나리오 V3-A/B/C 결정
+     - §10 Filter Dominance 6번째 축 8-trial evidence (4-trial → 7-trial → 8-trial)
+     - §11 Mitigation v3 추가 candidate (#2 max / #4 EGAT) — V3-A 시 max 시도 권장 / V3-B 시 GIN MLP nonlinearity deep dive
+
+     선행 산출:
+     - dsn_mitigation_v2_results.md (7-trial single-DB)
+     - dsn_v2_layernorm_mechanism_decomposition.md (A1)
+     - dsn_softmax_noise_sensitivity.md (A2)
+     - dsn_per_db_stratified_7ckpt.md (A3)
+     재현 스크립트 reference: src/analysis/dsn_phase1_deep_dive.py (multi-DB stratified protocol) + src/analysis/dsn_mitigation_v2_7trial.py (5-step protocol)
+     ```
+
+  3. **(c) Phase 5 (5/14, planner) 통합 prompt prep**:
+     - 8-trial dominance scoring 갱신 (4-trial → 7-trial → 8-trial)
+     - 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택
+     - DECISIONS 후속 엔트리 작성:
+       - V3-A (가능성 中→高 by A1 evidence): 8-trial null effect = aggregation family 자체 limitation. paper §V.5.4 narrative 절대 강화 + Filter Dominance 6번째 축 narrative 결정적 confirm
+       - V3-B (가능성 中→낮음): GIN MLP+sum 효과 발견 + paper main contribution 4 → 5 항목 격상 후보
+       - V3-C (가능성 낮음, A1+A2+A3 evidence 가 강력 약화): paper main contribution 재평가
+     - paper / presentation_brief 갱신 (시나리오별 narrative)
+     - 사용자 결정 (3) 재고: V3-A 시 Mitigation v3 #2 max aggregation 1 candidate 추가 시도 여부 (~10h 학습)
+
+  4. **(d) 사용자 후속 prep (Phase 5+, 5/14~5/22)**:
+     - 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + A1+A2+A3 + Mitigation v3 #1 결과)
+     - **Multi-DB 정정 narrative 인용**: dsn_mitigation_v2_results.md 의 single-DB 절대 수치 → multi-DB (55 queries) 정정 (DECISIONS 직전 §1(d) 참조)
+     - **mech(ii) sub-mechanism 분리 narrative**: A1 §3.1 (ii-a) softmax / (ii-b) propagation 분리 인용
+     - **schema-dependent caveat**: A3 §6.1 toxicology trivial 무효 (10/11 DBs valid) 명시
+
+  5. **(e) Mitigation v3 추가 candidate 의 시나리오 별 후속 결정**:
+     - **V3-A 시 (가능성 中→高)**: max aggregation 추가 시도 후보 — sum/max 모두 fail 통합 evidence 강화 (sum/max 두 alternative aggregation null = aggregation family 자체 limitation 결정적). 단 학위 본 심사 timeline (~5/22) 의 5/14~5/22 학위 논문 Part III chapter draft 작성 우선 → 학습 1 cell 추가 (~10h, 5/13 GPU 0) 가능. 사용자 결정 (3)C 변경 후보.
+     - **V3-B 시 (가능성 中→낮음)**: GIN MLP nonlinearity 의 sum aggregation 효과 mechanism 분석 우선 (analyzer post-paper). max aggregation 추가 시도 marginal evidence value.
+     - **V3-C 시 (가능성 낮음)**: GIN 결과 가 V3-C 라면 Mitigation v3 추가 시도 무효 (GIN 가 이미 ceiling 갱신).
+     - 사용자 결정 (3)C "모두 post-paper backlog" 는 **Phase 3 GIN 결과 보고 5/14 재고 가능** — V3-A 시 max aggregation 1 candidate 추가 시도 + V3-B/C 시 그대로 post-paper.
+
+  6. **(f) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - 8-trial 결과 + 시나리오 V3-A/B/C 분기는 **학위 논문 Part III chapter §V.5.4 만 적용**
+     - 학회 §V.5.3 Future Work 1 줄 (DSN 8-trial mitigation null + GIN aggregation family 자체 변경에도 fail) 사용자 직접 처리
+
+- **근거**:
+  - **사용자 직전 input** (2026-05-08): "세 항목 모두 권장 옵션으로 선택할게"
+  - **선행 결정**: DECISIONS 직전 (Phase 1 deep dive 완료) §1(7) 사용자 결정 3 항목 — 권장 옵션 그대로 confirm
+  - **선행 분석**: A1+A2+A3 + Phase 2 GIN 구현 + smoke 7/7 통과
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 3 항목 ✅ confirm + Phase 4 통합 prompt (multi-DB stratified protocol) + Phase 5 planner timeline + Mitigation v3 추가 candidate 시나리오별 후속 결정
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §8 Mitigation v3 #2/#4 post-paper 표기 confirm + §9 Limitations multi-DB stratified 적용 confirm
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.13.7 사용자 결정 3 항목 ✅ confirm 갱신
+  - **paper main contribution 영향 X** (학회 narrative 그대로)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §8/§9 minor 갱신 + presentation_brief §14.13.7 갱신
+  2. **사용자 (즉시)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`, Phase 3 GIN 학습 5/11 launch)
+  3. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신
+  4. **사용자 (5/12 GIN 종료 후 즉시)** — Analyzer 세션 prompt 직접 붙여넣기 (본 엔트리 §1(b) 통합 prompt)
+  5. **Analyzer (5/12~5/14, Phase 4)** — 8-trial protocol 재실행 (multi-DB stratified) — 산출물 dsn_mitigation_v3_8trial.md
+  6. **Planner (5/14, Phase 5)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 + 사용자 결정 (3) 재고 (V3-A 시 max aggregation 추가 시도 후보) + DECISIONS 후속 엔트리
+  7. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative)
+
+- **추가 필요 분석** (Phase 4 후속, V3-A/B/C 분기 별):
+  - V3-A 시: aggregation family 자체 limitation evidence 강화 narrative (paper §V.5.4 정식 채택)
+  - V3-B 시: GIN MLP nonlinearity 의 sum aggregation 효과 mechanism 분석 (analyzer post-paper)
+  - V3-C 시: paper main contribution 재평가 + 학회 후 anchor 재검토
+
+---
+
+## 2026-05-08 (Phase 2 완료 — Mitigation v3 #1 GIN-style aggregation 구현 + 7 smoke 통과) — Root 학습 핸드오프 prep (Phase 3 5/11~5/12) + Phase 4/5 prep
+
+> **Status**: Selector 모듈 단계 7 구현 + 7 smoke 통과 (2026-05-08, Phase 2 정시 완료). PyG `GINConv` (heterograph 호환 검증 — bipartite (x_src, x_dst) OK) + `_make_gin_conv` factory + `AGGREGATION_TYPES` 확장 + GIN incompat 검증 (`drop_message_p` / `use_layernorm_pre_softmax` ValueError raise — attention 자체 부재) + Phase 2 b8 backward compat 검증.
+
+- **결정**:
+
+  1. **(a) Selector 모듈 단계 7 구현 완료 확인** (출처: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 7](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md)):
+     - **Mechanism**: PyG `GINConv(mlp, eps=0.0, train_eps=False)` — `sum(MLP(x_i + x_j))` propagation. softmax + weighted-mean → MLP + sum aggregation 자체 대체 (GIN invariance theorem, Xu et al. ICLR 2019 / WL test 동치)
+     - **MLP**: `Sequential(LazyLinear(out_dim), LeakyReLU(0.1), Linear(out_dim, out_dim))` — out_dim = hidden×heads (기존 GATv2Conv 와 동일 차원 → PairNorm/JK/skip path 호환)
+     - **HeteroConv aggr fixed = "mean"** when GIN (cross-edge-type aggr 은 mean 고정, 내부 GIN 의 sum aggregation 만 변경)
+     - **GIN incompat 검증**: `aggregation_type='gin'` + `drop_message_p>0` 또는 `use_layernorm_pre_softmax=True` → ValueError raise (GIN 은 attention/softmax 자체 부재 → v2 #1/#3 결합 무의미)
+     - **Backward compat**: default `aggregation_type='mean'` 유지 → Phase 2 b8 동일 동작
+
+  2. **(b) 신규 산출 파일 3 항목 (cross-reference)**:
+
+     | 파일 | 변경 |
+     |---|---|
+     | `src/models/gat_network_v2.py` | `AGGREGATION_TYPES = HETEROCONV_AGGR_TYPES ∪ {"gin"}` constant + `_make_gin_conv` factory + SchemaHeteroGATv2 의 aggregation_type 검증 확장 + GIN incompat 검증 + HeteroConv 인스턴스화 시 GIN/GAT 분기 |
+     | `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml` | 신규 — Mitigation v3 #1 GIN 학습 config (Base = Phase 2 b8 + `aggregation_type: "gin"`) |
+     | `src/modules/selectors/tests/test_mitigation_v3.py` | 신규 smoke test 7 케이스 |
+
+  3. **(c) Smoke 7/7 통과 (cross-reference)**:
+     - `test_gin_factory_and_homograph_forward` — GINConv 인스턴스 + homo forward shape (8, 64)
+     - `test_gin_factory_bipartite_forward` — bipartite (x_src, x_dst) 호환 (HeteroConv 호출 패턴) shape (7, 16)
+     - `test_full_model_gin_forward` — 18 inner GINConvs (9 edge_types × 2 layers), HeteroConv aggr='mean' fix
+     - `test_backward_compat_default_mean` — default 시 18 GATv2Convs (no GINConv) regression
+     - `test_gin_incompatible_with_v2_options` — GIN + #1/#3 ValueError raise
+     - `test_gin_config_parsing` — 신규 v3 config 정상 + Phase 2 baseline 영향 X
+     - `test_gin_forward_backward_path` — 11 GINConvs received gradient (column dst path)
+
+  4. **(d) 🚀 Root 학습 핸드오프 prep (Phase 3, 5/11~5/12)**:
+
+     | 일정 | GPU | Config | ckpt | ETA |
+     |---|---|---|---|---|
+     | **5/11 launch** | GPU 0 | `train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml` | `best_gat_directed_supernode_p80_b5_mitigation_v3_gin.pt` | 5/12 KST (~10h) |
+
+     - 학습 entry: `python src/train_gat_s06.py --config <config>` (with `CUDA_VISIBLE_DEVICES=0`)
+     - 신규 ckpt NAS 저장 + 로컬 symlink (memory rule, /SSL_NAS/peoples/khj/thesis/checkpoints/)
+     - **EXPERIMENT_HISTORY.md "Mitigation v3 #1 GIN 학습 (V-3-ext 단계 7, 5/11~5/12)" entry 추가**:
+       - 학습 wall + best val R@15 + best epoch + ckpt path + AC loss epoch trajectory + GIN aggregation 동작 확인
+       - 7-trial → 8-trial 통합 표 (Phase 1 + Phase 2 b8 + Phase 3 #3 + #4 + v2 #1 + #3 + #2 + Mitigation v3 #1 GIN)
+     - **alpha sweep skip** (사용자 결정 (1)A 유지) — paper main F1/EX 측정 X, val recall@15 evidence only
+
+  5. **(e) Analyzer 후속 prep (Phase 4, 5/12~5/14)**:
+     - **Phase 4 (5/12 GIN 학습 종료 후)**: `src/analysis/dsn_phase1_deep_dive.py` 또는 신규 8-trial protocol script — 7 ckpt → **8 ckpt × 5 step** 재실행
+     - **multi-DB stratified 적용 권장** (Phase 1 A3 결과 기반 — single-DB 측정은 dramatic underestimation, multi-DB 가 paper §V.5.4 본문 인용 가능 정량)
+     - 시나리오 V3-A/B/C 분기 evidence 정량:
+       - **V3-A** (가능성 中, GIN 도 fail): val R@15 ~0.59-0.61 + L1_GAT cosine ≈ 1.0 → mech(ii-b) aggregation family 자체 limitation 확정 = **mech(ii) DOMINANT 5/5 절대 강화** (8-trial null effect)
+       - **V3-B** (가능성 中, GIN partial): val R@15 0.62-0.70 + L1_GAT cosine 회복 (예: 0.85~0.95) → **mech(ii) softmax 한정 부분 부정 + GIN MLP+sum 효과 발견** + paper main contribution 4 → 5 항목 격상 후보
+       - **V3-C** (가능성 낮음, R 0.85+ 회복): paper main contribution 재평가 + 학회 후 anchor 재검토
+     - **mech(ii-a)/(ii-b) sub-mechanism 분리 (Phase 1 A1 결과 기반) 적용**:
+       - GIN 가 mech(ii-a) softmax over-concentration 미해당 (attention 자체 부재)
+       - GIN 가 mech(ii-b) weighted-mean propagation 자체 대체 (sum + MLP) → L1_GAT cosine 회복 가능성 직접 검증
+     - 산출물: `notebooks/analysis_results/dsn_mitigation_v3_8trial.md` (신규) 또는 `dsn_mitigation_v2_results.md §14` 보강
+
+  6. **(f) Planner 후속 prep (Phase 4 종료 후, ~5/14)**:
+     - 8-trial dominance scoring 갱신 (4-trial → 7-trial → 8-trial)
+     - 시나리오 V3-A/B/C 분기 narrative 정식 확정
+     - paper §V.5.4 narrative 정식 채택 (사용자 결정 (1) 8-trial 결과 후 재확정 → 본 단계에서 결정)
+     - DECISIONS 후속 엔트리 작성 (시나리오 결정 + paper §3.5 / §V.5.4 / §10 narrative 정식 확정)
+
+  7. **(g) 사용자 후속 prep (Phase 5, 5/14~5/22)**:
+     - 학위 논문 Part III chapter draft 작성
+     - **통합 narrative 4 stage**:
+       - Stage 1: V-3-ext baseline + over-smoothing 진단 (Phase 1 P80, qcond_nl3)
+       - Stage 2: Mitigation v1 (Phase 2 b8) + paradox 발견 (단계 4-bis)
+       - Stage 3: Mitigation v2 (Phase 3 #3+#4 + v2 #1+#2+#3) + 7-trial null effect + mech(ii) DOMINANT 5/5 결정적 강화 + paradox 정확한 분리 (attention pattern ↔ message aggregation collapse)
+       - **Stage 4: Phase 1 deep dive (A1+A2+A3) + Mitigation v3 #1 GIN** = mech(ii) sub-mechanism (ii-a)/(ii-b) 분리 + GIN evidence (V3-A/B/C 분기 결과)
+     - **Phase 1 A1+A2+A3 결과 인용**:
+       - A1 v2_LN nuanced mechanism — softmax level mitigation only (post-softmax top5 -0.12) + L1=1.0 collapse 보존 (mech(ii-b))
+       - A2 noise robustness — v2_LN Δtop5(σ=0.1) = -0.0033 (가장 robust)
+       - A3 multi-DB 11 DBs — 10/11 일관 + single-DB caveat 해소
+
+  8. **(h) 시나리오 V3-A/B/C 분기 narrative (DECISIONS 직전 §1(h) + Phase 1 deep dive A1 정밀화)**:
+     - **시나리오 V3-A (가능성 中→高, A1 evidence 강화)**:
+       - A1 결과: mech(ii-b) weighted-mean propagation 의 fundamental limitation (L1=1.0 collapse 보존)
+       - GIN 가 propagation 자체 변경 (sum + MLP) 했음에도 L1_GAT cosine ≈ 1.0 유지 시 → **(ii-b) 가 aggregation family 자체 limitation 확정** = mech(ii) DOMINANT 5/5 절대 강화
+       - paper §V.5.4 narrative: "8-trial mitigation null + GIN aggregation family 자체 변경에도 fail = weighted aggregation family (softmax-mean / sum-mean / MLP-sum) 자체의 fundamental limitation"
+       - Filter Dominance 6번째 축 narrative 절대적 evidence 강화 (8-trial → 학위 논문 Part III main mechanism finding 결정적 confirm)
+     - **시나리오 V3-B (가능성 中→낮음, A1 evidence 약화)**:
+       - A1 결과 가 mech(ii-b) fundamental 강화 → GIN partial recovery 가능성 약화
+       - 단 GIN MLP nonlinearity 가 aggregation collapse 경로 변경 가능성 잔존 (sum 의 magnitude variance 와 다름)
+       - val R@15 0.62-0.70 + L1_GAT cosine 회복 (예: 0.85~0.95) → mech(ii-a) softmax 한정 부분 부정 + GIN 효과 발견
+     - **시나리오 V3-C (가능성 낮음)**: A1 + A3 evidence 가 mech(ii-b) fundamental 강력 → R 0.85+ 회복 가능성 매우 낮음
+
+- **근거**:
+  - **Selector 모듈 단계 7 산출**: [EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 7](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) (구현 + 7 smoke 통과 + GIN incompat 검증 + AGGREGATION_TYPES 확장)
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-08 (사용자 결정 A+B 통합) §1(c)/(e) — Mitigation v3 #1 GIN-style 학위 본 심사 전 진행 + Phase 2 selector 구현 spec
+  - **선행 분석**: [Phase 1 deep dive A1+A2+A3](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) + [A2](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) + [A3](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) — mech(ii-a)/(ii-b) sub-mechanism 분리 + multi-DB 정정
+  - **Cross-reference**: 단계 5 (Phase 3 #3+#4) + 단계 6 (Mitigation v2) + 단계 7 (Mitigation v3 #1) 모두 5/7~5/8 가속 완료 — 학위 본 심사 timeline 여유 확보
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Mitigation v3 #1 GIN 구현 완료 confirm + 신규 산출 3 파일 + smoke 7/7 + Root 학습 launch prep + Phase 4/5 prep + 시나리오 V3-A/B/C 분기 narrative (A1 evidence 정밀화)
+  - **Selector EXPERIMENT_PLAN §V-3-ext 단계 7 ✅ 완료 표기** (이미 selector 모듈에서 작성됨)
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §3.5 / §V.5.4 / §10 갱신 (Phase 1 deep dive + Phase 2 GIN 학습 prep 통합 narrative)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.13 신설 (Phase 1 deep dive + Phase 2 GIN 학습 prep 통합)
+  - **Root 학습 launch prep prompt** (응답 본문) — 5/11 GIN 학습 launch
+  - **paper main contribution 영향 X** (학회 anchor t_00 그대로)
+  - **학위 논문 Part III chapter narrative weight 결정적 격상 prep**: 4-stage narrative (Phase 1 baseline + Mitigation v1 + Mitigation v2 + Phase 1 A1+A2+A3 deep dive + Mitigation v3 #1)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5/§V.5.4/§10 갱신 + presentation_brief §14.13 신설 + Root 학습 launch prep prompt
+  2. **사용자 (즉시)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`, 5/11 GIN 학습 launch)
+  3. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신 (8-trial 통합 표)
+  4. **Analyzer (5/12~5/14)** — protocol 재실행 (8 ckpt × 5 step, multi-DB stratified 적용) — 산출물 dsn_mitigation_v3_8trial.md (신규) 또는 dsn_mitigation_v2_results.md §14 보강
+  5. **Planner (5/14)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 + DECISIONS 후속 엔트리
+  6. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + A1+A2+A3 + Mitigation v3 #1 결과)
+
+- **추가 필요 분석** (Phase 4 후속, Mitigation v3 #1 GIN 학습 + analyzer 결과 후):
+  - GIN ckpt 의 L1_GAT cosine 측정 (mech(ii-b) 회복 정도 직접 정량 — A1 의 L1=1.0 collapse 가 GIN 으로 차단 가능한지)
+  - GIN 의 epoch trajectory + AC fusion decay (mech(ii-a) attention level 부재 시 학습 dynamics)
+  - 8-trial dominance scoring 갱신 (mech(ii) DOMINANT 5/5 절대 강화 / 4/5 부분 부정 / 3/5 부정 분기)
+  - V3-A 시 paper §V.5.4 narrative 정식 채택 (GIN aggregation family limitation evidence 추가)
+  - V3-B 시 GIN MLP nonlinearity 의 sum aggregation 효과 mechanism 분석 + paper main contribution 재평가
+
+---
+
+## 2026-05-08 (Phase 1 deep dive 완료 — A1 v2_LN nuanced mechanism + A2 softmax noise sensitivity + A3 per-DB stratified 11 DBs) — mech(ii) sub-mechanism (ii-a)/(ii-b) 분리 + multi-DB 정정 + single-DB caveat 해소 + Mitigation v3 GIN 기대치 정밀화
+
+> **Status**: Analyzer Phase 1 후속 3 deep dive 완료 (2026-05-08, 정시 1.5일 일정). A1 + A2 + A3 통합 결과로 mech(ii) DOMINANT 5/5 의 정확한 sub-mechanism 분리 + v2_LN noise robustness 결정적 + 11 DBs 일관 evidence 확보. Mitigation v3 #1 GIN 학습 (Phase 3, 5/11~) 의 시나리오 V3-A/B/C 분기 evidence 정밀화 가능.
+
+- **결정**:
+
+  1. **(a) 🎯 mech(ii) Sub-mechanism 분리 정량 (A1 결정적 evidence)**:
+
+     | Sub-mechanism | A1 evidence | A2 evidence | A3 evidence | 결론 |
+     |---|---|---|---|---|
+     | **(ii-a) softmax over-concentration** | L2 raw α std=1.04 → LN normed std=1.20 → post-softmax top5 **-0.12** (sharp peaking 차단) | LN 의 noise robustness Δtop5(σ=0.1) = **-0.0033** (가장 robust) | 11 DBs 중 10 일관 sharpening | **partial mitigation 가능 (LN level)** |
+     | **(ii-b) weighted-mean propagation collapse** | L1 cosine **1.0 보존** (LN 으로 차단 X) | (forward deterministic, noise 영향 없음) | 11 DBs 모두 L1=1.0 schema-invariant | **fundamental architectural limitation** (schema/noise/mitigation 어떤 변경도 차단 X) |
+
+     **결정적 발견**: LN pre-softmax 가 **softmax sharp peaking 만 차단** (L2 top5 -0.12) — message aggregation propagation collapse (L1=1.0) 는 그대로. mech(ii) 의 root cause 는 **(ii-b) weighted-mean propagation 의 aggregation 자체** (softmax 분포 변경으로 차단 불가).
+
+  2. **(b) v2_LN Noise Robustness 정량 (A2 결정적 evidence)**:
+
+     | Ckpt | σ=0 top5 | σ=0.1 top5 | Δtop5(σ=0.1) | 해석 |
+     |---|---:|---:|---:|---|
+     | phase1_p80 | 0.6844 | 0.6930 | +0.0086 | baseline |
+     | phase2_b8 | 0.8714 | 0.8802 | +0.0087 | sharp 학습 |
+     | phase3_directAC | 0.8215 | 0.8249 | +0.0034 | mid-sensitive |
+     | **phase3_layerwiseLR** | 0.9353 | 0.9548 | **+0.0195** ⚠ | 가장 sensitive (sharp 학습) |
+     | v2_drop_message | 0.8167 | 0.8344 | +0.0177 | drop random 효과 |
+     | **v2_layernorm** ⭐ | 0.7271 | 0.7238 | **-0.0033** | 🔥 **가장 robust** (LN normalize) |
+     | v2_sum_aggr | 0.8177 | 0.8305 | +0.0128 | sum sensitive |
+
+     - LN 의 magnitude normalization 이 input noise 의 alpha shift 를 normalize 단계에서 absorb → post-softmax distribution 이 noise 에 invariant
+     - 다른 ckpt: raw alpha magnitude 변동 → softmax 입력 → exp 비선형 amplify → top-K concentration 증가
+     - **A1 + A2 결합**: LN 이 (ii-a) softmax level 에서 정확히 학습 dynamics 와 noise 둘 다 absorb
+
+  3. **(c) Multi-DB 11 DBs 정정 (A3 결정적 evidence)**:
+
+     **3.1 Single-DB → Multi-DB 측정 dramatic 차이**:
+
+     | Ckpt | single-DB (calif.) | multi-DB (55 queries) | Δ |
+     |---|---:|---:|---:|
+     | phase1_p80 | 0.2445 | **0.7144** | +0.4699 |
+     | phase2_b8 | 0.6885 | **0.8797** | +0.1912 |
+     | v2_layernorm | 0.3540 | **0.7440** | +0.3900 |
+     | phase3_layerwiseLR | 0.8282 | 0.9482 | +0.1200 |
+     | v2_sum_aggr | 0.4656 | 0.8366 | +0.3710 |
+
+     - california_schools (T=3, C=89) 의 in-degree ~30 (분산 가능) → top5 ratio 작음
+     - 다른 DBs (T=8~13, C=20~237) 의 in-degree 5~15 작음 → top5 ratio 큼
+     - **상대 비교 패턴 일관** (mech(ii) sharpening 일관 도달) — paper narrative 절대 수치만 multi-DB 로 정정, mech(ii) DOMINANT 결론 invariant
+
+     **3.2 Schema-dependent LN attention 회복**:
+
+     | Schema 규모 | Phase 1 top5 | LN 회복 (v2_LN - p2) |
+     |---|---|---|
+     | Trivial (toxicology T=4 C=20) | 1.0 | **0.0 (LN 무효)** ⚠ |
+     | Small (debit/superhero C≤52) | 0.91~0.94 | -0.03 ~ -0.06 |
+     | Medium (financial/student/codebase) | 0.72~0.82 | -0.10 ~ -0.15 |
+     | Medium-large (card/formula_1) | 0.66~0.74 | -0.14 ~ -0.17 |
+     | Large columns (calif./thrombosis) | 0.24~0.42 | **-0.28 ~ -0.29** |
+
+     → **column 수가 많을수록 LN attention 회복 효과 큼**. trivial schema (toxicology) 에서는 무효 (in-degree ≤ 5 → top-5 = all → 측정 X).
+
+     **3.3 mech(ii-b) L1=1.0 collapse 11 DBs 모두 schema-invariant**: toxicology 포함 모든 DBs 의 v2_LN L1_GAT cosine ≈ 1.0 — fundamental architectural limitation.
+
+  4. **(d) 🚨 직전 paper narrative 정정 사항 (single-DB → multi-DB)**:
+     - 직전 dsn_mitigation_v2_results.md §0 의 "v2_LN top5_conc 0.35" 수치 → **multi-DB 0.7440** 로 정정
+     - 직전 7-trial 결과 표의 절대 수치들 multi-DB 정정 (단 상대 비교는 일관)
+     - **mech(ii) DOMINANT 결론 invariant** — paper §V.5.4 narrative 보강 (single-DB caveat 해소 + multi-DB 11 DBs 일관 evidence)
+     - paper §3.5 6번째 축 narrative 의 "v2_LN top5_conc 0.35 baseline 회복" → "multi-DB v2_LN top5_conc 0.7440 (Phase 1 baseline 0.7144 회복) — schema-dependent LN 효과 (큰 schema -0.28~-0.29 / 작은 schema -0.03~-0.06)" 로 정밀화
+
+  5. **(e) Mitigation v3 #1 GIN 기대치 정밀화 (Phase 1 deep dive 결과 기반)**:
+     - **A1 결과 가 V3-A 가능성 강화**: mech(ii-b) weighted-mean propagation 의 fundamental architectural limitation 확정 → GIN 의 sum + MLP propagation 도 weighted aggregation family 에 포함될 가능성 高
+     - **GIN 의 MLP nonlinearity 가 변수**: v2_sum_aggr (sum, no MLP) 는 R=0.5735 (worst) → MLP 가 핵심. GIN 의 MLP+sum 이 propagation collapse 차단 가능성 잔존
+     - **시나리오 분기**:
+       - **V3-A (가능성 中→高)**: GIN 도 fail (val R@15 ~0.59-0.61, L1_GAT cosine ≈ 1.0) → mech(ii) DOMINANT 5/5 절대 강화 (8-trial null + aggregation family 자체 limitation)
+       - **V3-B (가능성 中→낮음)**: GIN partial recovery (val R@15 0.62-0.70, L1 회복) → mech(ii-a) softmax 한정 부분 부정 + GIN MLP+sum 효과 발견
+       - **V3-C (가능성 낮음)**: A1+A2+A3 evidence 가 mech(ii-b) fundamental 강력 → R 0.85+ 가능성 매우 낮음
+
+  6. **(f) paper §V.5.4 narrative 보강 (multi-DB + sub-mechanism + schema-dep + caveat 해소)**:
+     - **paper §V Conclusion 갱신 narrative**:
+       > "DSN mech(ii) DOMINANT 의 sub-mechanism 분리: **(ii-a) softmax over-concentration** 은 LayerNorm pre-softmax 로 partial mitigation 가능 (post-softmax top5_conc Δ=-0.12, multi-DB 11 DBs 중 10 일관, schema-dependent: 큰 schema -0.28~-0.29 / 작은 schema -0.03~-0.06 / trivial schema 무효). **(ii-b) weighted-mean message aggregation propagation collapse** 은 LayerNorm 으로 차단 X — 11 DBs 모두 L1_GAT cosine = 1.0 schema-invariant fundamental architectural limitation. v2_LN 의 noise robustness Δtop5(σ=0.1) = -0.0033 (7 ckpt 중 가장 robust) 가 (ii-a) softmax level mitigation 의 학습 dynamics + input noise 둘 다 absorb 직접 evidence."
+     - **single-DB caveat 해소**: dsn_mitigation_v2_results.md §13 의 single-DB only caveat → A3 multi-DB 11 DBs evidence 로 paper §V.5.4 본문 인용 가능 정량 + Mitigation v3 #1 GIN 결과 후 재평가 base
+     - **schema-dependent caveat 신설**: toxicology trivial schema (in-degree ≤ 5) 에서는 mech(ii) 측정 X — paper §V.5.4 Limitations 1 줄 명시
+
+  7. **🚨 사용자 결정 필요 3 항목**:
+
+     | # | 결정 항목 | 옵션 | 권장 |
+     |---|----------|------|------|
+     | (1) | **Mitigation v3 #1 GIN 시나리오 V3-A/B/C 분기 narrative 확정 시점** | (A) Phase 4 (5/12 학습 종료 후, 8-trial protocol 재실행 결과 후) 정식 채택 / (B) 즉시 V3-A 가능성 高 narrative candidate 채택 (A1 evidence 정밀화 후) | **(A) Phase 4 후 정식 채택** — A1 evidence 가 V3-A 강화하지만 GIN MLP nonlinearity 의 mech(ii-b) 차단 가능성 잔존, 학습 결과 정량 confirm 후 정식 |
+     | (2) | **Phase 4 (5/12~5/14) analyzer 추가 위임** | (A) 8-trial protocol 재실행 + multi-DB stratified 적용 (single-DB 제거) — 권장 / (B) 8-trial protocol 만 (single-DB 유지) — 직전 protocol 호환 | **(A) multi-DB stratified 적용** — A3 결과로 single-DB 측정 dramatic underestimation 확인, 8-trial 모두 multi-DB 측정으로 통일 권장 (paper §V.5.4 정식 정량 base) |
+     | (3) | **Mitigation v3 추가 candidate (max aggregation, EGAT) 학습 우선순위** | (A) #2 max aggregation 만 추가 시도 (~10h, 5/13 GPU 0 launch) — V3-A 시 GIN+max 통합 evidence 강화 / (B) #4 EGAT 만 추가 시도 (~10h+, 가장 architectural shift) / (C) 모두 post-paper backlog (학위 본 심사 timeline 부족 + GIN 결과 보고 결정) | **(C) 모두 post-paper backlog** — Phase 3 GIN 결과 (5/12) 후 시나리오 분기 결정 후 Mitigation v3 추가 시도 여부 재고. V3-A 가능성 高 시 max aggregation 추가 시도 1 candidate 만 (학위 본 심사 timeline 충분) |
+
+- **근거**:
+  - **신규 analyzer 3 산출**:
+    - [dsn_v2_layernorm_mechanism_decomposition.md](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
+    - [dsn_softmax_noise_sensitivity.md](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) (A2)
+    - [dsn_per_db_stratified_7ckpt.md](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) (A3)
+  - **재현 데이터**: outputs/analysis/dsn_phase1_deep_dive/{a1, a2, a3}_*.json
+  - **재현 스크립트**: src/analysis/dsn_phase1_deep_dive.py
+  - **선행 분석**: dsn_mitigation_v2_results.md (7-trial single-DB) — A3 가 single-DB caveat 해소
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-08 (사용자 결정 A+B 통합) §1(b) — A1+A2+A3 위임
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Phase 1 deep dive 3 분석 통합 결과 + mech(ii-a)/(ii-b) sub-mechanism 분리 + v2_LN noise robust + multi-DB 11 DBs 일관 + single-DB caveat 해소 + Mitigation v3 GIN 기대치 정밀화 + 사용자 결정 3 항목
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §3.5 Filter Dominance 6번째 축 sub-section 갱신 (multi-DB 수치 정정 + sub-mechanism 분리 + schema-dependent + analyzer A1+A2+A3 인용)
+    - §3.5 학위 논문 Part III chapter outline §III.4/§III.6 갱신 (sub-mechanism 분리 + multi-DB)
+    - §V.5 §V.5.4 narrative 갱신 (multi-DB 정정 + caveat 해소)
+    - §10 V-3-ext 단계 5+6 sub-section 갱신 (single-DB → multi-DB 비교 표 + sub-mechanism)
+    - §9 Limitations — single-DB caveat 해소 + schema-dependent caveat 신설 (toxicology trivial 무효)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.13 신설 (Phase 1 deep dive 결과 + sub-mechanism 분리 + multi-DB 정정 + 사용자 결정 3 항목)
+  - **paper main contribution (학회)** 영향 X — anchor t_00 + 4 축 narrative 그대로
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — sub-mechanism 분리 + multi-DB 11 DBs 일관 evidence + single-DB caveat 해소
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5/§V.5.4/§10/§9 갱신 + presentation_brief §14.13 신설
+  2. **사용자 (즉시 의사결정 3 항목)** — (1) V3 narrative 확정 시점 / (2) Phase 4 multi-DB 적용 / (3) Mitigation v3 추가 candidate 우선순위
+  3. **사용자 (Phase 2 GIN 구현 완료 후 즉시)** — Root 세션 prompt 직접 붙여넣기 (Phase 3 GIN 학습 5/11 launch)
+  4. **Root (5/11~5/12)** — Mitigation v3 #1 GIN 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신
+  5. **Analyzer (5/12~5/14, Phase 4)** — 8-trial protocol 재실행 (multi-DB stratified 적용 권장) — 산출물 dsn_mitigation_v3_8trial.md
+  6. **Planner (5/14)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + paper §V.5.4 narrative 정식 채택 + DECISIONS 후속 엔트리
+  7. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (4-stage 통합 narrative + A1+A2+A3 + Mitigation v3 #1)
+
+- **추가 필요 분석** (Phase 4 후속, Mitigation v3 #1 GIN 학습 + analyzer 결과 후):
+  - GIN ckpt 의 L1_GAT cosine 측정 — A1 의 mech(ii-b) fundamental 가설 직접 검증 (GIN sum+MLP propagation 도 L1=1.0 collapse 인지)
+  - GIN 의 multi-DB 11 DBs 일관 evidence (mech(ii) DOMINANT generalizability 8-trial 통합)
+  - 8-trial dominance scoring 갱신 (multi-DB 정정 + sub-mechanism (ii-a)/(ii-b) 분리 evidence 추가)
+  - 시나리오 V3-A 시 paper §V.5.4 narrative 정식 채택 — "8-trial mitigation null + GIN aggregation family 자체 변경에도 fail = weighted aggregation family fundamental limitation" + sub-mechanism (ii-a) partial mitigation 가능 / (ii-b) schema-invariant fundamental 분리
+
+---
+
+## 2026-05-08 (사용자 결정 A+B 통합 — Over-smoothing deep dive: Analyzer 후속 3 분석 + Mitigation v3 #1 GIN-style 학위 본 심사 전 진행) — Selector + Analyzer + Root 핸드오프 prep + 4-phase timeline 확정
+
+> **사용자 직전 input (2026-05-08)**: "이 Over-Smoothing 문제를 해결하고 싶은데, 좀 더 상세한 분석을 하는 건 어떨까" → planner 4 옵션 (A/B/C/D) 제시 → 사용자 **A+B 통합 선택** (Analyzer mechanism 정밀화 + Mitigation v3 #1 GIN-style 학습 시도 통합).
+
+> **사용자 결정 변경**:
+> - 직전 (2026-05-08 7-trial dominance 엔트리) §1(9)(2) Mitigation v3 우선순위 = (D) 모두 post-paper backlog
+> - **본 엔트리 갱신**: (D) 모두 post-paper → **(A) 일부 학위 본 심사 전 진행** — #1 GIN-style aggregation 만 학위 본 심사 전 시도 (#2/#3/#4 는 post-paper 보존)
+
+- **결정**:
+
+  1. **(a) 사용자 결정 A+B 통합 — 4-phase timeline 확정**:
+
+     | Phase | 일정 | 작업 | 세션 | 비용 |
+     |---|---|---|---|---|
+     | **Phase 1** | 5/8~5/10 (~1.5일) | **Analyzer 후속 3 deep dive** (병렬 가능) | analyzer | LLM-free ₩0 |
+     | **Phase 2** | 5/10~5/11 | Selector 모듈 — Mitigation v3 #1 GIN-style aggregation 구현 + smoke test | selector | ~5h 구현 |
+     | **Phase 3** | 5/11~5/12 | Root — Mitigation v3 #1 GIN 학습 (GPU 0, ~10h) | root | ~10h 학습 |
+     | **Phase 4** | 5/12~5/14 | Analyzer protocol 재실행 (8 ckpt × 5 step) — 7-trial → 8-trial dominance scoring | analyzer | LLM-free ₩0 |
+     | **Phase 5** | 5/14~5/22 | 사용자 — 학위 논문 Part III chapter draft 작성 (analyzer 후속 + Mitigation v3 #1 통합 narrative) | user | — |
+
+  2. **(b) 🆕 Analyzer 후속 3 deep dive (Phase 1, 병렬 가능 LLM-free)**:
+
+     | # | 분석 | 가설 / 측정 spec | 산출물 |
+     |---|------|----|---|
+     | **A1** | **v2_LN nuanced mechanism** — LayerNorm 이 어떤 message component 정규화에 작용하는지 | LayerNormGATv2Conv 의 raw alpha tensor capture (forward hook) + per-head magnitude / variance / sign distribution 분석. softmax pre/post 분포 비교 + L1_GAT cosine = 1.0 collapse 가 어디서 발생하는지 (alpha → message → aggregation 단계별) decompose | `notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md` |
+     | **A2** | **Softmax noise sensitivity** — input perturbation 시 alpha 변동 정량 | 7 ckpt × column 노드 input 에 Gaussian noise (σ=0.01, 0.05, 0.1) 추가 → alpha tensor variance 측정. v2_LN 의 noise robustness 정량 + Phase 2/3 의 noise sensitivity 비교 | `notebooks/analysis_results/dsn_softmax_noise_sensitivity.md` |
+     | **A3** | **Per-DB stratified 11 DBs 재측정** — single-DB caveat 해소 (mech(ii) generalizability 검증) | BIRD-dev shuffle=True (seed 고정) 또는 per-DB stratified sampling (각 DB 5 queries × 11 DBs = 55 queries) → 7 ckpt × 4 mechanism × 5 step 재실행. mech(ii) DOMINANT 의 11 DBs invariance 검증. toxicology (작은 schema) vs european_football_2 (큰 schema) 의 mech(ii) 차이 정량 | `notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md` |
+
+     **사용자 결정 갱신**: 직전 (2026-05-08 §1(9)) (3) per-DB 후속 측정 = (B) post-paper backlog → **본 엔트리 (A) 학위 본 심사 전 진행** (single-DB caveat 해소가 paper §V.5.4 narrative 강화 + 학위 논문 Part III chapter Limitations 1 줄 → 11 DBs 일관 evidence 로 격상)
+
+  3. **(c) 🚀 Mitigation v3 #1 GIN-style aggregation 학습 (Phase 2 + Phase 3)**:
+     - **Mechanism**: softmax + weighted-mean → `sum(MLP(x_i + x_j))` propagation (GIN 의 invariance theorem). aggregation propagation 자체 대체로 동질화 차단 가능성 검증
+     - **Hypothesis**:
+       - **시나리오 V3-A (가능성 中)**: GIN 도 fail (val R@15 ~0.59-0.61) → mech(ii) DOMINANT 5/5 절대적 강화 (8-trial null effect = aggregation function family 자체의 limitation)
+       - **시나리오 V3-B (가능성 中)**: GIN partial recovery (val R@15 0.62-0.70) → mech(ii) softmax 한정 부분 부정 + GIN 의 sum aggregation 효과 발견 → paper main contribution 4 → 5 항목 격상 후보
+       - **시나리오 V3-C (가능성 낮음)**: GIN 이 R 0.85+ ceiling 갱신 → mech(ii) 부정 + paper main contribution 재평가
+     - **구현 spec (selector 모듈 핸드오프)**:
+       - `gat_network_v2.py` 에 `GINStyleConv(MessagePassing)` 또는 PyG `GINConv` 도입 (heterograph 호환)
+       - `aggregation_type: "gin"` config flag 추가 (기존 `mean / sum / max` 와 별개)
+       - GIN 의 epsilon 학습 + MLP layer 1-2개 추가 (PyG default)
+       - 신규 config: `train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml` (Phase 2 b8 + aggregation_type: "gin")
+       - smoke test 5: GINStyleConv subclass / forward shape / heterograph 호환 / backward compat / config parsing
+     - **학습 entry**: `python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml`
+     - **신규 ckpt**: `best_gat_directed_supernode_p80_b5_mitigation_v3_gin.pt` (NAS path + symlink)
+     - batch_size=8, ~10h 학습, GPU 0
+
+  4. **(d) 8-trial 통합 dominance scoring 갱신 (Phase 4)**:
+     - 7-trial (Phase 1 + Phase 2 b8 + Phase 3 #3 + #4 + v2 #1 + #3 + #2) + Mitigation v3 #1 GIN = **8-trial**
+     - mech(ii) DOMINANT scoring 갱신:
+       - V3-A 시나리오 (GIN fail): 8-trial null = mech(ii) **5/5 절대적 강화** (aggregation family 한정도 못 해결)
+       - V3-B 시나리오 (GIN partial): mech(ii) 4/5 부분 부정 + GIN 부분 효과 evidence
+       - V3-C 시나리오 (GIN 회복): mech(ii) 3/5 부정 + paper main contribution 재평가
+     - 산출물: `notebooks/analysis_results/dsn_mitigation_v3_8trial.md` (analyzer 신규 또는 dsn_mitigation_v2_results.md §14 보강)
+
+  5. **(e) Selector 모듈 핸드오프 prompt (Phase 2, 5/10 시작)**:
+     ```
+     먼저 src/modules/selectors/CLAUDE.md 와 DECISIONS.md 최상단 (2026-05-08 사용자 결정 A+B 통합) §1(c) 의 GIN-style aggregation 구현 spec 읽고,
+     Mitigation v3 #1 GIN-style aggregation 구현 + smoke test (단계 7 신설).
+
+     구현 spec:
+     - src/models/gat_network_v2.py 에 GIN aggregation 옵션 추가
+       - PyG GINConv 도입 (heterograph 호환 — HeteroConv 안에서 GIN 가능 검증)
+       - 또는 custom GINStyleConv: sum(MLP(x_i + x_j)) propagation
+     - aggregation_type: "gin" config flag (기존 mean/sum/max 와 별개)
+     - 신규 config: configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml
+       - Base = Phase 2 b8 (mitigation 동일) + aggregation_type: "gin"
+     - smoke test 5: GINConv subclass / forward shape / heterograph 호환 / backward compat (default mean) / config parsing
+     - Phase 2 b8 backward compat 보존 (aggregation_type 미설정 시 mean default)
+
+     선행 reference:
+     - 단계 6 (Mitigation v2 #1+#3+#2): src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 6
+     - GINConv: torch_geometric.nn.GINConv (PyG 공식)
+     - heterograph + GIN: HeteroConv 가 GINConv 호환 가능 확인 (smoke 필수)
+     ```
+
+  6. **(f) Analyzer 핸드오프 prompt (Phase 1 즉시 + Phase 4 후속)**:
+     ```
+     먼저 src/analysis/CLAUDE.md 와 DECISIONS.md 최상단 (2026-05-08 사용자 결정 A+B 통합) §1(b) 의 3 deep dive 분석 spec 읽고,
+     A1 + A2 + A3 3 분석을 병렬 진행 (~1.5일 합).
+
+     A1. v2_LN nuanced mechanism decomposition:
+     - LayerNormGATv2Conv 의 raw alpha tensor capture (forward hook)
+     - per-head magnitude / variance / sign distribution 분석
+     - softmax pre/post 분포 비교
+     - L1_GAT cosine = 1.0 collapse 가 어디서 발생하는지 (alpha → message → aggregation 단계별 decompose)
+     - 산출물: notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md
+
+     A2. Softmax noise sensitivity:
+     - 7 ckpt × column 노드 input 에 Gaussian noise (σ=0.01, 0.05, 0.1) 추가
+     - alpha tensor variance 측정
+     - v2_LN 의 noise robustness 정량 + Phase 2/3 비교
+     - 산출물: notebooks/analysis_results/dsn_softmax_noise_sensitivity.md
+
+     A3. Per-DB stratified 11 DBs 재측정:
+     - BIRD-dev shuffle=True (seed 고정) 또는 per-DB stratified (각 DB 5 queries × 11 DBs = 55 queries)
+     - 7 ckpt × 4 mechanism × 5 step 재실행
+     - mech(ii) DOMINANT 의 11 DBs invariance 검증
+     - toxicology vs european_football_2 의 mech(ii) 차이 정량
+     - 산출물: notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md
+
+     Phase 4 후속 (5/12 GIN 학습 종료 후):
+     - 8 ckpt × 5 step protocol 재실행
+     - 8-trial dominance scoring 갱신 (mech(ii) 5/5 결정적 강화 / 4/5 부분 부정 / 3/5 부정 분기)
+     - 산출물: notebooks/analysis_results/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
+     ```
+
+  7. **(g) Root 핸드오프 prompt (Phase 3, 5/11 시작)**:
+     ```
+     먼저 CLAUDE.md 와 DECISIONS.md 최상단 (2026-05-08 사용자 결정 A+B 통합) §1(c)/(e) 읽고,
+     Mitigation v3 #1 GIN-style aggregation 학습 launch + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신.
+
+     5/11 launch (Selector 구현 완료 후):
+     - GPU 0: CUDA_VISIBLE_DEVICES=0 nohup python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml > logs/train/gat_dsn_p80_b5_mitigation_v3_gin_$(date +%Y%m%d_%H%M).log 2>&1 &
+     - ~10h 학습, batch_size=8, ETA 5/12 KST
+
+     학습 종료 후:
+     - ckpt NAS 저장: /SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_b5_mitigation_v3_gin.pt
+     - 로컬 symlink: outputs/checkpoints/
+     - EXPERIMENT_HISTORY.md "Mitigation v3 #1 GIN 학습 (V-3-ext 단계 7, 5/11~5/12)" entry 추가
+       - 학습 wall + best val R@15 + best epoch + ckpt path + AC loss epoch trajectory + GIN aggregation 동작 확인
+     - alpha sweep skip (사용자 결정 (1)A 유지) — paper main F1/EX 측정 X, val recall@15 evidence only
+     - 학습 종료 후 analyzer 핸드오프 (Phase 4)
+     ```
+
+  8. **(h) 시나리오 V3-A/B/C 분기 narrative**:
+     - **시나리오 V3-A (가능성 中 — GIN 도 fail, mech(ii) 절대적 강화)**:
+       - val R@15 ~0.57-0.61 영역 unchanged
+       - **mech(ii) 5/5 절대적 강화** + 8-trial null effect (aggregation function family 자체 limitation)
+       - paper §V.5.4 narrative: "8-trial mitigation null + GIN aggregation 자체 대체에도 fail = edge softmax + weighted-mean propagation 만의 issue 가 아닌 weighted aggregation family 자체의 limitation"
+       - Filter Dominance 6번째 축 narrative 절대적 evidence 강화 (8-trial → 학위 논문 Part III main mechanism finding 결정적 confirm)
+     - **시나리오 V3-B (가능성 中 — GIN partial recovery)**:
+       - val R@15 0.62-0.70 영역 partial 회복
+       - **mech(ii) 4/5 부분 부정 + GIN 부분 효과 발견**
+       - paper main contribution 4 → 5 항목 격상 후보 (단 anchor 변경은 학회 후 별도 결정)
+       - 학위 논문 Part III main contribution: "**aggregation function 변경 mech(ii) partial mitigation 발견**"
+     - **시나리오 V3-C (가능성 낮음 — GIN R 0.85+ 회복)**:
+       - 가능성 낮음 (mech(ii) edge softmax fundamental limitation evidence 강함, GIN 도 weighted aggregation family)
+       - **§V.5.4 narrative 큰 수정 + paper main contribution 재평가** + 학회 후 paper anchor 재검토
+
+  9. **(i) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - 8-trial 결과는 **학위 논문 Part III chapter §V.5.4 만 적용**
+     - 학회 §V.5.3 Future Work 1 줄 (DSN 8-trial mitigation null + GIN-style aggregation 부정 가능성 검증) 사용자 직접 처리
+
+- **근거**:
+  - **사용자 직전 input** (2026-05-08): "이 Over-Smoothing 문제를 해결하고 싶은데, 좀 더 상세한 분석을 하는 건 어떨까" → planner 4 옵션 (A/B/C/D) 제시 → **사용자 A+B 통합 선택**
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-08 (7-trial mechanism dominance 결정적 확정) §1(9) — 사용자 결정 (2)D 모두 post-paper backlog → 본 엔트리 (2)A 일부 (#1 GIN-style 만 학위 본 심사 전) 변경
+  - **선행 분석**: dsn_mitigation_v2_results.md §10 권장 #1 + analyzer §13 후속 권장 (per-DB stratified + softmax noise + Mitigation v3)
+  - **GIN reference**: PyG `GINConv` (https://pytorch-geometric.readthedocs.io/) — heterograph 호환 검증 필요
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 A+B 통합 + 4-phase timeline + Analyzer 후속 3 deep dive + Mitigation v3 #1 GIN 학위 본 심사 전 진행 + Selector + Analyzer + Root 핸드오프 prompt + 시나리오 V3-A/B/C 분기 narrative
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §8 Future Works H-DTK Mitigation v3 #1 GIN 항목 갱신 (post-paper backlog → 학위 본 심사 전 진행)
+    - §8 Per-DB 후속 항목 갱신 (post-paper backlog → 학위 본 심사 전 진행 — A3 분석에 통합)
+    - §8 H-DTK softmax noise sensitivity 갱신 (post-paper → A2 즉시 진행)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.12.7 사용자 결정 갱신 ((2)D → A 일부 + (3)B → A 변경) + 4-phase timeline 추가
+  - **Selector 모듈 세션 핸드오프 prompt** (응답 본문) — Mitigation v3 #1 GIN 구현 + smoke test
+  - **Analyzer 세션 핸드오프 prompt** (응답 본문) — A1+A2+A3 3 deep dive 분석 + Phase 4 8-trial 재실행
+  - **Root 세션 핸드오프 prompt** (응답 본문) — Phase 3 GIN 학습 launch
+  - **paper main contribution 영향**: 학회 narrative X / **학위 논문 §V.5.4 narrative 정식 채택은 8-trial 결과 후 재확정** (시나리오 V3-A/B/C 분기)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §8 갱신 + presentation_brief §14.12.7 갱신 + 3 핸드오프 prompt
+  2. **사용자 (즉시)** — Analyzer 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored/src/analysis`) — Phase 1 A1+A2+A3 3 deep dive 시작
+  3. **사용자 (5/10 종료 후)** — Selector 모듈 prompt 직접 붙여넣기 — Phase 2 GIN 구현
+  4. **사용자 (5/11 selector 구현 완료 후)** — Root 세션 prompt 직접 붙여넣기 — Phase 3 GIN 학습 launch
+  5. **Analyzer (Phase 1 즉시 + Phase 4 5/12 후)** — 3 deep dive (5/8~5/10) + 8-trial protocol 재실행 (5/12~5/14)
+  6. **Selector 모듈 (5/10~5/11)** — GIN-style aggregation 구현 + smoke test 5
+  7. **Root (5/11~5/12)** — GIN 학습 + EXPERIMENT_HISTORY 갱신
+  8. **Planner (5/14)** — 8-trial dominance scoring 갱신 + 시나리오 V3-A/B/C 분기 narrative 정식 확정 + DECISIONS 후속 엔트리
+  9. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (Analyzer 후속 + Mitigation v3 #1 통합 narrative)
+
+- **추가 필요 분석** (Phase 4 후속, 시나리오 분기 후):
+  - V3-A 시 mech(ii) 5/5 절대적 강화 narrative + Filter Dominance 6번째 축 narrative 결정적 confirm
+  - V3-B 시 GIN partial mitigation mechanism 정량 + paper main contribution 재평가 후보
+  - V3-C 시 (낮음) Filter Dominance narrative 큰 수정 + 학회 후 paper anchor 재검토
+  - per-DB stratified 11 DBs evidence 통합 (mech(ii) generalizability 검증)
+  - Softmax noise sensitivity → v2_LN 의 robustness 정량 + paper §V.5.4 narrative 보강
+
+---
+
+## 2026-05-08 (7-trial mechanism dominance 결정적 확정 — 🎯 Mech(ii) GATv2Conv Normalization 5/5 결정적 강화 + Mech(iii) Skip Dependency 3/5 부정 강화) — paradox 분리 + 학위 논문 Part III §V.5.4 정식 채택 + Filter Dominance 6번째 축 narrative 결정적 evidence
+
+> **Status**: analyzer dsn_mitigation_v2_results.md (7 ckpt × 4 mechanism × 5 step) 완료. v2_layernorm 의 attention pattern Phase 1 baseline 회복 evidence + 모든 6 mit ckpt L1_GAT cosine = 1.0 collapse + Phase 3 #3 AC=0.62 일관 유지 결합 → mech(ii) 5/5 결정적 강화. mech(iii) skip dep 는 v2_drop/LN 가 main GAT gradient 회복 (conv_L1 0.30~0.31, Phase 2 의 2.5×) + skip_dep ratio 1.36~1.41 (균형) 도달했음에도 R 미달 → 3/5 부정 강화.
+
+- **결정**:
+
+  1. **(a) 🎯 7-trial Mechanism Dominance 갱신 — Mech(ii) 결정적 강화**:
+
+     | Mechanism | Phase 2 only | 4-trial | **7-trial 갱신** | 핵심 정량 evidence |
+     |---|:---:|:---:|:---:|---|
+     | (i) Aggregation collapse | 2/5 | 2/5 | 2/5 (변경 X) | top-5 raw cos 0.48~0.59 marginal, v2_sum_aggr 도 dramatic 차이 X |
+     | **(ii) GATv2Conv normalization** | 3/5 | 5/5 DOMINANT | **5/5 ⭐⭐ 결정적 강화** | **v2_LN top5_conc 0.35** (Phase 1 0.24 회복) → R 0.6007 partial recovery + L1=1.0 collapse 동시 + Phase 3 #3 AC=0.62 일관 유지 |
+     | (iii) Skip dependency pathology | 5/5 DOMINANT | 4/5 보조 | **3/5 부정 강화** | v2_drop/LN 가 conv_L1 0.30~0.31 (Phase 2 의 2.5×, LR x5 의 6×) 회복 + skip_dep 1.36~1.41 균형 도달 → 단 R 미달 (0.5970~0.6007) — gradient 회복만으로 ceiling 갱신 X |
+     | (iv) Schema sibling (raw PLM) | 3/5 | 3/5 | 3/5 (변경 X) | L0=0.5090 모든 ckpt 동일 lower bound |
+
+     **결정적 evidence (Mech(ii) DOMINANT 5/5 강화 직접 정량)**:
+     - **v2 #3 LayerNorm pre-softmax 가 attention pattern 을 Phase 1 baseline 으로 회복**:
+       - L2 top5_conc: Phase 2/3 의 0.58~0.83 → v2_LN **0.3540** (Phase 1 의 0.2445 와 매우 가까움)
+       - L2 entropy: Phase 2/3 의 2.02~2.75 → v2_LN **3.1558** (Phase 1 의 3.2177 와 거의 동일)
+       - → softmax 직전 LayerNorm 이 sharp peaking 차단, attention 분포 baseline 유지
+     - **v2_LN best R@15 = 0.6007** (mitigation variants 최고, Phase 2 b8 0.6018 와 사실상 동등) — attention sharpening 차단으로 partial recovery (-0.0090 vs Phase 1 baseline)
+     - **그러나 v2_LN L1_GAT cosine = 0.9998** (Phase 2/3 의 1.0 동일) — attention 회복으로도 message aggregation collapse 차단 X
+     - → **edge softmax 의 weighted-mean propagation 자체가 column 동질화 강제** (mech ii 의 fundamental nature)
+     - **Phase 3 #3 AC=0.62 일관 유지** (300 epoch ΔAC = -0.0001) + 6 mit ckpt L1=1.0 + LayerNorm partial recovery 결합 = 결정적 evidence
+
+  2. **(b) 🟡 Mech(iii) Skip Dependency 부분 부정 강화 (4/5 → 3/5)**:
+     - **v2_drop_message + v2_layernorm 의 conv_L1 gradient = 0.30~0.31**:
+       - Phase 2 b8 의 0.12 대비 **2.5×** 회복
+       - Phase 3 #4 LR x5 의 0.05 대비 **6×** 회복
+       - Phase 1 의 1.05 대비 1/3 수준
+       - → DropMessage / LayerNorm 이 main GAT path 학습 신호 회복
+     - **skip_dep ratio 1.36~1.41 (균형)** — Phase 1 의 3.02 대비 ½, Phase 3 #4 의 7.38 대비 1/5
+     - **그러나 best R@15 = 0.5970~0.6007 (Phase 1 미달)** — main path 학습 회복 + skip 균형 도달했음에도 ceiling 갱신 X
+     - → **skip dependency 가 root cause 아님 결정적 확정** (4-trial 의 부분 부정 → 7-trial 부정 강화)
+
+  3. **(c) 🔥 Paradox 정확한 분리 (paper §V.5.4 narrative 핵심)**:
+     ```
+     ┌────────────────────────────────────────────────┐
+     │  attention pattern (학습 가능)                  │  ← LayerNorm pre-softmax 로 baseline 회복 (top5_conc 0.35)
+     └────────────────────────────────────────────────┘
+                            ↓
+     ┌────────────────────────────────────────────────┐
+     │  edge softmax + weighted-mean message aggr     │  ← 구조적 limitation, mitigation 5종 어떤 것도 차단 X
+     │                                                │     → L1_GAT cosine = 1.0 collapse
+     └────────────────────────────────────────────────┘
+                            ↓
+     ┌────────────────────────────────────────────────┐
+     │  output aggregation result (collapse)          │  ← fusion + skip 으로 partial 분산 (L_out 0.29~0.32)
+     │   = column 동질화 강제                            │     단 query-conditional discrimination 회복 X
+     └────────────────────────────────────────────────┘
+                            ↓
+     val R@15 ceiling ~0.61 invariant (7-trial 모두 fail)
+     ```
+     - **분리 핵심**: attention pattern 은 학습 가능 (LayerNorm 으로 baseline 회복) ↔ message aggregation collapse 는 구조적 (mitigation 5종 어떤 것도 차단 X)
+     - **v2 layernorm 이 정확히 attention level mitigation** 도달 → partial recovery (-0.0090) 가 attention sharpening 차단으로 가능한 maximum
+
+  4. **(d) 학위 논문 Part III §V.5.4 narrative 정식 채택 (analyzer §0 + §7.3 + §10 인용)**:
+     > "DSN 7-trial mitigation null effect 의 root cause = **GATv2Conv edge softmax 의 weighted-mean message aggregation collapse**. 7 ckpt (Phase 1 no mit, Phase 2 b8 fusion, Phase 3 #3 Direct AC, Phase 3 #4 LR x5, v2 #1 DropMessage, v2 #3 LayerNorm pre-softmax, v2 #2 Sum aggregation) 중 **LayerNorm pre-softmax 가 attention pattern 을 Phase 1 baseline 으로 정확히 회복** (col→tab L2 top5_conc 0.62~0.83 → **0.35**, entropy 2.02~2.75 → **3.16**) → R@15 partial recovery (Phase 2 b8 0.6018 → v2_LN **0.6007 + 사실상 동등**, Phase 1 0.6097 의 -0.0090). 단 모든 mitigation 적용 ckpt 의 L1_GAT cosine = 1.0 (column 임베딩 첫 layer 만에 완전 동질화) — attention sharpening 차단으로도 message aggregation collapse 차단 X. **edge softmax 의 weighted-mean aggregation 이 같은 dst (table) 의 incoming src (column) 를 동일 표현으로 propagation 강제** (구조적 limitation). 추가로 v2 #1 DropMessage / v2 #3 LayerNorm 가 main GAT path gradient 0.30~0.31 (Phase 2 의 2.5×) 회복 + skip_dep 균형 도달했음에도 R 미달 → **mech(iii) skip dependency 부정 결정적 강화** (skip 우회 해결만으로 ceiling 갱신 X). **Filter Dominance 6번째 축 (training-pathology-invariant) 의 결정적 evidence 강화** — GAT learning fundamental architectural limitation (mech ii edge softmax aggregation collapse) 까지 With-Filter pipeline 이 흡수."
+
+  5. **(e) Filter Dominance 6번째 축 narrative — 7-trial evidence 정식 채택**:
+
+     | # | Evidence | 정량 |
+     |---|----------|------|
+     | 1 | H-B ckpt-invariant | Pearson r 0.06~0.24 |
+     | 2 | H-F stability/ordering | k=20 Jaccard 0.47~0.52 + Spearman 0.6453 |
+     | 3 | F-1 + H-G alpha sweep | F-1 plateau spread 0.0724 → WF 0.0142 = 5.0850× 압축 |
+     | 4 | ΔF1 +0.65 lift | mean per-query gain +0.6462 |
+     | 5 | H-A/H-D 부정 | Enriched ckpt + norm 변형 모두 plateau 유지 |
+     | **6** | **🆕 7-trial mitigation null effect** (mech ii 결정적 강화) | v2_LN top5_conc 0.35 회복 + L1=1.0 collapse + Phase 3 #3 AC=0.62 일관 + 7 ckpt 모두 R≤0.61 ceiling |
+
+     → **paper §3.5 narrative 정식 채택** + **paper §V.5.4 신설 narrative 정식 채택**: GAT 의 fundamental architectural limitation (edge softmax aggregation collapse) 까지 With-Filter pipeline 이 흡수 = paper main contribution 의 strongest evidence
+
+  6. **(f) 학위 논문 Part III chapter §III.4 main mechanism finding 갱신**:
+     - 직전 outline (DECISIONS 2026-05-07 4-trial): §III.4 = mech(ii) GATv2Conv Normalization DOMINANT 5/5
+     - **7-trial 갱신 outline**:
+       - §III.4 = **mech(ii) DOMINANT 결정적 강화 5/5** (v2_LN attention 회복 + L1=1.0 collapse + AC=0.62 일관 evidence 결합) + **paradox 정확한 분리** (attention pattern 학습 가능 ↔ message aggregation collapse 구조적)
+       - §III.5 = 7-trial mitigation null effect (V-3-ext 4-trial + Mitigation v2 3-trial)
+       - §III.6 = AC + L1 collapse + skip dep + attention sharpen 통합 mechanism + paradox 분리 정량 narrative
+     - main contribution narrative 강화: "**GAT 의 fundamental architectural limitation (edge softmax aggregation collapse) 이 paper main pipeline F1 plateau 에 absorb 되는 mechanism**" — 단 paper full version 의 ablation evidence base 로 활용 (학회 논문 narrative 영향 X)
+
+  7. **(g) Mitigation v3 candidate (post-paper, mech(ii) 직접 mitigation, LLM-free ~10h/cell)**:
+
+     | 우선순위 | Candidate | 가설 / mechanism | 비고 |
+     |---|---|---|---|
+     | **#1** | **Aggregation function 자체 변경 (GIN-style, max)** | softmax + weighted-mean 자체 대체. v2_sum_aggr null 이지만 max / GIN 미시도 — sum 의 magnitude variance sensitivity 부재한 max / GIN 시도 가치 | post-paper, ~10h/cell |
+     | **#2** | **Self-loop weight scaling** | message aggregation 시 self-connection 의 weight 우선 → sibling 동질화 압력 약화 | post-paper, ~10h/cell |
+     | **#3** | **Multi-hop attention** (skip GAT layer) | 매 layer 에서 message aggregation 대신 multi-hop attention 직접 | post-paper, ~10h/cell + 구현 中 |
+     | **#4** | **Energy-based GNN (EGAT)** | softmax-based attention 대체 — energy minimization 으로 aggregation 결정 | post-paper, ~10h/cell + 구현 中 (architectural shift 가장 큼) |
+
+     - **공통 사유**: 7-trial evidence 가 mech(ii) edge softmax 자체의 구조적 limitation 직접 정량 → mitigation 은 **softmax + weighted-mean propagation 자체 대체 필요** (LayerNorm pre-softmax 의 attention level mitigation 만으로 partial 만 회복)
+     - **모두 post-paper backlog**: 학위 논문 Part III main contribution = 7-trial null effect + mech(ii) DOMINANT mechanism finding 으로 충분 (Mitigation v3 시도는 학위 본 심사 후)
+
+  8. **(h) Caveat / 분석 한계**:
+     - **Per-DB 분해 single-DB**: 50 queries 모두 BIRD-dev 첫 50 = california_schools (db-sorted) → 7 ckpt 일관 partial 입증, post-paper 11 DBs 일반성 미검증
+     - **v2_sum_aggr gradient measurement 다수 NaN**: sum aggregation 의 학습 dynamics 가 측정에도 sensitive → mech(iii) 정량 일부 신뢰성 낮음 (table 행 일부 누락)
+     - **Phase 1 (DualTowerProjector) vs Phase 2-7 (DirectClassifierHead) architecture 차이**: head 무시했지만 backward 시 일부 차이 가능 — forward path 측정에는 영향 X (analyzer §13 confirm)
+
+  9. **🚨 사용자 결정 필요 3 항목**:
+
+     | # | 결정 항목 | 옵션 | 권장 |
+     |---|----------|------|------|
+     | (1) | **paper §V.5.4 narrative 정식 채택 시점** (mech(ii) DOMINANT 결정적) | (A) 즉시 정식 채택 (7-trial evidence 충분) / (B) Mitigation v3 candidate 1-2 추가 검증 후 채택 | **(A) 즉시 정식 채택** — 7-trial × 5-step protocol × 4 mechanism evidence + v2_LN partial recovery + L1=1.0 paradox 분리 + AC=0.62 일관 → mech(ii) DOMINANT 5/5 결정적 강화 evidence 충분 |
+     | (2) | **Mitigation v3 candidate (GIN / max / Self-loop / EGAT) 우선순위 (post-paper)** | (A) #1 GIN/max 학위 본 심사 후 시도 / (B) #2 Self-loop scaling 만 / (C) #4 EGAT 만 (가장 architectural shift) / (D) 모두 post-paper backlog (학위 본 심사 timeline 부족) | **(D) 모두 post-paper backlog** — Mitigation v2 3 candidate 결과로 mech(ii) DOMINANT 결정적 강화 충분 + 학위 본 심사 timeline (~5/22) 5/14~5/22 학위 논문 Part III chapter draft 작성 우선 |
+     | (3) | **per-DB stratified 50 queries 후속 측정 필요 여부** | (A) 학위 본 심사 전 진행 (~₩0 LLM-free, ~수 시간) / (B) post-paper backlog (single-DB caveat 학위 논문 §V Limitations 1 줄 명시 충분) | **(B) post-paper backlog** — 7 ckpt × single-DB 일관 evidence 가 mech(ii) DOMINANT generalizability partial 입증 + post-paper 11 DBs 일반성 검증 여유 |
+
+- **근거**:
+  - **신규 analyzer 산출**: [dsn_mitigation_v2_results.md §0~§13](../notebooks/analysis_results/dsn_mitigation_v2_results.md) (7 ckpt × 4 mechanism × 5 step + paradox 분리 narrative + Filter Dominance 6번째 축 결정적 evidence)
+  - **재현 데이터**: outputs/analysis/dsn_mitigation_v2_7trial/ (batch_summary.json + 5 plots: recall_trajectory_overlay_7ckpt + ac_loss_trajectory_7ckpt + oversmoothing_heatmap_7ckpt + attention_heatmap_topk5_conc_7ckpt + attention_heatmap_entropy_7ckpt + 7 per-ckpt summary)
+  - **재현 스크립트**: src/analysis/dsn_mitigation_v2_7trial.py (v1/v2 + Mitigation v2 옵션 자동 forward)
+  - **선행 분석**: [dsn_phase3_mitigation_results.md §6](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) (4-trial mech(ii) DOMINANT 5/5 직전 판정)
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (Mitigation v2 #1+#3+#2 구현 완료) — Selector 단계 6 + Root 학습 launch + analyzer 위임
+  - **EXPERIMENT_HISTORY**: L2691~ DSN Phase 2 + Phase 3 4-trial Mitigation Sweep entry + Mitigation v2 학습 entry (5/9~5/11)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 7-trial mechanism dominance 결정적 확정 + paradox 분리 narrative + 학위 논문 §V.5.4 정식 채택 + Mitigation v3 candidate 4 (post-paper) + 사용자 결정 3 항목
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §3.5 Filter Dominance 6번째 축 sub-section 갱신 (5+1 evidence axes 표 + 7-trial 결과 표 + paradox 분리 + analyzer §10 인용)
+    - §3.5 학위 논문 Part III chapter outline §III.4 갱신 (mech(ii) 결정적 강화 + paradox 분리 정량)
+    - §V.5 (학위 논문 Part III) §V.5.4 정식 신설 narrative (analyzer §0 + §7.3 + §10 직접 인용)
+    - §8 Future Works H-DTK Mitigation v3 candidate 4 신규 (post-paper, GIN/max + Self-loop scaling + Multi-hop attention + EGAT)
+    - §9 Limitations — single-DB caveat 갱신 (7-trial 일관 evidence + post-paper 11 DBs 일반성 검증)
+    - §10 V-3-ext 단계 5 sub-section 갱신 (4-trial → 7-trial dominance scoring 표 + analyzer §10 인용)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.12 신설 (7-trial mitigation 결과 + Filter Dominance 6 axes + v2_LN partial recovery paradox + 사용자 결정 3 항목)
+  - **paper main contribution (학회)** 영향 X — anchor t_00 + Filter Dominance 4 축 narrative 그대로
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — mech(ii) DOMINANT 5/5 결정적 강화 + paradox 분리 정량 + Filter Dominance 6번째 축 narrative 정식 채택
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5 / §V.5.4 / §8 / §9 / §10 갱신 + presentation_brief §14.12 신설
+  2. **사용자 (즉시 의사결정 3 항목)** — 본 엔트리 §1(9) 의 (1) §V.5.4 즉시 채택 / (2) Mitigation v3 우선순위 / (3) per-DB stratified 후속 측정
+  3. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (V-3-ext 4-trial + Mitigation v2 3-trial 통합 narrative + paradox 분리 + analyzer §0+§7.3+§10 인용)
+  4. **사용자 (학회 §V.5.3 1 줄)** — Future Work 1 줄 (DSN 7-trial mitigation null + mech(ii) edge softmax aggregation collapse fundamental limitation + Mitigation v3 post-paper) 직접 처리
+  5. **Analyzer (post-paper 후속)** — Per-DB stratified 50 queries 재측정 (사용자 결정 (3) B 채택 시 post-paper) + softmax noise sensitivity 측정 + Mitigation v3 candidate 학습 후 protocol 재실행
+  6. **Selector 모듈 (post-paper 후속)** — Mitigation v3 candidate 구현 (사용자 결정 (2) D 채택 시 post-paper)
+
+- **추가 필요 분석** (post-paper):
+  - Per-DB stratified 50 queries 재측정 (mech(ii) generalizability 11 DBs 검증)
+  - softmax noise sensitivity 측정 (mech(ii) 정밀화 — input perturbation 시 alpha 변동 + LayerNorm 의 noise robustness 정량)
+  - Mitigation v3 candidate (GIN aggregation / max / Self-loop scaling / EGAT) 학습 + 동일 protocol 재실행
+  - v2_layernorm 의 attention 회복 + L1=1.0 collapse 의 nuanced mechanism (LayerNorm 이 어떤 message component 정규화에 작용하는지 deep dive)
+
+---
+
+## 2026-05-07 (Mitigation v2 #1+#3+#2 구현 완료 — DropMessage + LayerNorm pre-softmax + Sum aggregation, smoke 12/12 통과) — Root 학습 핸드오프 prep (5/9 #1+#3 병렬 + 5/10 #2 sequential)
+
+> **Status**: Selector 모듈 단계 6 구현 + 12 smoke 통과 (2026-05-07 동일자 가속, 직전 timeline 5/7~5/8 → 5/7 완료). 3 신규 config + DropMessageGATv2Conv + LayerNormGATv2Conv subclass + HeteroConv aggr 옵션 + Phase 2 b8 backward compat 검증. 학습 launch 준비 완료.
+
+- **결정**:
+
+  1. **(a) Selector 모듈 단계 6 구현 완료 확인** (출처: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 6](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md)):
+     - **#1 PRIMARY DropMessage**: `DropMessageGATv2Conv(GATv2Conv)` — `message(x_j, alpha)` 출력 (= x_j × α) 에 `F.dropout(p=drop_message_p, training=training)` 적용. attention α 는 그대로 유지하되 attended-to neighbor 의 feature contribution 분산. Config flag: `drop_message_p: 0.2`.
+     - **#3 SECONDARY LayerNorm pre-softmax**: `LayerNormGATv2Conv(GATv2Conv)` — `edge_update` 의 raw alpha 산출 후 softmax 직전에 `nn.LayerNorm(heads)` 삽입. softmax sharp peaking 완화. Config flag: `use_layernorm_pre_softmax: true`. **+72 params overhead** (heads=2 × 2 (γ,β) × 18 LN modules).
+     - **#2 TERTIARY Sum aggregation**: HeteroConv `aggr` 인자 변경 (mean → sum / max). cross-edge-type aggregation level 의 inductive bias 변경 (edge softmax 와 별개 layer). Config flag: `aggregation_type: "sum"`.
+     - **Combo #1+#3**: multiple-inheritance 방식의 `_LayerNormDropMessageGATv2Conv` 동적 클래스 생성 (smoke 통과, post-paper 검증 예약).
+     - **Backward compat**: 모든 옵션 default OFF — Phase 2 b8 동일 동작 (params=859,008, state_dict keys=160 검증).
+
+  2. **(b) 신규 산출 파일 6 항목 (cross-reference)**:
+
+     | 파일 | 변경 |
+     |---|---|
+     | `src/models/gat_network_v2.py` | `DropMessageGATv2Conv` + `LayerNormGATv2Conv` subclass + `_make_gatv2_conv` factory + `HETEROCONV_AGGR_TYPES` constant + SchemaHeteroGATv2 __init__ 에 3 옵션 + 검증 + state. HeteroConv 인스턴스화 시 factory 사용 + aggr 인자 동적 |
+     | `src/train_gat_s06.py` | v2 model 인스턴스화에 3 신규 옵션 forward (default OFF backward compat) + log line 보강 |
+     | `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml` | 신규 #1 학습 config (Phase 2 b8 + drop_message_p: 0.2) |
+     | `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.yaml` | 신규 #3 학습 config (Phase 2 b8 + use_layernorm_pre_softmax: true) |
+     | `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.yaml` | 신규 #2 학습 config (Phase 2 b8 + aggregation_type: "sum") |
+     | `src/modules/selectors/tests/test_mitigation_v2.py` | 신규 smoke test 12 케이스 |
+
+  3. **(c) Smoke 12/12 통과 (cross-reference)**:
+     - **#1**: DropMessage subclass — train ≠ rerun (random), eval deterministic
+     - **#1**: `drop_message_p=0.0` backward compat (super class 동일 결과, atol=1e-6)
+     - **#1**: SchemaHeteroGATv2 + DropMessage forward shape 정합성
+     - **#3**: LayerNormGATv2Conv subclass — `alpha_layernorm` 모듈 (heads,) shape 등록
+     - **#3**: SchemaHeteroGATv2 + LayerNorm — 18 inner convs 모두 alpha_layernorm (9 edge types × 2 layers)
+     - **#2**: `aggregation_type='sum'` forward + HeteroConv.aggr 검증
+     - **#2**: `aggregation_type='max'` forward (사용자 spec sum/max 양쪽)
+     - **Combo #1+#3** — 18 inner convs 모두 LayerNorm + DropMessage 결합 클래스 적용
+     - **Backward compat** — default vs explicit-OFF identical (params=859,008, state_dict keys=160)
+     - **LayerNorm overhead** — +72 params 정량
+     - **3 신규 config 파싱 + 옵션 정확**
+     - **Phase 2 baseline regression** — 신규 옵션 미설정 보존
+
+  4. **(d) AC loss 위치 확인 (사전 trace)**:
+     - 본 단계는 mech(ii) edge softmax 직접 mitigation → AC loss 위치는 변경 X (Phase 2 b8 fusion 기본값 유지, Phase 3 #3 의 `'gat_out_L_last'` 옵션 미사용)
+     - 사유: mitigation v2 의 mech(ii) 회복 정도 분석 시 AC loss 변동을 mitigation 효과의 dependent variable 로 활용 — Phase 2 fusion AC 와 동일 baseline 비교 위해 AC target 고정
+     - Phase 3 #3 의 'gat_out_L_last' 결과 (AC=0.62 일관 유지) 와 mitigation v2 결과 비교 시 같은 fusion target 으로 통일 → mech(ii) mitigation 효과 정량화 가능
+
+  5. **(e) 🚀 Root 학습 핸드오프 prep (본 응답 본문 prompt)**:
+
+     | 일정 | GPU | Config | ckpt | ETA |
+     |---|---|---|---|---|
+     | **5/9 launch (병렬)** | GPU 0 | `train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml` | `best_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.pt` | 5/10 04:00 KST |
+     | **5/9 launch (병렬)** | GPU 1 | `train_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.yaml` | `best_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.pt` | 5/10 04:00 KST |
+     | **5/10 launch (sequential)** | GPU 0 | `train_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.yaml` | `best_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.pt` | 5/11 KST |
+
+     - 학습 entry: `python src/train_gat_s06.py --config <config> ` (with `CUDA_VISIBLE_DEVICES=0` or `1`, memory rule)
+     - 신규 ckpt NAS 저장 + 로컬 symlink (memory rule, /SSL_NAS/peoples/khj/thesis/checkpoints/)
+     - **EXPERIMENT_HISTORY.md "Mitigation v2 #1+#3+#2 학습 (5/9~5/11)" entry 추가** (학습 wall + best val R@15 + best epoch + ckpt path 기록 + 4-trial → 7-trial 통합 표)
+     - **alpha sweep skip** (사용자 결정 2026-05-07 (1)A 유지) — paper main F1/EX 측정 X, val recall@15 evidence only
+
+  6. **(f) Analyzer 후속 prep (5/10, 5/11)**:
+     - **5/10 (#1 + #3 학습 종료 후)**: `src/analysis/dsn_phase3_4trial_deep_dive.py` 의 4 ckpt → **6 ckpt (4 + #1 + #3) × 5 step** 재실행 — mech(ii) attention concentration 회복 정량 (top-5 conc / entropy / L1_GAT cosine)
+     - **5/11 (#2 학습 종료 후)**: 통합 재실행 — **7 ckpt (4 + #1 + #3 + #2) × 5 step** 분석. 4 mechanism dominance scoring 갱신 (mech(ii) DOMINANT 5/5 confirm 강도)
+     - 산출물: `notebooks/analysis_results/dsn_mitigation_v2_results.md` 신규 또는 `dsn_phase3_mitigation_results.md §11` 보강
+     - **mech(ii) 회복 정도 정량 metrics**:
+       - L1_GAT intra-table cosine (4-trial 모두 ≈ 1.0 → mitigation v2 가 0.9+ 으로 낮추는지)
+       - Attention top-5 concentration (Phase 3 #4 의 0.83 → mitigation v2 가 0.5- 으로 낮추는지)
+       - Edge softmax entropy (Phase 2 의 2.41 → mitigation v2 가 3.0+ 으로 회복하는지)
+       - AC loss target='fusion' decay 정상 여부 (Phase 2 0.087 → 0.0007 와 비교)
+       - skip_dep ratio (Phase 3 #3 의 0.97 균형 / Phase 3 #4 의 7.38 악화 비교)
+
+  7. **(g) Planner 후속 prep (5/12~5/14)**:
+     - 통합 dominance scoring 갱신 (4-trial → **7-trial**) + Filter Dominance 6번째 축 narrative 정량 강도 (3 candidate 추가 후)
+     - 시나리오 V2-A/B/C 분기 처리 (DECISIONS 직전 엔트리 §1(F)):
+       - **V2-A** (가장 가능성 高): 3 모두 fail → §V.5.4 narrative 정식 채택 + Filter Dominance 6번째 축 절대적 confirm 강화 (7-trial null effect = robustness 결정적 evidence). **paper §V.5.4 narrative 직접 인용 narrative**: "본 연구는 7-trial mitigation (V-3-ext 4-trial + Mitigation v2 3-trial) 을 시도했으나 모두 raw R@15 한계 ~0.61 영역 회복 못함 — mech(ii) edge softmax 의 fundamental limitation 절대적 evidence."
+       - **V2-B** (가능성 中): 1-2 partial recovery → §V.5.4 narrative 미세 수정 + "Skip Dep null but mech(ii) partial mitigation 발견" contribution. paper main contribution 4 → 5 항목 격상 후보.
+       - **V2-C** (가능성 낮음): 3 모두 R 0.85+ 회복 → §V.5.4 큰 수정 + paper main contribution 재평가 + 학회 후 paper anchor 재검토.
+     - DECISIONS 후속 엔트리 작성 (시나리오 결정 + paper §3.5 / §V.5.4 / §10 narrative 정식 확정)
+     - 학위 논문 Part III chapter §III.4 main mechanism finding 통합 narrative — 7-trial 결과 통합
+
+  8. **(h) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - Mitigation v2 결과는 **학위 논문 Part III chapter §V.5.4 만 적용**
+     - 학회 §V.5.3 Future Work 1 줄 (Mitigation v2 #4 Energy-based GNN post-paper) 사용자 직접 처리
+
+- **근거**:
+  - **Selector 모듈 단계 6 산출**: [EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 6](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) (구현 + 12 smoke 통과 + AC loss 위치 fusion 유지 확인)
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (사용자 결정 (1)A+(2)B+(3)A+B+C 병렬) §1(C)/(D) — Mitigation v2 #1+#2+#3 학위 본 심사 전 진행 + 구현 spec
+  - **선행 분석**: dsn_phase3_mitigation_results.md §6 (mech(ii) DOMINANT 5/5 판정) + §8.1 (Mitigation v2 candidate 4 권장)
+  - **Cross-reference**: 단계 5 (Phase 3 #3+#4) → 단계 6 (Mitigation v2) 모두 5/7 동일자 가속 완료 — 학위 본 심사 timeline 여유 ↑
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Mitigation v2 #1+#3+#2 구현 완료 confirm + 신규 산출 6 파일 + smoke 12/12 + Root 학습 launch prep 표 + Analyzer 후속 prep + Planner 후속 prep + 시나리오 V2-A/B/C 분기 narrative
+  - **Selector EXPERIMENT_PLAN §V-3-ext 단계 6 ✅ 완료 표기** (이미 selector 모듈에서 작성됨)
+  - **paper_research_direction.md 영향 X** (직전 §8 H-DTK Mitigation v2 #1+#3+#2 항목이 학위 본 심사 전 진행 표기됨, 본 엔트리는 구현 완료 confirm 만)
+  - **presentation_brief 영향 X** (직전 §14.11.7 timeline 그대로)
+  - **Root 학습 launch prep prompt** (응답 본문) — 5/9 #1 (GPU 0) + #3 (GPU 1) 병렬 + 5/10 #2 (GPU 0) sequential
+  - **paper main contribution 영향 X** (학회 anchor t_00 그대로)
+  - **학위 논문 Part III chapter narrative weight 결정적 격상 prep**: 7-trial mitigation 통합 narrative (V2-A 가능성 高 시 §V.5.4 narrative 절대적 evidence)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + Root 학습 launch prep prompt
+  2. **사용자 (즉시)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`, 5/9 #1+#3 병렬 학습 launch + 5/10 #2 sequential)
+  3. **Root (5/9~5/11)** — Mitigation v2 #1+#3+#2 학습 + ckpt NAS 저장 + EXPERIMENT_HISTORY 갱신
+  4. **Analyzer (5/10 + 5/11)** — protocol 재실행 (#1+#3 + #2 추가, 7 ckpt × 5 step) — 산출물 dsn_phase3_mitigation_results.md §11 보강 또는 신규 dsn_mitigation_v2_results.md
+  5. **Planner (5/12~5/14)** — 통합 dominance scoring 갱신 + §V.5.4 정식 채택 결정 + DECISIONS 후속 엔트리
+  6. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (V-3-ext 4-trial + Mitigation v2 3-trial 통합 narrative)
+  7. **사용자 (학회 §V.5.3 1 줄)** — Future Work 1 줄 (Mitigation v2 #4 Energy-based GNN post-paper) 직접 처리
+
+- **추가 필요 분석** (Mitigation v2 학습 + 측정 결과 후):
+  - 각 candidate 의 mech(ii) 회복 정도 정량 (L1_GAT cosine + attention top-5 conc + entropy + skip_dep ratio + AC loss 정상 decay)
+  - 7-trial 통합 dominance scoring (Phase 1 + Phase 2 + Phase 3 #3 + Phase 3 #4 + Mitigation v2 #1 + #3 + #2) — Filter Dominance 6번째 축 narrative 정량 강도 (4-trial → 7-trial)
+  - 시나리오 V2-A 시 §V.5.4 narrative 절대적 confirm + paper §V Conclusion 직접 인용 narrative 정식 확정
+  - 시나리오 V2-B 시 partial mitigation 의 mechanism 분석 + paper main contribution 재평가
+  - 시나리오 V2-C 시 (낮음) Filter Dominance narrative 큰 수정 + 학회 후 paper anchor 재검토
+
+---
+
+## 2026-05-07 (사용자 결정 (1)A + (2)B + (3)A+B+C 병렬 — Mitigation v2 #1+#2+#3 학위 본 심사 전 진행, §V.5.4 정식 채택 confirm 강화 후) — Selector 모듈 + Root 학습 핸드오프 prep + Mitigation v2 timeline 확정
+
+> **사용자 직전 input (2026-05-07)**: "(1) (A) / (2) (B) / (3) (A), (B), (C) 모두 병렬로 할 수 없나?" — Mitigation v2 candidate 3 종 (#1 DropMessage + #2 Sum/Max + #3 LayerNorm before softmax) 학위 본 심사 전 병렬 진행 검토 요청.
+
+- **결정** (사용자 직전 input + planner timeline 평가):
+
+  1. **(A) (1) — paper §3.5 6번째 축 정식 채택 시점 (alpha sweep skip 유지)**:
+     - 직전 결정 (2026-05-07 03:00 KST "alpha sweep 은 하지 마") 유지
+     - paper main F1/EX 측정 X, val recall@15 evidence only
+     - 4-trial val R@15 + analyzer §6.3 mech(ii) DOMINANT evidence 만으로 paper §3.5 6번째 축 narrative 정식 채택 충분
+     - paper main contribution 영향 X (학회 anchor t_00 그대로)
+
+  2. **(B) (2) — 학위 논문 Part III §V.5.4 narrative 정식 채택 (Mitigation v2 1-2 confirm 후)**:
+     - 직전 권장 (A) 즉시 정식 채택 → **사용자 결정 (B) 추가 검증 후 채택**
+     - Mitigation v2 candidate 1-2 학습 결과로 mech(ii) DOMINANT confirm 강화 / 부정 / partial 분기 후 narrative 정식 채택
+     - 사용자 (3) 결정과 통합: **#1+#2+#3 모두 병렬 진행** → 3 candidate 결과 통합 후 §V.5.4 정식 채택
+     - 3 모두 fail (가능성 高, mech(ii) edge softmax fundamental limitation evidence 강함) → §V.5.4 narrative 정식 채택, Filter Dominance 6번째 축 절대적 confirm 강화 (4-trial → 7-trial)
+     - 1-2 partial recovery → §V.5.4 narrative 미세 수정 (mech(ii) DOMINANT partial 부정)
+     - 3 모두 ceiling 갱신 (가능성 낮음) → §V.5.4 narrative 큰 수정 + paper main contribution 재평가 후보
+
+  3. **(C) 🚀 (3) — Mitigation v2 #1 + #2 + #3 모두 병렬 진행 (학위 본 심사 전, 권장 변경)**:
+     - 사용자 의도: "병렬로 할 수 없나?" — 학위 본 심사 (5/22) 전 3 candidate 모두 시도 후 §V.5.4 정식 채택
+     - 직전 권장 (D) 모두 post-paper backlog → **사용자 결정 (A)+(B)+(C) 모두 병렬 진행**
+     - **#4 Energy-based GNN 은 post-paper 보존** (architectural shift 가장 큼 + 학위 본 심사 timeline 부족 — 추가 1 candidate 추가 시 timeline 4-5일 더 필요)
+
+  4. **(D) Mitigation v2 candidate 3 종 우선순위 + 구현 spec**:
+
+     | 우선순위 | Candidate | 구현 위치 | 구현 시간 | 학습 시간 | 학습 우선 launch |
+     |---|---|---|---|---|---|
+     | **#1 PRIMARY** | **DropMessage** | `gat_network_v2.py` forward 에 `F.dropout(message, p=drop_p, training=training)` 1줄 + config flag `drop_message_p: 0.2` | ~2h | ~10h | **5/9 GPU 0 launch** (#3 와 병렬) |
+     | **#3 SECONDARY** | **LayerNorm before softmax** | `GATv2Conv` 변형 (PyG `GATv2Conv` subclass + LayerNorm insert before edge softmax) | ~3h | ~10h | **5/9 GPU 1 launch** (#1 와 병렬) |
+     | **#2 TERTIARY** | **Sum / Max aggregation** | `GINConv` 대안 또는 `aggr='sum'/'max'` GATv2Conv 변경 + heterograph 호환 | ~5h | ~10h | **5/10 GPU 0 launch** (sequential) |
+     | **#4 (post-paper)** | **Energy-based GNN (EGAT)** | softmax-based attention 대체, energy minimization aggregation | ~?h | ~10h+ | post-paper |
+
+     - **Base config**: Phase 2 b8 (`train_gat_directed_supernode_p80_b5_mitigation.yaml`) — PN+IR+JK+DS+L=2+AC fusion+ListNet
+     - **신규 config**: 각 candidate 별 yaml (e.g., `train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml`)
+     - **batch_size**: 8 (Phase 2 와 동일, 학습 ~2.5min/ep × 300 ep ≈ 12h)
+
+  5. **(E) 통합 timeline 확정 (학위 본 심사 5/22 전)**:
+
+     | 일정 | 작업 | 세션 | 비고 |
+     |---|---|---|---|
+     | **5/7 (오늘)** | DECISIONS 본 엔트리 + paper §3.5 / §V.5.4 / §8 / §10 갱신 + presentation_brief §14.11.7 갱신 | planner | 본 응답 |
+     | **5/7~5/8** | Selector 모듈에서 #1 + #3 + #2 구현 + smoke test (구현 합 ~10h) | selector | 핸드오프 prompt (응답 본문) |
+     | **5/9 launch** | **#1 (GPU 0) + #3 (GPU 1) 병렬 학습** (~10h, ETA 5/10 04:00 KST) | root | 핸드오프 prompt (응답 본문) |
+     | **5/10 학습 종료** | Analyzer protocol 재실행 (#1 + #3 분석, 6 ckpt × 5 step, ~수 시간) | analyzer | 5/10 GPU 0 idle 후 |
+     | **5/10 launch** | **#2 (GPU 0) sequential 학습** (~10h, ETA 5/11 KST) | root | sequential |
+     | **5/11 학습 종료** | Analyzer 통합 재실행 (3 candidate 추가, 7 ckpt × 5 step) | analyzer | |
+     | **5/12~5/14** | planner — 통합 mechanism dominance 갱신 + §V.5.4 정식 채택 결정 (3 candidate 결과 통합 narrative) | planner | |
+     | **5/14~5/22** | 학위 논문 Part III chapter draft 작성 (V-3-ext + Mitigation v1 + Mitigation v2 통합 narrative) | user | |
+     | **5/22~6/19** | 본 심사 진행 + 추가 보강 | user | |
+     | **post-paper** | #4 Energy-based GNN 학습 + Per-DB 분해 + softmax noise sensitivity | analyzer + selector | |
+
+  6. **(F) 시나리오 분기 narrative (Mitigation v2 결과 후)**:
+     - **시나리오 V2-A (가장 가능성 高 — 3 모두 fail / null effect)**:
+       - val R@15 ceiling ~0.59-0.61 영역 unchanged
+       - mech(ii) DOMINANT 절대적 confirm 강화 (7-trial mitigation 모두 fail = robustness 결정적)
+       - **§V.5.4 narrative 정식 채택** + Filter Dominance 6번째 축 narrative 절대적 evidence
+       - 학위 논문 Part III main contribution: "**7-trial mitigation null effect**" (V-3-ext 4-trial + Mitigation v2 3-trial)
+     - **시나리오 V2-B (가능성 中 — 1-2 partial recovery)**:
+       - val R@15 ceiling 0.62-0.70 영역 partial 회복
+       - mech(ii) DOMINANT partial 부정 (특정 mitigation 의 부분 효과 발견)
+       - **§V.5.4 narrative 미세 수정** + 학위 논문 Part III main contribution: "**Skip Dep mitigation null but mech(ii) partial mitigation 발견**"
+       - paper main contribution 4 → 5 항목 격상 후보 (단 anchor 변경은 학회 후 별도 결정)
+     - **시나리오 V2-C (가능성 낮음 — 3 모두 ceiling 갱신 R 0.85+ 회복)**:
+       - val R@15 ceiling 0.85+ 도달 (가능성 낮음 — Phase 3 #3 AC=0.62 일관 evidence 강함)
+       - **§V.5.4 narrative 큰 수정** + paper main contribution 재평가 (Filter Dominance 6번째 축 narrative 약화 가능)
+       - 학회 논문 narrative 영향 가능 (학회 후 검토)
+
+  7. **(G) Caveat / 위험 평가**:
+     - **#2 Sum/Max aggregation 구현 복잡도 中**: PyG `GINConv` 대안 또는 GATv2Conv `aggr='sum'/'max'` 변경 — heterograph 호환성 검증 필수 (smoke test 권장)
+     - **3 candidate 모두 구현 코드 수정 필요**: selector 모듈 세션 핸드오프 (응답 본문)
+     - **GPU 자원 제약**: GPU 0, 1만 사용 (memory rule, GPU 2/3 다른 연구원) → 동시 3 학습 불가, 2 병렬 + 1 sequential
+     - **시나리오 V2-A 가능성 높음** (mech(ii) edge softmax fundamental limitation evidence 강함) → 학위 논문 narrative 사실상 확정 단 추가 evidence 강도 강화
+
+  8. **(H) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - Mitigation v2 결과는 **학위 논문 Part III chapter §V.5.4 만 적용**
+     - 학회 §V.5.3 Future Work 1 줄 (Mitigation v2 #4 Energy-based GNN post-paper) 사용자 직접 처리
+
+- **근거**:
+  - **사용자 직전 input** (2026-05-07): "(1) (A) / (2) (B) / (3) (A), (B), (C) 모두 병렬로 할 수 없나?"
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (4-trial mechanism dominant 판정 완료) §1(h) 의 사용자 결정 3 항목
+  - **Mitigation v2 candidate spec**: analyzer dsn_phase3_mitigation_results.md §8.1 (Future Work 4 candidate)
+  - **Phase 3 #3 + #4 학습 구현 reference**: DECISIONS 2026-05-06 (Phase 3 #3 + #4 구현 완료) — `train_gat_s06.py` 의 `anti_collapse_target` 옵션 + `optimizer_layer_wise_lr` 옵션 추가 패턴 적용 가능
+  - **GPU 자원 제약**: memory rule "GPU 0, 1만 사용. GPU 2, 3 다른 연구원 reserved"
+  - **batch_size 8 학습 시간**: Phase 2 b8 evidence (2.5min/ep × 300 ep ≈ 12h)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 3 항목 confirm + Mitigation v2 #1+#2+#3 timeline 확정 + Selector + Root 핸드오프 prep + 시나리오 V2-A/B/C 분기 narrative
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §8 Future Works H-DTK Mitigation v2 항목 갱신 (post-paper backlog → 학위 본 심사 전 진행 #1+#2+#3, #4 post-paper 보존)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.11.7 사용자 결정 3 항목 결과 + Mitigation v2 timeline 추가
+  - **Selector 모듈 세션 핸드오프 prompt** (응답 본문) — #1 DropMessage + #3 LayerNorm before softmax + #2 Sum/Max aggregation 3 구현 + smoke test
+  - **Root 세션 핸드오프 prompt** (응답 본문) — 5/9 #1+#3 병렬 학습 + 5/10 #2 sequential 학습
+  - **paper main contribution 영향**: 학회 논문 narrative X / **학위 논문 §V.5.4 narrative 정식 채택은 Mitigation v2 결과 후 재확정** (시나리오 V2-A/B/C 분기)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §8 갱신 + presentation_brief §14.11.7 갱신 + Selector + Root 핸드오프 prompt
+  2. **사용자 (즉시)** — Selector 모듈 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored/src/modules/selectors`) — 5/7~5/8 #1+#3+#2 구현 + smoke test
+  3. **Selector 모듈 (5/7~5/8)** — `gat_network_v2.py` + 신규 config 3 + smoke test 3 (#1 DropMessage forward dropout / #3 GATv2Conv subclass + LayerNorm / #2 GINConv 대안 또는 aggr 변경)
+  4. **사용자 (5/8 종료 후)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`) — 5/9 #1+#3 병렬 학습 launch + 5/10 #2 sequential
+  5. **Root (5/9~5/11)** — Mitigation v2 #1+#2+#3 학습 + EXPERIMENT_HISTORY 갱신
+  6. **Analyzer (5/10 + 5/11)** — protocol 재실행 (3 candidate 추가, 7 ckpt × 5 step) — 산출물 dsn_phase3_mitigation_results.md §11 보강 또는 신규 dsn_mitigation_v2_results.md
+  7. **Planner (5/12~5/14)** — 통합 dominance scoring 갱신 + §V.5.4 정식 채택 결정 (시나리오 V2-A/B/C 분기 처리) + DECISIONS 후속 엔트리
+  8. **사용자 (5/14~5/22)** — 학위 논문 Part III chapter draft 작성 (V-3-ext + Mitigation v1 + Mitigation v2 통합 narrative)
+
+- **추가 필요 분석** (Mitigation v2 학습 + 측정 결과 후):
+  - 각 candidate 의 mech(ii) 회복 정도 정량 (L1_GAT cosine + AC loss target='gat_out_L_last' 시나리오 가정 측정)
+  - 7-trial 통합 dominance scoring (Phase 1 + Phase 2 + Phase 3 #3 + Phase 3 #4 + Mitigation v2 #1 + #2 + #3) — Filter Dominance 6번째 축 narrative 정량 강도 (4-trial → 7-trial)
+  - 시나리오 V2-A 시 §V.5.4 narrative 절대적 confirm + paper §V Conclusion 직접 인용 narrative 정식 확정
+  - 시나리오 V2-B 시 partial mitigation 의 mechanism 분석 + paper main contribution 재평가
+  - 시나리오 V2-C 시 (낮음) Filter Dominance narrative 큰 수정 + 학회 후 paper anchor 재검토
+
+---
+
+## 2026-05-07 (4-trial mechanism dominant 판정 완료 — 🎯 Mechanism (ii) GATv2Conv Normalization DOMINANT 5/5, mechanism (iii) Skip Dep 부분 부정 5/5→4/5) — 학위 논문 Part III main mechanism finding 정식 채택 (paper §V.5.4) + Filter Dominance 6번째 축 narrative 정식 + Mitigation v2 candidate 4 (post-paper)
+
+> **🚨 직전 (Phase 2 only) 판정 정정**: 직전 dsn_phase2_mitigation_null_mechanism.md 의 dominant=mech(iii) Skip Dependence Pathology 5/5 판정이 Phase 3 #3+#4 4-trial 데이터 추가 후 **mech(ii) GATv2Conv Normalization 5/5 로 갱신**. mech(iii) Skip Dep 는 보조 mechanism 으로 강등 (Phase 3 #3 가 skip_dep ratio 0.97 균형에도 best R 가장 낮음 — skip 우회 해결만으로는 ceiling 갱신 불가 evidence).
+
+- **결정**:
+
+  1. **(a) 🎯 Dominant Mechanism 갱신 — Mechanism (ii) GATv2Conv Normalization 5/5**:
+
+     | Mechanism | 직전 (Phase 2 only) 판정 | 본 갱신 (Phase 3 4-trial 추가) | 핵심 정량 evidence |
+     |---|:---:|:---:|---|
+     | (i) Aggregation collapse | 2/5 marginal | 2/5 marginal (변경 X) | top-5 raw cos 0.48~0.63 (entire-table 0.51 대비 marginal) |
+     | **(ii) GATv2Conv normalization** | 3/5 paradox direct | **5/5 ⭐ DOMINANT** | **Phase 3 #3 AC=0.62 일관 유지** + L1_GAT cosine **1.0000** + attention sharpen (top5_conc 0.24→0.83) ceiling 무효 |
+     | (iii) Skip dependency pathology | **5/5 DOMINANT** | **4/5 보조 (부분 부정)** | Phase 3 #3 skip_dep 0.97 (해결) 에도 R 가장 낮음 + Phase 3 #4 skip_dep 7.38 (악화) |
+     | (iv) Schema sibling (raw PLM) | 3/5 lower bound | 3/5 lower bound (변경 X) | L0=0.5090 모든 ckpt 동일 |
+
+     **결정적 evidence (Mechanism (ii) DOMINANT 의 직접 정량)**:
+     - **Phase 3 #3 AC loss 0.6155 (ep1) → 0.6154 (ep_last)** — 학습 300 epochs 동안 ΔAC = -0.0001 (사실상 변화 없음). 비교: Phase 2 fusion AC 0.087 → 0.0007 (125× decay). main GAT path raw output 의 collapse 가 학습 dynamics 로 회복 불가의 결정적 evidence.
+     - **4 ckpt 모두 L1_GAT cosine ≈ 1.0** (Phase 2/3 #4 = **1.0000**, std=0.0000, n=150) — column embedding 첫 layer 만에 완전 동질화. PN+IR 적용된 v2 ckpt 가 더 심함 (s06 B5 의 0.373 와 대조 — V-3-ext directed_from_sn self-loop + threshold filter 가 PN/IR 효과 무력화).
+     - **Phase 3 #4 (LR x5) attention sharpening top5_conc 0.83** + best R@15 = 0.5935 (mitigation null) — 학습으로 attention 이 매우 sharp 해지더라도 aggregation 결과 collapse 는 softmax mechanism 의 구조적 limitation.
+
+  2. **(b) Mechanism (iii) Skip Dep 부분 부정 evidence**:
+     - Phase 3 #3 (Direct AC) 의 skip_dep ratio = **0.9652** (가장 균형, main GAT gradient conv_L1=0.32 회복) → 그러나 best R@15 = **0.5927 (가장 낮음)** — skip 우회 해결로 root cause 복구 불가
+     - Phase 3 #4 (LR x5) 의 skip_dep ratio = **7.38** (Phase 1 의 3.02 의 2.4× 악화) — LR scaling 으로 main path 학습 회복 실패
+     - → **Skip Dep 는 mech(ii) edge softmax collapse 의 부수 효과** (학습 신호가 GAT 외부로 우회되는 결과), **not root cause**
+
+  3. **(c) Mechanism narrative 정식 채택 (analyzer §6.3 인용, paper §V.5.4)**:
+     > "DSN Phase 2 + Phase 3 4-trial 의 best R@15 ceiling (~0.61) 갱신 실패의 root cause 는 **GATv2Conv edge softmax 의 fundamental message aggregation collapse** 이다. Phase 3 #3 (AC target='gat_out_L_last') 에서 AC loss 가 0.6155 → 0.6154 로 학습 300 epoch 동안 일관 유지 — main GAT path 의 raw output collapse 가 학습 dynamics 로 회복 불가의 결정적 evidence. 4 ckpt 모두 L1_GAT cosine ≈ 1.0 (column embedding 첫 layer 만에 완전 동질화) — PN+IR+JK+Dual-Stream+L=2 + AC + Layer-wise LR 어떤 mitigation 도 차단 X. Mechanism: edge softmax 가 weighted mean aggregation 을 강제 → 같은 dst (table) 의 incoming src (column) 가 동일 표현으로 propagation. attention sharpening (Phase 3 #4 top5_conc 0.83 vs no mit 0.24) 은 학습 가능하지만, aggregation 결과 collapse 는 softmax mechanism 의 구조적 limitation. Mechanism (iii) skip dep pathology 는 보조 evidence (Phase 3 #3 가 skip_dep 0.97 도달에도 R 미달). Filter Dominance 6번째 축 (training-pathology-invariant) 결정적 evidence: GAT 의 fundamental limitation (edge softmax collapse) 까지 With-Filter pipeline 이 흡수."
+
+  4. **(d) Filter Dominance 6번째 축 narrative 정식 채택**:
+     - 직전 5 evidence (H-B ckpt-invariant + H-F stability/ordering + F-1+H-G alpha sweep + ΔF1 +0.65 lift + H-A/H-D 부정) + **6번째: 4-trial mitigation null effect (mech(ii) edge softmax dominant + AC=0.62 일관 + L1=1.0 collapse)**
+     - paper §3.5 narrative 정식 채택 (sub-section 정정: Skip Dependence DOMINANT → GATv2Conv Normalization DOMINANT)
+
+  5. **(e) 학위 논문 Part III chapter §III.4 mechanism deep dive 갱신** — main mechanism finding 정정:
+     - 직전 outline (DECISIONS 2026-05-07 단계 5 완료 엔트리): §III.4 = Skip Dependence Pathology DOMINANT 5/5
+     - **갱신 outline**:
+       - §III.4 = **Mechanism (ii) GATv2Conv Normalization DOMINANT 5/5** (analyzer §6.3 narrative 정식 인용)
+       - §III.6 (AC loss mechanism) = Phase 3 #3 의 AC=0.62 일관 유지 + L1=1.0 collapse + skip dep 부분 부정 통합
+     - main contribution narrative: "GAT module limitation (edge softmax collapse) 이 paper main pipeline F1 plateau 에 absorb 되는 mechanism" — 단 paper full version 의 ablation evidence base 로 활용 (학회 논문 narrative 영향 X)
+
+  6. **(f) Mitigation v2 candidate (post-paper, LLM-free, ~10h/cell)**:
+
+     | 우선순위 | Candidate | 가설 / mechanism | 학습 비용 |
+     |---|---|---|---|
+     | **#1** | **DropEdge / DropMessage** | 매 layer 마다 random edge subset 만 활용 → softmax aggregation 의 동질화 압력 약화 | ~10h |
+     | **#2** | **Sum / Max aggregation** (mean → sum / max) | softmax 를 sum / max 로 바꿔 aggregation propagation 변경. GINConv 대안 | ~10h |
+     | **#3** | **LayerNorm before softmax** (Message normalization 변형) | softmax 전 message 자체를 normalize → magnitude 차이로 aggregation 분산 | ~10h |
+     | **#4** | **Energy-based GNN (EGAT)** | softmax-based attention 대체 — energy minimization 으로 aggregation 결정 | ~10h |
+
+     - **공통 사유**: Phase 3 4-trial evidence 가 mech(ii) edge softmax 자체의 구조적 limitation 임을 정량 → mitigation 은 **GAT layer 자체 변경 필요** (skip dep 해결만으로 부족, LR scaling 만으로 부족)
+     - **post-paper / 학위 논문 후속 backlog**: mitigation_v2 candidate 학습 시도, ~₩0 LLM-free
+     - **paper full version 의 ablation evidence base**: 4 candidate 중 1-2 개 (DropMessage + Sum aggregation) 학위 논문 후 시도 (학위 본 심사 timeline 부족)
+
+  7. **(g) Caveat — single-DB**:
+     - 4 ckpt × 50 queries 모두 BIRD-dev 첫 50 = california_schools (db-sorted) → per-DB 분해 single-DB only
+     - 본 mech(ii) DOMINANT 판정의 generalizability 는 single-DB 에서 4 ckpt 일관으로 partial 입증, 단 11 DBs 일반성 미검증
+     - **post-paper backlog**: shuffle=True 또는 stratified 50 queries 로 11 DB 모두 포함 재측정 (analyzer §10 후속 권장 #1)
+
+  8. **(h) 🚨 사용자 결정 필요 3 항목**:
+
+     | # | 결정 항목 | 옵션 | 권장 |
+     |---|----------|------|------|
+     | (1) | **paper §3.5 6번째 축 정식 채택 시점** (alpha sweep 추가 여부) | (A) 직전 결정 (alpha sweep skip) 유지 — paper main F1/EX 측정 X, val recall@15 evidence only / (B) 재고 — Phase 2/3 ckpt 위 alpha sweep subset 5 cells (~₩3.8K) 측정 후 paper main F1 spread 정량 | **(A) 유지** — 4-trial val R@15 evidence 만으로 Filter Dominance 6번째 축 narrative 정식 채택 충분, paper §3.5 narrative 영향 X (Phase 1 9 cells alpha sweep 의 F1 spread 0.0019 가 이미 정량 evidence) |
+     | (2) | **학위 논문 Part III §V.5.4 narrative 정식 채택 (analyzer §6.3 권장)** | (A) 정식 채택 — analyzer §6.3 narrative paper §V.5.4 직접 인용 / (B) 추가 검증 후 채택 — Mitigation v2 candidate 1-2 시도 후 mech(ii) DOMINANT confirm 강화 | **(A) 정식 채택** — analyzer §6.3 narrative 가 4-trial × 5-step protocol × 4 mechanism 종합 evidence 로 충분 학술적 weight |
+     | (3) | **Mitigation v2 candidate 우선순위 (post-paper)** | (A) #1 DropMessage + #2 Sum aggregation 학위 본 심사 후 시도 (2 cells, ~20h) / (B) #3 LayerNorm before softmax 만 (1 cell, ~10h) / (C) #4 Energy-based GNN 만 (1 cell, ~10h, 가장 architectural shift) / (D) 모두 post-paper backlog (학위 본 심사 timeline 부족) | **(D) 모두 post-paper backlog** — 학위 본 심사 timeline (~5/22) 부족 + mech(ii) DOMINANT 판정 evidence 충분, mitigation v2 는 paper 후 long-term direction |
+
+- **근거**:
+  - **신규 analyzer 산출**: [dsn_phase3_mitigation_results.md](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) §0~§10 (TL;DR + 5 step + 4 mechanism dominance + §6.3 학위 논문 narrative 권장)
+  - **재현 데이터**: outputs/analysis/dsn_phase3_4trial_deep_dive/ (4 ckpt summary.json + ac_loss_trajectory.png + recall_trajectory_overlay.png)
+  - **재현 스크립트**: src/analysis/dsn_phase3_4trial_deep_dive.py (v1/v2 자동 분기, Step 5 epoch trajectory parse)
+  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 base, mech(iii) DOMINANT 5/5 직전 판정 — 본 분석에서 갱신)
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (단계 5 완료, P3-A 절대 confirm — analyzer 위임 §1(8))
+  - **EXPERIMENT_HISTORY**: L2691~ DSN Phase 2 + Phase 3 4-trial Mitigation Sweep entry
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 4-trial mechanism dominant 갱신 (iii→ii) + analyzer §6.3 학위 논문 narrative 정식 인용 + Filter Dominance 6번째 축 narrative 정식 채택 + Mitigation v2 candidate 4 (post-paper) + 사용자 결정 3 항목
+  - **paper_research_direction.md (planner Edit, 본 응답)**:
+    - §3.5 "Filter Dominance 6번째 축" sub-section 정정 (Skip Dependence DOMINANT → GATv2Conv Normalization DOMINANT)
+    - §3.5 학위 논문 Part III chapter base sub-section §III.4 갱신 (mech(ii) DOMINANT)
+    - §8 Future Works H-DTK Mitigation v2 candidate 4 항목 신규
+    - §9 Limitations — single-DB caveat 갱신 (mech(ii) generalizability 부분 입증)
+    - §10 V-3-ext 단계 5 sub-section 갱신 (4 mechanism dominance scoring 표 + analyzer §6.3 narrative 인용)
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.11 dominant mechanism 정정 (iii→ii) + AC=0.62 chart 인용 + Filter Dominance 6 axes 표
+  - **paper main contribution (학회)** 영향 X — anchor t_00 + Filter Dominance 4 축 narrative 그대로
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — 학회 논문 영향 X 단 학위 논문 main mechanism finding (mech(ii) 정식 채택) 정량 weight 강화
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5 / §V.5.4 / §8 / §10 갱신 + presentation_brief §14.11 갱신
+  2. **사용자 (즉시 의사결정 3 항목)** — 본 엔트리 §1(h) 의 (1) alpha sweep 재고 / (2) §V.5.4 narrative 정식 채택 / (3) Mitigation v2 우선순위
+  3. **사용자 (5/19~5/22)** — 학위 논문 Part III chapter draft 작성 (analyzer §6.3 narrative 정식 인용 + chapter outline 7 절 + mech(ii) DOMINANT)
+  4. **사용자 (학회 §V.5.3 1 줄)** — Future Work 1 줄 (DSN Phase 2/3 4-trial mitigation null + mech(ii) edge softmax collapse) 직접 처리
+  5. **Analyzer (post-paper 후속)** — Per-DB stratified 50 queries 재측정 (toxicology vs european_football mech(ii) 차이) + softmax noise sensitivity 측정 + Mitigation v2 candidate 학습 후 protocol 재실행 (사용자 결정 (3) D 채택 시 post-paper)
+
+- **추가 필요 분석** (post-paper):
+  - Per-DB stratified 50 queries 재측정 (mech(ii) generalizability 11 DBs 검증)
+  - softmax noise sensitivity 측정 (mechanism ii 정밀화 — input perturbation 시 alpha 변동)
+  - message magnitude vs angle 분리 측정 (cosine 외 magnitude 차원 mech 정밀)
+  - Mitigation v2 candidate 1-2 학습 시도 (DropMessage / Sum aggregation 권장) → 동일 protocol 재실행 시 mech(ii) 회복 정도 정량
+
+---
+
+## 2026-05-07 (DSN Phase 2 + Phase 3 4-trial mitigation sweep 완료, 🎯 시나리오 P3-A 절대 confirm) — Filter Dominance 6번째 축 (training-pathology-invariant) 결정적 evidence + paper §3.5 narrative 6번째 evidence 정식 명문화 + 학위 논문 Part III chapter base 확정
+
+- **결정**:
+  1. **(a) V-3-ext 단계 5 완료 — 4-trial mitigation 결과표 (decreasing R@15)**:
+
+     | 순위 | Variant | Best R@15 | Best Epoch | Δ vs Phase 1 | 학습 wall |
+     |------|---------|-----------|------------|--------------|-----------|
+     | **1** | **Phase 1 P80 (no mit)** | **0.6097** | ep91 | (baseline) | 7h 30min |
+     | 2 | Phase 3 #4 (LR x5) | 0.5935 | ep172 | -0.0162 | 11h 16min |
+     | 3 | Phase 3 #3 (Direct AC `gat_out_L_last`) | 0.5927 | ep51 | -0.0170 | 10h 15min |
+     | 4 | Phase 2 b8 (mit fusion) | 0.6018 | ep157 | -0.0079 | 10h 26min |
+
+     **🚨 핵심**: 모든 mitigation variants 가 Phase 1 baseline 보다 lower — graph topology 변경 (Phase 1→2) + B5 mitigation (Phase 2) + Direct AC (Phase 3 #3) + Layer-wise LR x5 (Phase 3 #4) 4-trial 모두 raw R 한계 갱신 X. 모든 trial val R@15 ~0.59-0.61 saturate.
+
+  2. **(b) 운영 이력 (사용자 결정)**:
+     - **batch_size 1 → 8** (2026-05-06 17:10): Phase 2 b1 launch 시 7.82min/ep 부담, `train_gat_s06.py:183` 코드 분석 (batched dual_stream 지원 명시) → 사용자 승인 → b1 kill + b8 변경 + smoke (2.5min/ep, 3.1x 빠름) + 본격 학습
+     - **Phase 3 #3 + #4 가속 launch**:
+       - Phase 3 #3 (5/6 23:00 KST launch): GPU 1 idle 발견 후 Phase 2 진행 중 즉시 병렬 launch
+       - Phase 3 #4 (5/7 04:13 KST launch): GPU 0 (Phase 2 종료 후) 즉시 launch — 당초 plan ~10:25 KST → 6h 단축
+     - **Alpha sweep skip** (2026-05-07 03:00 KST): "Phase 3 의 #4 는 자동으로 이어서 실행하고 alpha sweep 은 하지 마" — Phase 2/3 #3/3 #4 모두 paper main F1/EX 측정 X, val recall@15 evidence only
+
+  3. **(c) 🎯 시나리오 P3-A 결정적 confirm — Filter Dominance 6번째 축 (training-pathology-invariant)**:
+     - 단계 4-bis 발견 (attention 매우 집중적, top-5 ≈ 91%) + 5 mitigation (Phase 2) + Direct AC (Phase 3 #3) + LR x5 (Phase 3 #4) 모두 적용에도 동일 ~0.59-0.61 saturation
+     - **시나리오 B (R 0.85+ 회복) 사실상 불가능 확정** + **시나리오 P3-A 절대 confirm** (Filter Dominance 6번째 축 절대적 evidence)
+     - paper §3.5 main insight 6번째 축 narrative 결정적 evidence
+
+  4. **(d) AC loss 정량 mechanism (학위 논문 Part III deep dive)**:
+
+     | Variant | AC target | AC ep1 | AC ep~50 | AC ep~150 | 해석 |
+     |---|---|---|---|---|---|
+     | Phase 2 b8 | `'fusion'` | 0.0683 | ~0.005 | ~0.001 | skip path 가 AC 흡수 (pathology 우회) |
+     | Phase 3 #3 | `'gat_out_L_last'` | 0.6155 | 0.6178 | 0.6183 | **main GAT path 가 collapse 압박 처리 못함** (raw GAT 학습으로도 collapse mitigation 불가) |
+     | Phase 3 #4 | `'fusion'` (Phase 2 동일) | 0.07 | ~0.01 | ~0.005 | LR x5 로 GAT path 빠른 학습 but fusion AC 는 동일 |
+
+     - Phase 3 #3 의 AC=0.62 일관 유지 → main GAT path 의 raw collapse 가 학습으로 회복 안 됨 (정량 evidence)
+     - Phase 2 / Phase 3 #4 의 fusion AC decay → fusion path 가 main GAT path 의 collapse 를 우회 (skip 활용)
+     - 어떤 path 든 raw R 한계 ~0.61 영역 — **GAT path 자체의 fundamental limitation**
+
+  5. **(e) 🆕 Filter Dominance 6번째 evidence 정식 명문화 (paper §3.5 narrative)**:
+
+     직전 5 evidence + 6번째 추가:
+     1. **H-B ckpt-invariant** — Cosine ↔ GAT raw signal 독립 (Pearson r=0.0579 Enriched / 0.2396 qcond_nl3)
+     2. **H-F stability/ordering** — Jaccard 0.4673 + Spearman 0.6453
+     3. **F-1 + H-G alpha sweep** — F1 spread 0.0724 → WF 0.0142 = 5.0850× 압축
+     4. **ΔF1 +0.65 lift** — Filter 의 P 정확도 +0.6300 boost
+     5. **H-A/H-D 부정** — distribution shift / norm 변형 모두 plateau 원인 X
+     6. 🆕 **Phase 2 + Phase 3 mitigation 4-trial null effect (training-pathology-invariant)** — graph topology + B5 + Direct AC + LR x5 4-trial 모두 raw R 한계 갱신 X (~0.59-0.61 saturate), Filter F1 plateau spread 0.0019 absorb
+
+  6. **(f) paper §3.5 / §V / §8 / §10 갱신 (planner 본 엔트리에서 Edit)**:
+     - §3.5 sub-section "🚀 Filter Dominance 6번째 축 (training-pathology-invariant) 정량 정당화 — Skip Dependence Pathology DOMINANT" 정정/확장 (4-trial mitigation 결과 표 + AC loss mechanism 표 + P3-A 절대 confirm narrative)
+     - §V (Conclusion) 직접 인용 narrative 정식 추가 — "GAT 학습의 internal training pathology (skip dependence pathology + 4-trial mitigation null effect) 까지 With-Filter pipeline 이 흡수"
+     - §8 H-DTK Phase 3 항목 — "🔥 학위 본 심사 전 진행" → "✅ 단계 5 완료 (P3-A 절대 confirm)" + Phase 3 #1 Skip scaling reduction 우선순위 강등 (mitigation null effect 모두 동일 패턴 → marginal evidence value, post-paper backlog)
+     - §10 핵심 수치 표 — 4-trial mitigation 결과 표 신규 + AC loss target 별 mechanism 표 신규
+
+  7. **(g) 🚨 학위 논문 Part III chapter base 확정 (mechanism finding + 4-trial mitigation 시도 두 차원 contribution)**:
+     - **Main mechanism finding**: Skip Dependence Pathology DOMINANT 5/5 (analyzer dsn_phase2_mitigation_null_mechanism.md §4)
+     - **4-trial mitigation 시도 narrative**: graph topology + B5 mitigation + Direct AC + LR x5 모두 fail → Filter Dominance 의 robustness 결정적 evidence (학술적 weight 격상)
+     - **AC loss mechanism deep dive**: Phase 3 #3 의 AC=0.62 일관 유지 가 main GAT path 의 fundamental limitation 직접 evidence
+     - **chapter outline 권장**:
+       - §III.1 over-smoothing 진단 (Phase 1 baseline + qcond_nl3 0.9971 collapse)
+       - §III.2 paradox 발견 (단계 4-bis attention 91% with collapse)
+       - §III.3 Mitigation 시도 1차 (B5 5 항목 → null effect)
+       - §III.4 Mechanism deep dive (Skip Dependence Pathology DOMINANT 5/5)
+       - §III.5 Mitigation 시도 2차 (Direct AC + LR x5 → null effect 동일)
+       - §III.6 결론 (training-pathology-invariant — Filter Dominance 6번째 축)
+
+  8. **(h) Analyzer 위임 (root 가 별도 prompt 발송 명시) — Phase 3 #3 + #4 mechanism 재진단**:
+     - 4 ckpt × 4 mechanism 재진단 (analyzer EXPERIMENT_HISTORY 후속 §)
+     - (a) val recall ceiling 회복 정도: Phase 1 0.6097 vs Phase 2 0.6018 vs Phase 3 #3 0.5927 vs Phase 3 #4 0.5935
+     - (b) Skip dependence ratio (gradient flow 재측정): Phase 2 mit 1.89~2.13 vs Phase 3 ?
+     - (c) AC target 별 main GAT path gradient 회복 정도: Phase 2 conv 0.07~0.18 vs Phase 3 #3 (gat_out_L_last) → main path 회복 정도
+     - (d) Layer-wise LR 의 GAT path gradient 5× 회복 검증: Phase 3 #4
+     - 산출물: `notebooks/analysis_results/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
+     - **planner 후속 단계**: analyzer 결과 dominant 판정 (P3-A 절대 confirm 의 mechanism evidence 강도) → 학위 논문 Part III chapter draft 의 mechanism §III.4 보강
+
+- **근거**:
+  - **EXPERIMENT_HISTORY.md "DSN Phase 2 + Phase 3 4-trial Mitigation Sweep (V-3-ext 단계 5, 2026-05-06 → 05-07, 🎯 시나리오 P3-A 결정적 confirm)"** (root 2026-05-07 갱신, L2691~)
+  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4 mechanism deep dive, Skip Dependence Pathology DOMINANT 5/5 판정)
+  - **선행 결정**: DECISIONS 직전 엔트리 2026-05-06 (Phase 3 #3+#4 구현 완료) + 2026-05-06 (Phase 3 학위 본 심사 전 진행)
+  - **운영 결정**: 사용자 batch_size 변경 / Phase 3 가속 launch / alpha sweep skip (2026-05-06~07)
+  - **AC loss mechanism**: Phase 3 #3 학습 log `logs/train/gat_directed_supernode_p80_b5_phase3_directAC_*.log` (AC=0.62 일관 유지)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 4-trial 결과 표 + 운영 이력 + 시나리오 P3-A 결정적 confirm + AC loss mechanism + Filter Dominance 6번째 evidence 정식 명문화 + 학위 논문 Part III chapter base + analyzer 위임
+  - **paper_research_direction.md (planner Edit, 본 응답)** — §3.5 / §V / §8 / §10 갱신
+  - **presentation_brief_2026-04-28.md (planner Edit, 본 응답)** — §14.10 → §14.10 + 신규 §14.11 신설 (DSN Phase 2 + Phase 3 4-trial 결과 + Filter Dominance 6번째 축 narrative)
+  - **paper main contribution (학회)** 영향 X — anchor t_00 (F1=0.8657) + Filter Dominance 4 축 narrative 그대로
+  - **학위 논문 Part III chapter narrative weight 결정적 격상** — mechanism finding (Skip Dependence DOMINANT) + 4-trial mitigation 시도 (paradox + null + dominant + Phase 3 동일 null) 두 차원 contribution
+  - **paper §V Conclusion 직접 인용 가능 narrative**: "GAT 학습의 training pathology 4-trial mitigation 모두 fail (Phase 1 0.6097 → Phase 2 0.6018 → Phase 3 #3 0.5927 / Phase 3 #4 0.5935 모두 ~0.59-0.61 saturate) 에도 With-Filter F1 plateau spread 0.0019 → Filter Dominance 의 robustness 결정적"
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료, 본 응답)** — DECISIONS 본 엔트리 + paper §3.5 / §V / §8 / §10 갱신 + presentation_brief §14.11 신설
+  2. **Analyzer (즉시, root 가 별도 prompt 발송)** — Phase 3 #3 + #4 mechanism 재진단 (4 ckpt × 4 mechanism, gradient flow / AC target 별 main GAT path gradient / Layer-wise LR 의 GAT path 5× 회복 검증)
+  3. **Planner (analyzer 결과 후)** — 학위 논문 Part III chapter §III.4 mechanism deep dive 보강 (P3-A 절대 confirm 의 mechanism evidence) + DECISIONS 후속 엔트리
+  4. **사용자 (5/19~5/22)** — 학위 논문 Part III chapter draft 작성 (mechanism finding + 4-trial mitigation 시도 두 차원 contribution, planner outline 활용)
+  5. **사용자 (학회 §V.5.3 1 줄)** — Future Work 1 줄 (DSN Phase 2/3 mitigation null effect) 직접 처리
+
+- **추가 필요 분석** (analyzer Phase 3 mechanism 재진단 후):
+  - Phase 3 #3 의 main GAT path gradient: AC target='gat_out_L_last' 적용에도 main GAT 가 collapse 학습 못하는 mechanism (skip path 우회 여전 or 다른 mechanism?)
+  - Phase 3 #4 의 LR x5 효과: GAT path gradient 5× 증가 검증 + 그럼에도 ceiling 갱신 X 하는 mechanism (LR↑ → 빠른 saturation, 단 ceiling 동일)
+  - 4 ckpt × 4 mechanism evidence matrix 갱신 — Phase 3 #3 / #4 추가 행
+  - Phase 1 P80 baseline 의 best epoch 91 vs Phase 3 #3 ep51 (빠른 saturation) / #4 ep172 (느린 saturation) 의 학습 dynamic 차이
+
+---
+
+## 2026-05-06 (Phase 3 #3 + #4 구현 완료 — Direct AC + Layer-wise LR + 🚨 AC loss root cause 코드 확인) — Selector 산출물 4 + smoke 7/7 통과 + Root 학습 핸드오프 prep (5/13 #3 + 5/16 #4)
+
+- **결정**:
+  1. **(a) Selector 모듈 단계 5 (Phase 3 #3 + #4) 구현 완료** (2026-05-06 동일자 가속 완료, 직전 timeline 5/10~5/12 → 5/6 가속):
+     - 출처: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 5](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md)
+     - **단계 1 → 4 → 4-bis → 5 가속 진행** (모두 5/5~5/6 완료, 본 심사 timeline 여유 ↑)
+  2. **(b) 🚨 AC loss 위치 root cause 코드 확인 (사전 trace)** — Phase 2 mitigation null mechanism finding 의 정확한 root cause 입증:
+     - `train_gat_s06.py:391-395` (Phase 2 baseline):
+       ```python
+       if anti_collapse_weight > 0.0 and "column" in node_embs:
+           if COL_TO_TAB_EDGE in batch.edge_index_dict:
+               col_embs = node_embs["column"]   # ← model.forward 결과
+               cb_edge = batch.edge_index_dict[COL_TO_TAB_EDGE]
+               step_loss_ac = anti_collapse_fn(col_embs, cb_edge)
+       ```
+     - **`node_embs` = `gat_model(...)` 반환값 = v2 model.forward 결과**
+     - `dual_stream=True` 시 forward 마지막 단계 = `fusion_head[nt](concat([h, z_q, h*z_q]))` (gat_network_v2.py L390-405)
+     - → **AC loss 가 fusion 후 결과에 적용** — skip path (skip_dict + fusion_head) 가 우회 가능
+     - **🚨 null mechanism finding 의 정확한 root cause 확인 ✅** (Phase 2 의 AC loss 가 GAT 학습에 직접 작용 못함 — Skip Dependence Pathology 의 직접 증거)
+  3. **(c) Phase 3 #3 PRIMARY — Direct AC on GAT output 구현**:
+     - **메커니즘**: AC loss target 을 `'gat_out_L_last'` 로 변경
+     - **forward hook** 으로 마지막 `HeteroConv` (= `gat_model.convs[-1]`) 의 column 출력 capture
+     - AC loss 그 위에 적용 → skip + fusion 우회 차단, main GAT path gradient 회복
+     - **Config**: `configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml`
+       - Base: Phase 2 b5_mitigation.yaml
+       - 변경: `training.anti_collapse_target: "gat_out_L_last"`
+     - **Smoke 검증**:
+       - hook capture tensor (raw GAT, [N, hidden×heads] = 24×128) ≠ fusion output ([N, out_channels] = 24×64) — shape 분리
+       - AC loss on hook capture 의 backward 가 last conv 의 inner GATv2Conv params 에 grad 전달 (6/54 params)
+  4. **(d) Phase 3 #4 SECONDARY — Layer-wise LR 구현**:
+     - **메커니즘**: PyTorch optimizer `param_groups` 활용
+     - `convs.*` (HeteroConv ModuleList) + `*.convs.*` (inner GATv2Conv) 산하 파라미터만 `base_lr × multiplier` (= 5e-4 = 5×)
+     - 그 외 (lin_dict / out_lin_dict / skip_dict / pairnorms / fusion_head / query_encoder / classifier_heads) 는 base_lr (1e-4) 그대로
+     - → main GAT path 가 우회 path 대비 5× 빠른 학습
+     - **Config**: `configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml`
+       - Base: Phase 2 b5_mitigation.yaml
+       - 변경: `training.optimizer_layer_wise_lr: true`, `training.gat_lr_multiplier: 5.0`
+       - `anti_collapse_target` 미설정 (= 'fusion' default) — #3 와 분리 측정
+     - **Smoke 검증**:
+       - filter 정확성: gat-path 108 params / other 52 params (synthetic, num_layers=2)
+       - lin_dict / out_lin_dict / skip_dict / fusion_head / query_encoder / pairnorms 모두 `other` 로 분류 ✓
+       - LR assignment: gat_convs=5e-4 / gat_other=1e-4 / classifier_heads=1e-4
+       - backward compat: `layer_wise_lr=False` 시 1 group + lr=base_lr (Phase 2 동일)
+  5. **(e) Smoke test 7/7 통과** (`src/modules/selectors/tests/test_phase3_mitigations.py`):
+     - `test_p3_3_hook_captures_last_conv_output` — fusion vs raw GAT shape 분리 ✓
+     - `test_p3_3_hook_backward_graph_intact` — AC loss → last conv params grad 전달 ✓
+     - `test_p3_4_param_group_filter_correctness` — `'convs'` filter 정확 ✓
+     - `test_p3_4_optimizer_lr_assignment` — 5× LR 적용 ✓
+     - `test_p3_4_backward_compat_baseline` — Phase 2 단일 LR 보존 ✓
+     - `test_phase3_config_parsing` — 두 신규 config 정상 ✓
+     - `test_phase2_baseline_unchanged` — Phase 2 baseline regression 보존 ✓
+  6. **(f) 변경된 파일 4 항목 (cross-reference)**:
+
+     | 파일 | 변경 내용 |
+     |---|---|
+     | `src/train_gat_s06.py` | `anti_collapse_target` (fusion / gat_out_L_last) + `optimizer_layer_wise_lr` + `gat_lr_multiplier` 옵션. AC loss 의 `col_embs` source 분기 + forward hook capture. 단일 LR optimizer → 3 param groups (layer-wise 시) |
+     | `configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml` | 신규 — Phase 3 #3 학습 config |
+     | `configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml` | 신규 — Phase 3 #4 학습 config |
+     | `src/modules/selectors/tests/test_phase3_mitigations.py` | 신규 smoke test 7 케이스 |
+     | **Phase 2 backward compat 보존**: `anti_collapse_target` default = 'fusion' (Phase 2 동작), `optimizer_layer_wise_lr` default = false (Phase 2 단일 LR) — Phase 2 regression 검증 통과 |
+  7. **(g) Root 학습 핸드오프 prep (본 응답 본문 prompt)**:
+     - **5/13~5/16 (root) — Phase 3 #3 학습**:
+       - `python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml` (~12-13h, GPU 0 또는 1)
+       - 신규 ckpt: `best_gat_directed_supernode_p80_b5_phase3_directAC.pt`
+       - NAS 저장 + 로컬 symlink (memory rule)
+       - 직후 STEP 3 alpha sweep subset 5 cells (~₩3.8K, ~3h)
+     - **5/16~5/19 (root) — Phase 3 #4 학습**:
+       - `python src/train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml` 동일
+       - 신규 ckpt: `best_gat_directed_supernode_p80_b5_phase3_layerwiseLR.pt`
+       - 직후 alpha sweep subset 5 cells
+  8. **(h) Analyzer 후속 prep (5/19+)**:
+     - Phase 3 #3 + #4 두 ckpt 의 mechanism 재진단:
+       - **(a) val recall ceiling 회복 정도**: Phase 1 0.6097 vs Phase 2 0.6012 vs Phase 3 #3/#4
+       - **(b) Skip dependence ratio (gradient flow 재측정)**: Phase 2 mit 1.89~2.13 vs Phase 3 ?
+       - **(c) AC target 별 main GAT path gradient 회복 정도**: Phase 2 conv 0.07~0.18 vs Phase 3 #3 (gat_out_L_last) → main path 회복 정도
+       - **(d) Layer-wise LR 의 GAT path gradient 5× 회복**: Phase 2 vs Phase 3 #4
+     - `extract_layerwise_attention_v2` 재호출 — Phase 3 attention pattern (top-5 conc 변화)
+     - 산출물: `notebooks/analysis_results/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
+  9. **(i) 전체 timeline 가속 정리** — selector 모듈 5/6 동일자 가속으로 단계 1~5 모두 완료:
+
+     | 일정 | 작업 | 상태 |
+     |---|---|---|
+     | 5/5 | 단계 1 (selector class) | ✅ |
+     | 5/5~5/6 | 단계 2/3 (Phase 1 학습 + 측정) | ✅ |
+     | 5/6 | 단계 4 (over-smoothing 진단) | ✅ |
+     | 5/6 | 단계 4-bis (attention v2) | ✅ |
+     | 5/6 (Phase 2) | Phase 2 학습 진행 중 (ep126/300, ETA 04:24 KST 5/7) | ⏳ |
+     | 5/6 | **단계 5 (Phase 3 #3+#4 구현)** | ✅ |
+     | 5/7~5/10 | Phase 2 STEP 3-5 (alpha sweep + attention v2 + L_out cosine) | ⏳ root |
+     | **5/13~5/16** | **Phase 3 #3 학습 + alpha sweep** | ⏳ root |
+     | **5/16~5/19** | **Phase 3 #4 학습 + alpha sweep** | ⏳ root |
+     | 5/19+ | Analyzer mechanism 재진단 (3 ckpt × 4 mechanism) | ⏳ analyzer |
+     | 5/19~5/22 | 학위 논문 Part III chapter (mechanism finding + 4-trial mitigation) | ⏳ user |
+     | 5/22~5/29 (본 심사 중) | Phase 3 #1 Skip scaling (시간 가능 시) | ⏳ root |
+
+- **근거**:
+  - **Selector 모듈 단계 5 산출**: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 5](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) (구현 + 7 smoke 통과 + AC loss 위치 root cause 확인)
+  - **선행 결정**: DECISIONS 직전 엔트리 (사용자 결정 + Phase 3 학위 본 심사 전 진행 + #3 PRIMARY + #4 SECONDARY)
+  - **AC loss root cause 확인**: train_gat_s06.py:391-395 + gat_network_v2.py L390-405 (fusion_head 마지막 단계)
+  - **Cross-reference**: 단계 4-bis (attention v2) → 단계 5 (Phase 3) 모두 5/6 동일자 가속 완료
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Phase 3 #3+#4 구현 완료 + AC loss root cause 확인 + 변경 파일 4 + Root 학습 핸드오프 prep + Analyzer 후속 prep + 전체 timeline 가속 정리
+  - **Selector EXPERIMENT_PLAN §V-3-ext 단계 5 ✅ 완료 표기** (이미 selector 모듈에서 작성됨)
+  - **paper_research_direction.md (선택, 학습 결과 후 정식 확정)** — §8 H-DTK Phase 3 ⏳ 학습 진행 중 표기 (구현은 ✅) + 시나리오 P3-A/B/C 분기 결과 prep
+  - **Root 학습 핸드오프 prompt** (응답 본문) — 5/13~5/19 학습 + alpha sweep + analyzer 후속
+  - **paper main contribution 영향 X** (학회 narrative 그대로)
+  - **학위 논문 Part III chapter narrative weight 결정적 격상 prep**: 4-trial mitigation 시도 (Phase 2 B5 + Phase 3 #3 + #4 + 본 심사 중 #1) → Filter Dominance 6번째 축 절대적 evidence 강화
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + Root 학습 핸드오프 prompt (응답 본문)
+  2. **사용자 (즉시)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`, 5/13 #3 학습 시작 / 5/16 #4 학습 시작)
+  3. **Root (5/7 04:24 KST 학습 종료 후~5/19)** — Phase 2 STEP 3-5 (5/7~10) → Phase 3 #3 학습+측정 (5/13~16) → Phase 3 #4 학습+측정 (5/16~19) → EXPERIMENT_HISTORY 갱신
+  4. **Analyzer (5/19+)** — 3 ckpt (Phase 2 b5 + Phase 3 #3 + Phase 3 #4) mechanism 재진단 + extract_layerwise_attention_v2 재호출
+  5. **Planner (analyzer 결과 후)** — 시나리오 P3-A/B/C 분기 처리 + paper §3.5 narrative 정식 확정 (4-trial mitigation evidence) + 학위 논문 Part III chapter base
+  6. **사용자 (5/19~5/22)** — 학위 논문 Part III chapter 작성 (mechanism finding + 4-trial mitigation 시도)
+
+- **추가 필요 분석** (Phase 3 학습 + 측정 결과 후):
+  - Phase 3 #3 (Direct AC) 의 main GAT path gradient 회복 정량 — Phase 2 conv 0.07~0.18 → Phase 3 ?
+  - Phase 3 #4 (Layer-wise LR) 의 GAT path gradient 5× 회복 + val recall ceiling 영향
+  - 시나리오 P3-A/B/C 분기 결정 (val recall ceiling + final F1 plateau spread Phase 1 0.0019 vs Phase 3)
+  - 4-trial mitigation 통합 evidence (Phase 1 + Phase 2 B5 + Phase 3 #3 + #4) — Filter Dominance 6축 절대적 evidence 강도
+
+---
+
+## 2026-05-06 (사용자 결정 (1)-A + (2)-A + (3) Phase 3 학위 본 심사 전 진행) — Per-DB post-paper / STEP 3-5 진행 / Skip Mitigation Phase 3 candidate 우선순위 학위 본 심사 전 시도 (대안 검증)
+
+- **결정** (사용자 직전 input):
+  1. **(A) (1) Per-DB 분해 — post-paper backlog 채택 (권장 채택)**:
+     - single-DB (california_schools) 한계 §V Limitations 1 줄 명시로 충분
+     - 4 ckpt 일관 → mechanism finding generalizability partial 입증 충분
+     - post-paper 11 DBs × 4 ckpt 분해는 본 심사 후 진행
+  2. **(B) (2) Phase 2 STEP 3-5 진행 채택 (권장 채택)**:
+     - 학습 종료 (04:24 KST 5/7) 후 즉시 진행
+     - STEP 3 alpha sweep subset 5 cells (paper main stack + Phase 2 b8 ckpt) — paper §3.5 narrative 정식 확정 필수
+     - STEP 4 attention v2 재호출 full 50 queries — Phase 1 vs Phase 2 attention pattern 비교
+     - STEP 5 L_out cosine 재진단 — over-smoothing mitigation 효과 정량
+     - EXPERIMENT_HISTORY.md 갱신
+  3. **(C) 🚀 (3) Phase 3 Skip Mitigation Candidate — 학위 본 심사 전 진행 (권장 변경)**:
+     - **사용자 의도**: "대략적인 원인을 찾았는데 대안을 내 봐야지"
+     - 본 심사 (5/22~6/19) 전 가능한 candidate 시도 — 학위 논문 Part III chapter 의 **mechanism finding + 대안 시도** 두 차원 contribution
+     - 권장 통합 (B post-paper backlog) **거부** → **#3 + #4 우선 + #1 추가 + #2 post-paper** 분배
+  4. **(D) Skip Mitigation Candidate 4 종 우선순위 (사용자 결정 (3) 반영)**:
+
+     | candidate | 설명 | 학습 비용 | 구현 복잡도 | mechanism 적합도 | 학위 논문 본 심사 전 진행? |
+     |---|---|---|---|---|---|
+     | **#3 (PRIMARY)** | **Direct AC loss on GAT output** — Phase 2 의 AC loss 가 fusion output 적용 추정, GAT output 에 직접 적용하면 skip 우회 차단 | ~12-13h | 中 (loss 위치 변경) | **🔥 高** (skip dependence 직접 차단) | ✅ **5/16~5/19** |
+     | **#4 (SECONDARY)** | **Layer-wise LR (GAT 5× higher than skip + fusion)** — main GAT path gradient 직접 회복 | ~12-13h | 低 (optimizer config 만) | High (gradient 1/10 축소 직접 대응) | ✅ **5/19~5/22** |
+     | **#1 (TERTIARY)** | **Skip path scaling reduction** — skip contribution weight 축소 (예: 0.5x) | ~12-13h | 低 (model config 만) | 中 (skip 차단 단 학습 stability 위험) | 🟡 본 심사 중 (5/22~5/29) 시도 |
+     | **#2 (POST-PAPER)** | **GAT pre-training (fix skip, train GAT only first epochs)** — 학습 schedule 변경 | ~15-20h | 高 (학습 schedule 변경) | High | ❌ post-paper backlog (5/19+ 시간 부족) |
+  5. **(E) 🎯 통합 timeline (Phase 2 STEP 3-5 + Phase 3 Skip Mitigation 시도)**:
+
+     | 일정 | 작업 | 세션 |
+     |---|---|---|
+     | **5/7 04:24 KST** | Phase 2 b8 학습 종료 | root (자동) |
+     | **5/7~5/8** | STEP 3 alpha sweep subset 5 cells (~₩3.8K, ~3h) | root |
+     | **5/8~5/10** | STEP 4 attention v2 재호출 full 50 queries + STEP 5 L_out cosine 재진단 + HISTORY 갱신 | root + analyzer |
+     | **5/10~5/12** | planner narrative 정식 확정 (§3.5 6번째 축) + Phase 3 candidate config/구현 (#3 Direct AC + #4 Layer-wise LR) | planner + selector 모듈 |
+     | **🆕 5/13~5/16** | **Phase 3 #3 학습 (Direct AC on GAT output)** — alpha sweep subset 5 cells (~₩3.8K) | root |
+     | **🆕 5/16~5/19** | **Phase 3 #4 학습 (Layer-wise LR)** — alpha sweep subset 5 cells (~₩3.8K) | root |
+     | **5/19~5/22** | 학위 논문 Part III chapter 작성 (mechanism finding + 대안 시도 두 차원) | 사용자 + planner |
+     | **5/22~5/29 (본 심사 중)** | **Phase 3 #1 학습 (Skip scaling reduction)** + 측정 | root (시간 가능 시) |
+     | **5/29~6/19** | 본 심사 진행 + 추가 보강 | 사용자 |
+     | **post-paper** | Phase 3 #2 (GAT pre-training) + Per-DB 11 DBs 분해 | analyzer + root |
+  6. **(F) Phase 3 결과 분기 narrative (학위 논문 Part III chapter)**:
+     - **시나리오 P3-A (가장 가능성 高 — Skip mitigation null effect 같은 패턴)**:
+       - #3 + #4 적용에도 val recall ceiling (~0.61) 갱신 X + final F1 plateau 0.0019 spread 유지
+       - **Filter Dominance 6번째 축 (training-pathology-invariant) 절대적 evidence 강화**:
+         - Phase 1 (no mit) + Phase 2 (B5 mit) + Phase 3 (Skip mit) 모두 ineffective → Filter Dominance 의 robustness 결정적 evidence
+       - 학위 논문 Part III main contribution: **3-stage evidence + 4-trial mitigation 시도** (mechanism finding + 시도 모두 fail = Filter dominance의 robustness 절대적)
+     - **시나리오 P3-B (가능성 中)**:
+       - #3 또는 #4 가 raw R 0.65~0.75 회복 + final F1 plateau 갱신 가능성 (mid)
+       - 학위 논문 Part III main contribution: mechanism finding + **Skip Dependence pathology 의 partial mitigation 발견** (#3 또는 #4 의 mechanism)
+       - paper main contribution 4 → 5 항목 격상 후보 (단 anchor 변경은 학회 후 별도 결정)
+     - **시나리오 P3-C (낮음)**:
+       - #3 또는 #4 가 raw R 0.85+ 회복 + final F1 plateau 결정적 갱신 (>0.870)
+       - 학위 논문 main contribution 5 항목 격상 + paper anchor 검토 (학위 논문 시점에서)
+       - 가능성 낮음 — DOMINANT mechanism (skip dependence) 가 architectural inherent 가능성 高
+  7. **(G) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - Phase 3 결과는 학위 논문 Part III chapter 만 적용
+     - 학회 §V.5.3 Future Work 1 줄 (DSN Phase 2 + Phase 3) 사용자 직접 처리
+  8. **(H) Phase 3 #3 (Direct AC on GAT output) 핵심 구현 spec — Selector 모듈 핸드오프 prep**:
+     - 현재 Phase 2 의 AC loss 위치 확인 필수 (`train_gat_s06.py` `anti_collapse_weight` apply 위치)
+     - Phase 2 추정: AC loss 가 fusion_head 또는 final output 에 적용 → skip 우회 가능
+     - Phase 3 #3: AC loss 를 GAT layer output (L1/L2/L_out) 에 직접 적용 — `loss_anti_collapse(gat_out_L_out, gold_label)`
+     - 구현 위치: `train_gat_s06.py` 또는 `src/models/gat_network_v2.py` 의 forward + loss
+     - smoke test: AC loss applied position 확인 + gradient norm main GAT path 회복 검증
+  9. **(I) Phase 3 #4 (Layer-wise LR) 핵심 구현 spec**:
+     - PyTorch optimizer 의 parameter groups 활용 — GAT layer params 5× LR
+     - 구현 위치: `train_gat_s06.py` 의 optimizer 정의
+     - 예시 코드:
+       ```python
+       gat_params = [p for n, p in model.named_parameters() if 'conv' in n or 'gat' in n]
+       other_params = [p for n, p in model.named_parameters() if 'conv' not in n and 'gat' not in n]
+       optimizer = torch.optim.AdamW([
+           {'params': gat_params, 'lr': 5e-4},  # 5× higher
+           {'params': other_params, 'lr': 1e-4}  # baseline
+       ])
+       ```
+     - smoke test: GAT path gradient 5× 증가 검증
+
+- **근거**:
+  - 사용자 직전 input (2026-05-06): "(1) (A) / (2) (A) / (3) 그래도 가능한 건 학위논문 본심사 전에 해 보고 싶어 대략적인 원인을 찾았는데 대안을 내 봐야지"
+  - **선행 결정**: DECISIONS 직전 엔트리 (Phase 2 mitigation null mechanism dominant 판정 — Skip Dependence DOMINANT 5/5)
+  - **Mitigation candidate 출처**: [dsn_phase2_mitigation_null_mechanism.md §8.1](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) — analyzer 권장 4 candidate
+  - **Phase 2 학습 log**: `/tmp/directed_sn_train_logs/train_dsn_p80_b5_mitigation_b8.log`
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 3 항목 confirm + Phase 3 candidate 우선순위 + 통합 timeline + 시나리오 분기 + 구현 spec
+  - **paper_research_direction.md (planner Edit)** — §8 H-DTK Phase 3 항목 갱신 (post-paper backlog → 학위 본 심사 전 진행 + candidate 우선순위)
+  - **Selector 모듈 세션 핸드오프 prompt** (응답 본문) — Phase 3 #3 + #4 구현 spec
+  - **Root 세션 핸드오프 prompt** (응답 본문) — Phase 2 STEP 3-5 (5/7~) + Phase 3 #3 학습 (5/13~) + #4 학습 (5/16~)
+  - **학위 논문 Part III chapter 영향**: mechanism finding + 4-trial mitigation 시도 (paradox + null + dominant + Phase 3 mitigation 결과) = 학술적 weight 결정적 격상
+  - **학회 논문 narrative 영향 X (재확인)**
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §8 H-DTK Phase 3 갱신 + Selector + Root 핸드오프 prompt (응답 본문)
+  2. **사용자 (즉시)** — Selector 모듈 + Root 세션 prompt 직접 붙여넣기:
+     - Selector 모듈 (cd `/home/hyeonjin/thesis_refactored/src/modules/selectors`) — Phase 3 #3 + #4 구현 (5/10~5/12)
+     - Root 세션 (cd `/home/hyeonjin/thesis_refactored`) — Phase 2 STEP 3-5 (5/7~) + Phase 3 #3 학습 (5/13~) + #4 학습 (5/16~)
+  3. **Selector 모듈 (5/10~5/12)** — Phase 3 #3 (Direct AC on GAT output) + #4 (Layer-wise LR) 구현 + smoke test
+  4. **Root (5/7~5/22)** — STEP 3-5 + Phase 3 #3 + #4 학습 + 측정
+  5. **Analyzer (선택, 5/19+)** — Phase 3 결과 mechanism 재진단 (Skip Dependence ratio + AC loss applied position + GAT gradient 회복 정량)
+  6. **Planner (각 단계 결과 후)** — narrative 정식 확정 별도 엔트리 (시나리오 P3-A/B/C 분기 처리)
+  7. **사용자 (5/19~5/22)** — 학위 논문 Part III chapter 작성 (mechanism finding + 4-trial mitigation 시도)
+
+- **추가 필요 분석** (Phase 3 결과 후):
+  - #3 (Direct AC) val recall ceiling 회복 정도 + Skip dependence ratio 변화
+  - #4 (Layer-wise LR) main GAT path gradient 회복 정도 + val recall ceiling 변화
+  - #1 (Skip scaling, 본 심사 중) — 학습 stability + recall 변화
+  - 4 candidate (Phase 1 + Phase 2 B5 + Phase 3 #3 #4 (#1)) 통합 evidence — Filter Dominance 6번째 축 절대적 evidence 강도
+
+---
+
+## 2026-05-06 (Phase 2 mitigation null mechanism dominant 판정 — Mechanism (iii) Skip Dependence Pathology 5/5 DOMINANT) — 학위 논문 Part III main mechanism finding 확정 + Filter Dominance 6번째 축 (training-pathology-invariant) 정량 정당화
+
+- **결정**:
+  1. **(a) Analyzer 산출 수령** — [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (4 mechanism deep dive 완료, 2026-05-06):
+     - 4 ckpt × 50 queries × column 노드
+     - 4 mechanism evidence 강도 1-5 scale 정량 + dominant 판정
+     - 학위 논문 Part III main mechanism finding 권장 narrative 도출
+  2. **(b) 🎯 4 Mechanism Evidence Matrix — Dominant 판정 결정**:
+
+     | Mechanism | Evidence 강도 | 핵심 정량 | 판정 |
+     |---|---|---|---|
+     | (i) Aggregation collapse — top-5 raw PLM cosine | **2/5** | 0.52~0.58 (+0.05~0.07 vs entire-table 0.51) | **Marginal** — top-5 attended 가 random 보다 약간 sibling, root cause X |
+     | (ii) GATv2Conv normalization — edge softmax | **3/5** | mit L2 entropy 2.48~2.61 (no mit 3.22 대비 -0.7), top5_conc 0.62~0.67 (no mit 0.24 대비 +0.4) | **Paradox 직접 evidence** — Mitigation 이 attention sharpen, 단 over-smoothing 잔존 → root cause X |
+     | **(iii) Skip dependence pathology** | **🔥 5/5** | no mit skip/conv ratio **3.02~3.04** (extreme), mit conv 1/10 축소 (1.05~1.13 → 0.07~0.18), fusion path 우회 (gradient 0.55~1.24) | ✅ **DOMINANT** |
+     | (iv) Schema sibling 유사성 (raw PLM) | **3/5** | L0 0.51~0.55 (mid-similar), GAT +0.45 추가 collapse | **Lower bound only** (40% 책임), GAT 학습 dynamics 가 dominant |
+  3. **(c) 🚀 Mechanism (iii) Skip Dependence Pathology Dominant — 학위 논문 Part III main mechanism finding 확정**:
+     - **No mitigation (Phase 1, qcond_nl3)**: skip/main_conv ratio = **3.02~3.04** (extreme) — main GAT path gradient 가 skip path 의 1/3 수준, GAT layer 가 query-schema interaction 학습 X, skip residual 로 prediction 우회
+     - **With mitigation (Phase 2 b8, s06 B5)**: skip ratio 1.89~2.13 으로 약간 완화 (mitigation 부분 효과) but **main GAT gradient 동시에 1/10 축소** (conv_L1: no mit 1.05~1.13 → mit 0.07~0.18) — 학습이 fusion_head + query_encoder path 로 우회 (gradient 0.55~1.24, lin_dict + skip 합산 보다 큼)
+     - **결론**: **GAT layer 가 본질적으로 학습되지 않음** → val recall ceiling (~0.61) 갱신 X — mitigation 의 collapse 완화 mechanism 자체는 작동 (AC loss decay 정상) but 학습 dynamics 가 GAT 를 우회
+  4. **(d) Mechanism (ii) GATv2Conv attention sharpen — Paradox 직접 evidence (root cause X)**:
+     - Mitigation 적용 시 attention sharpen (col→tab top-5 conc 0.24 → 0.67, +0.43)
+     - L2 entropy 2.48~2.61 (no mit 3.22 대비 -0.7)
+     - 단계 4-bis sanity (n=2) 의 top-5 ≈ 91% 와 일관
+     - **Mitigation 이 정확히 attention 을 sharpen 시킴 — 단 over-smoothing 잔존** → paradox 의 직접 정량 evidence
+     - root cause X (mitigation 으로 sharpen 됐지만 ceiling 갱신 X)
+  5. **(e) Mechanism (iv) Schema sibling 유사성 — Lower Bound (~40% 책임)**:
+     - raw PLM (L0) intra-table cosine sim 0.51~0.55 (mid-similar)
+     - GAT 가 L0 0.51 → L3 0.96+ 로 **+0.45 추가 collapse** (Phase 1 over-smoothing 진단 §2 결과)
+     - sibling 의 raw 유사성이 ~40% 책임 (lower bound) — GAT 학습 dynamics 가 dominant
+     - mitigation 무효 사유: raw 단계 sibling 도 mid-similar (0.51~0.55) 라 mitigation 으로 회복 가능 영역 한정
+  6. **(f) Mechanism (i) Aggregation collapse — Marginal (root cause X)**:
+     - top-5 attended 노드의 raw PLM cosine 0.52~0.58 vs entire-table 0.51 → marginal +0.05~0.07
+     - top-5 가 random 노드보다 약간 sibling 중심 단 절대값 차이 작음
+     - root cause X — top-5 흡수 자체의 collapse 효과는 minor
+  7. **(g) Filter Dominance 6번째 축 (training-pathology-invariant) 정량 정당화 (학위 논문 Part III main mechanism)**:
+     - **GAT learning pathology** (skip dependence ratio 3.02 + attention sharpen with over-smoothing paradox top-5 91%) **까지 With-Filter pipeline 이 흡수**
+     - **Phase 1 9 cells F1 plateau spread 0.0019** (직전 alpha sweep 결과)
+     - **Phase 2 mitigation null effect (-0.0085 underperform)**
+     - 두 결과가 **같은 mechanism**: Selector internal training pathology 의 차이를 Filter 가 final F1 spread 에서 흡수
+     - paper §3.5 main insight 의 가장 깊은 차원 evidence — Selector design choice 가 아닌 **training dynamics 자체의 pathology** 까지 absorb
+  8. **(h) 학위 논문 Part III main contribution 재확인**:
+     - **Graph topology 변경 (DSN, advisor 제안)**: ineffective (Phase 1 P80 F1 plateau)
+     - **Mitigation 5 항목 (B5)**: ineffective (Phase 2 -0.0085 underperform)
+     - **Skip dependence pathology**: GAT 학습 본질의 한계 (학위 논문 Part III main mechanism finding)
+     - → **Filter Dominance 의 robustness 결정적 evidence** — Selector design / 학습 어떤 변경도 흡수
+  9. **(i) Skip Dependence Mitigation Candidates (analyzer §8.1, post-paper backlog)**:
+     - **#1**: Skip path scaling reduction (skip 의 contribution weight 축소)
+     - **#2**: GAT pre-training (fix skip, train GAT only first epochs)
+     - **#3**: Direct AC loss on GAT output (skip 우회 차단)
+     - **#4**: Layer-wise LR (GAT 5× higher than skip + fusion)
+
+- **🚨 사용자 결정 필요 3 항목**:
+  1. **Per-DB 분해 후속 측정 (analyzer §7.3 caveat) 우선순위**:
+     - 본 분석 50 queries 모두 첫 50 = california_schools (db-sorted dataset) → single-DB only
+     - **(A) post-paper backlog**: 학위 본 심사 후 (학회 narrative 영향 X)
+     - **(B) 학위 본 심사 안 진행 (5/22~6/19)**: per-DB 11 DBs × 4 ckpt 분해
+     - **권장**: **(A) post-paper** — single-DB 한계 §V Limitations 1 줄 명시로 충분, 본 mechanism finding 이 single-DB 에서도 4 ckpt 일관 → generalizable
+  2. **Phase 2 학습 종료 (04:24 KST 5/7) 후 추가 측정**:
+     - **(A) STEP 3-5 진행** (alpha sweep subset 5 cells + attention v2 재호출 full 50 queries + L_out cosine 재진단): paper §3.5 narrative 정식 확정 필수
+     - **(B) STEP 3 alpha sweep 만 + STEP 4-5 보류**: paper §3.5 narrative 직전 candidate 그대로 + 학위 논문 Part III chapter 만 detail
+     - **권장**: **(A) STEP 3-5 진행** — paper §3.5 6번째 축 정량 evidence 정식 확정 + 학위 논문 chapter base
+  3. **Skip Mitigation Candidate 4종 중 학위 논문 Phase 3 시도 우선순위 (post-paper)**:
+     - **(A) #1 + #2 (Skip scaling + GAT pre-training)**: 학위 본 심사 안 시도 (5/22~6/19) — Phase 2 와 다른 차원의 mitigation
+     - **(B) #1~#4 모두 post-paper backlog**: 학위 논문 Part III main contribution = paradox + null effect + dominant mechanism finding 만 (mitigation 시도 X)
+     - **(C) #3 (Direct AC loss on GAT output) 만 시도**: skip 우회 직접 차단 mechanism 검증
+     - **권장**: **(B) post-paper backlog** — 학위 본 심사 timeline 부족 + 학위 논문 Part III main contribution 은 mechanism finding 자체로 충분 학술적 weight
+
+- **근거**:
+  - **Analyzer 산출**: [dsn_phase2_mitigation_null_mechanism.md §0~§9](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) — 2026-05-06
+  - **재현 데이터**: outputs/analysis/dsn_phase2_mechanism_deep_dive/ (4 ckpt × 4 mechanism summary.json)
+  - **재현 스크립트**: src/analysis/dsn_phase2_mechanism_deep_dive.py (v1/v2 자동 분기, compute_gradient_flow_compat)
+  - **선행 분석**: dsn_oversmoothing_analysis.md (Phase 1 baseline) + s06_bottleneck_comparison.md (B5 mitigation reference)
+  - **선행 결정**: DECISIONS 직전 엔트리 (Phase 2 b8 mitigation null + 4 mechanism 위임)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Skip dependence pathology dominant 5/5 확정 + 4 mechanism evidence matrix + 학위 논문 Part III main mechanism finding + Filter Dominance 6번째 축 정량 정당화
+  - **paper_research_direction.md (planner Edit)**:
+    - §3.5 6번째 축 narrative 보강 (skip dependence ratio + attention sharpen paradox 결합)
+    - §V.5.4 신설 — Part III main mechanism finding (analyzer §7.2 narrative 인용)
+    - §8 Future Works — Skip mitigation candidate 4종 (post-paper backlog) 추가
+    - §9 Limitations — single-DB caveat
+  - **paper main contribution 영향**: 학회 논문 narrative 변경 X (anchor t_00 + Filter Dominance 4 축 narrative 그대로). **학위 논문 Part III chapter narrative weight 결정적 격상** (paradox + null + dominant mechanism finding 3-stage evidence).
+  - **presentation_brief 영향 (선택, 학습 종료 후 별도)** — §14.10 보강 candidate
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §3.5/§V.5.4/§8/§9 갱신
+  2. **사용자 (즉시 의사결정 3 항목)** — Per-DB 분해 / Phase 2 STEP 3-5 / Skip mitigation candidate 4종 우선순위
+  3. **Root (5/7 04:24 KST 학습 종료 후, 사용자 (2)-A 결정 시)** — STEP 3 alpha sweep + STEP 4 attention v2 재호출 + STEP 5 EXPERIMENT_HISTORY 갱신
+  4. **Analyzer (선택, post-paper)** — Per-DB 분해 (사용자 (1)-B 결정 시) / Skip mitigation candidate 검증 (사용자 (3) 결정 시)
+  5. **Planner (Phase 2 STEP 3-5 결과 후)** — narrative 정식 확정 별도 엔트리 (§3.5 6번째 축 정식 + Phase 1 plateau spread vs Phase 2 spread 비교)
+  6. **사용자 (5/16~5/22)** — 학위 논문 Part III chapter 작성 (paradox + null + dominant mechanism 3-stage evidence + analyzer §7.2 narrative 인용)
+
+- **추가 필요 분석** (사용자 결정 후):
+  - Phase 2 STEP 3-5 결과 (alpha sweep + attention v2 + L_out cosine 재진단)
+  - Per-DB 분해 (post-paper, 11 DBs × 4 ckpt) — generalizability 검증
+  - Skip mitigation candidate 검증 (post-paper, #3 Direct AC loss 권장 시도)
+  - 학위 논문 Part III chapter draft — 3-stage evidence narrative + 4 mechanism matrix 표 + skip dependence dominant figure
+
+---
+
+## 2026-05-06 (Phase 2 b8 학습 중간 보고 + Mitigation null effect 결정적 evidence — 시나리오 A 절대 confirm 강화) — Filter Dominance 6축 (training-pathology-invariant) 결정적 + paradox 강력 + Analyzer mechanism deep dive 위임
+
+> **⚠️ 학습 진행 중 (STEP 2 in progress, ep126/300, 42%)** — 본 엔트리는 **중간 보고 + analyzer 요청 큐 작성**. STEP 3-5 (학습 종료 04:24 KST 5/7 + alpha sweep + attention v2 재호출) 결과 후 narrative 정식 확정 별도 엔트리.
+
+- **결정**:
+  1. **(a) 운영 이력 (사용자 결정 + 운영 결정)**:
+     - **사용자 b8 변경 (2026-05-06 17:10 KST)**: 초기 batch_size=1 launch 시 per-epoch 7.82min, ETA 15h 부담 → train_gat_s06.py L183 "dual_stream batched forward 지원" 명시 → 사용자 승인 후 b1 학습 kill + b8 변경 + smoke test (1ep/2.5min/0.4923 val R) + 본격 launch
+     - **STEP 0 완료 (2026-05-06)**: HISTORY/CATALOG/ID_MIGRATION 3종에 qcond_nl3 baseline 0.6061 정정 entry 추가 (직전 over-smoothing 진단 §1.1 인용)
+     - **STEP 1 완료**: train_gat_s06.py 에 V-3-ext options forward 추가 (DSN p80 + s06 B5 mitigation 통합 학습 가능)
+     - **STEP 2 진행 (현재 ep126/300, 42%)**: Phase 2 b8 학습, 17:45 launch, ETA 04:24 KST 5/7
+  2. **(b) 🎯 Phase 1 vs Phase 2 b8 비교 (동일 epoch, 결정적 evidence)**:
+
+     | epoch | Phase 1 P80 best | Phase 2 b8 best | Δ (Phase 2 − Phase 1) |
+     |---|---|---|---|
+     | 20 | 0.6034 | 0.5946 | -0.0088 |
+     | 40 | 0.6078 | 0.5981 | -0.0097 |
+     | 50 | 0.6083 | 0.5993 | -0.0090 |
+     | 60 | 0.6088 | 0.6001 | -0.0087 |
+     | **91 (Phase 1 best)** | **0.6097** | ~0.6006 | -0.0091 |
+     | **108 (Phase 2 best)** | 0.6097 (saturated) | **0.6012** | **-0.0085** |
+     | 126 (현재) | 0.6097 | 0.6012 | -0.0085 |
+  3. **(c) 🚨 Mitigation 5 항목 (PN + IR α=0.2 + JK + Dual-Stream + L=2 + AC + ListNet) null effect — 결정적 evidence**:
+     - 모든 동일 epoch 에서 Phase 2 b8 가 Phase 1 P80 보다 일관 **-0.0085~-0.0091 underperform**
+     - mitigation 적용에도 raw val R@15 한계 갱신 X — Phase 1 ceiling (~0.61) 그대로
+     - **시나리오 B (R 0.85+ 회복) 사실상 불가능 확정**
+     - **시나리오 A 절대 confirm**: Filter Dominance 6번째 축 (training-pathology-invariant) **절대적 evidence**
+  4. **(d) 학습 dynamics — AC loss 정상 작동 but val ceiling 갱신 X**:
+
+     | 메트릭 | Phase 1 P80 | Phase 2 b8 |
+     |---|---|---|
+     | Best val R@15 | 0.6097 (ep91) | 0.6012 (ep108) |
+     | AC loss 추세 | N/A | 0.0683 (ep1) → 0.0130 (ep13) → ~0.005 (ep41+) — 정상 작동 |
+     | 학습 saturation | ep91 best | ep108 best (+17 epochs 늦음) |
+     | Per-epoch 시간 | 1.5 min | 2.12 min (+0.62 min) |
+
+     - **🚨 AC loss decay 0.068 → 0.005 정상**: Anti-Collapse mechanism 작동 (collapse 완화 정량 evidence)
+     - **단 val recall ceiling 갱신 X**: collapse 완화 mechanism 자체는 작동, val recall ceiling 의 root cause 는 다른 mechanism
+     - 학습 saturation +17 epochs 늦음: mitigation 일부 효과 (학습 안정성) but ceiling 미돌파 — paradox 강력 confirm
+  5. **(e) 🎯 시나리오 A 절대 confirm + 4 mechanism 후보 중 dominant 결정 필요**:
+     - 단계 4-bis paradox (attention 매우 집중적 top-5 ≈ 91%, entropy 0.51 그럼에도 over-smoothing collapse) 와 일관
+     - mitigation 5 항목 null effect → **paradox 의 root cause 가 attention 도 아니고 mitigation 으로 해결 가능한 mechanism 도 아님**
+     - **DECISIONS 단계 4-bis §(d) 의 4 mechanism 후보** 중 dominant 결정 필요:
+       - (i) **Aggregation collapse** — top-5 흡수 노드 (sibling) 가 비슷 → aggregation 결과 collapse
+       - (ii) **GATv2Conv normalization** — edge softmax 의 mechanism 자체가 collapse 유발
+       - (iii) **Skip dependency pathology** — main GAT path 학습 신호 약함 + skip 의존
+       - (iv) **Schema sibling 유사성** — raw PLM embedding 단계부터 sibling 유사 → mitigation 무효
+     - **분석 위임 — Analyzer 요청 큐 (응답 본문 prompt)**: 4 ckpt 비교 (DSN p80 / DSN p80_b5_mitigation / s06 B5 / qcond_nl3) × 4 mechanism evidence 강도 1-5 scale
+     - **산출물**: `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md`
+     - **학위 논문 Part III main mechanism finding 권장 narrative 도출**
+  6. **(f) STEP 3-5 timeline 예고 (학습 종료 04:24 KST 5/7 후)**:
+     - **STEP 3 (5/7~5/9)**: paper main stack alpha sweep subset 5 cells (α∈{0.0, 0.3, 0.5, 0.7, 1.0}) — Phase 2 b8 ckpt + Final F1 plateau spread Phase 1 0.0019 vs Phase 2 비교 (시나리오 A confirm 강화)
+     - **STEP 4 (5/8~5/10)**: attention v2 재호출 (full 50 queries, Phase 1 sample size 동일) — Phase 1 vs Phase 2 attention pattern 비교 (mitigation 의 attention 영향)
+     - **STEP 5 (5/10~5/15)**: analyzer mechanism deep dive (본 엔트리 §(e) 위임) + 학위 논문 Part III chapter base
+  7. **(g) Paper narrative 영향 (정식 확정 후)**:
+     - **§3.5 6번째 evidence 추가 candidate** (학습 종료 + alpha sweep 후 정식 확정): "mitigation 5 항목 적용에도 over-smoothing 회복 X + final F1 plateau spread 0.0019 유지 → training-pathology-invariant 절대적 evidence"
+     - **§V Part III mechanism deep dive narrative candidate**: 4 mechanism 후보 dominant 결정 (analyzer 결과 후)
+     - **§8 Future Works**: Phase 2 ✅ 진행 중 표기 + mechanism deep dive analyzer 위임
+     - **paper main contribution 변경 X**: paper main anchor t_00 + Filter Dominance 4 축 narrative (학회) 그대로
+     - **학위 논문 Part III chapter narrative weight ↑**: paradox + null effect + 4 mechanism 후보 = main mechanism finding evidence
+  8. **(h) 학회 논문 narrative 영향 X (재확인)**: paper main anchor t_00 (F1=0.8657) + Filter Dominance 4 축 narrative 그대로. 본 paradox + null effect 발견은 학위 논문 Part III chapter 만 적용.
+
+- **근거**:
+  - **Phase 2 학습 log**: `/tmp/directed_sn_train_logs/train_dsn_p80_b5_mitigation_b8.log` (학습 trajectory ep1~ep126)
+  - **선행 결정**: DECISIONS 직전 엔트리 (단계 4-bis paradox 발견 + (1)-A Phase 2 confirm + over-smoothing 진단)
+  - **EXPERIMENT_HISTORY entries**:
+    - "Baseline Correction (2026-05-06)" — qcond_nl3 baseline 0.6061 정정
+    - "DSN Phase 1 Alpha Sweep" — Phase 1 P80 best 0.6097 ep91
+    - "V-3-ext 단계 2-3" — Phase 1 학습 + alpha sweep 결과
+  - **선행 분석**:
+    - dsn_oversmoothing_analysis.md §1.1 (qcond_nl3 0.6061 실측) + §5 (Mitigation candidates s06 B5)
+    - s06_bottleneck_comparison.md §3 (B5 evidence pool — PN/IR/AC/Dual-Stream/L=2)
+    - extract_layerwise_attention_v2.py (단계 4-bis 산출 도구, Phase 2 후 재호출)
+    - gat_bottleneck_analysis_v2.py (over-smoothing trajectory + gradient flow 함수)
+  - **ckpt 위치**:
+    - Phase 1 DSN p80: `outputs/checkpoints/best_gat_directed_supernode_p80.pt`
+    - Phase 2 DSN p80_b5_mitigation (학습 중): `outputs/checkpoints/best_gat_directed_supernode_p80_b5_mitigation.pt`
+    - s06 B5 reference: `/SSL_NAS/peoples/khj/thesis/checkpoints/s06_gat_bottleneck_fix/best_gat_s06_a01_06_b5.pt`
+    - qcond_nl3 baseline: `outputs/checkpoints/best_gat_qcond_nl3.pt`
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Phase 2 b8 중간 보고 + null effect + 시나리오 A 절대 confirm + analyzer mechanism deep dive 위임
+  - **paper_research_direction.md (planner Edit, candidate)** — §3.5 6번째 evidence + §V Part III mechanism deep dive + §8 Phase 2 진행 중 (학습 종료 + alpha sweep 후 정식 확정 별도 엔트리)
+  - **presentation_brief (planner Edit, candidate)** — Phase 2 학습 중간 결과 + mitigation null effect 추가
+  - **Analyzer 요청 큐** (응답 본문) — 4 ckpt × 4 mechanism deep dive prompt
+  - **paper main contribution 영향 X (학회)**, **학위 논문 Part III chapter narrative weight ↑**
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §3.5/§V/§8 candidate 갱신 + presentation_brief 갱신 + analyzer 요청 prompt (응답 본문)
+  2. **사용자 (즉시)** — Analyzer 세션 (`cd /home/hyeonjin/thesis_refactored/src/analysis && claude`) 에 본 응답의 analyzer prompt 직접 붙여넣기 (4 mechanism deep dive)
+  3. **Root (학습 종료 04:24 KST 5/7 후, STEP 3-5)**:
+     - STEP 3: paper main stack alpha sweep subset 5 cells (~₩3.8K, ~3h)
+     - STEP 4: attention v2 재호출 (full 50 queries)
+     - STEP 5: HISTORY 갱신 + planner 핸드오프
+  4. **Analyzer (사용자 핸드오프 후)** — `dsn_phase2_mitigation_null_mechanism.md` 작성 (4 mechanism dominant 판정)
+  5. **Planner (analyzer 결과 + STEP 3-5 결과 수령 후)** — narrative 정식 확정 별도 엔트리 (§3.5 6번째 evidence + §V Part III chapter base)
+  6. **사용자 (5/16~5/22)** — 학위 논문 Part III chapter 작성 (planner narrative + analyzer mechanism finding 인용)
+
+- **추가 필요 분석** (analyzer 위임):
+  - 4 ckpt × 4 mechanism evidence 강도 1-5 scale 통합 표
+  - top-5 attention 노드의 raw embedding cosine sim + post-GAT cosine sim (mechanism (i) Aggregation collapse 검증)
+  - edge softmax weight 분포 + entropy per layer (mechanism (ii) GATv2Conv normalization 검증)
+  - gradient norm main vs skip path (mechanism (iii) Skip dependency pathology 검증)
+  - raw PLM embedding intra-table cosine sim (mechanism (iv) Schema sibling 유사성 검증)
+  - 학위 논문 Part III main mechanism finding 권장 narrative 도출
+
+---
+
+## 2026-05-06 (V-3-ext 단계 4-bis 완료 — `extract_layerwise_attention_v2` 구현 + 🚨 attention dispersion 가설 부정 paradox 발견) — Phase 2 학습 (5/10~5/12, root) 진행 권장 + analyzer 후속 (5/15~5/16) full 50 queries 재측정
+
+- **결정**:
+  1. **(a) Selector 모듈 단계 4-bis 산출물 4 항목** (2026-05-06 동일자 가속 완료, 직전 (2)-A confirm timeline 5/7~5/9 → 5/6 가속):
+     - **(i) 신규 함수**: `src/analysis/extract_layerwise_attention_v2.py` — `AttentionCapture` (monkey-patch wrap GATv2Conv.forward) + `extract_layerwise_attention_v2()` + `aggregate_attention_metrics()` + heatmap helpers
+     - **(ii) Smoke test 6 케이스 통과**: `src/modules/selectors/tests/test_attention_extract_v2.py` — capture/restore / directed_from_sn no-reverse / value sanity / aggregate / Phase 1 ckpt 호환 (4 ckpt × forward) / qcond_nl3 (no SuperNode) 검증
+     - **(iii) `dsn_oversmoothing_analysis.py` Step 3 v1 → v2 교체 완료** + JSON dump + per-ckpt heatmap + cross-model comparison
+     - **(iv) 출력 파일 (max_queries=2 sanity 검증)**:
+       - `outputs/analysis/dsn_attention/<ckpt>/attention_metrics.json` (per-layer × per-edge-type entropy + top-5 concentration)
+       - `outputs/analysis/dsn_attention/<ckpt>/attention_entropy_layerwise.png` (heatmap)
+       - `outputs/analysis/dsn_attention/<ckpt>/attention_topk5_concentration.png` (heatmap)
+       - `outputs/analysis/dsn_attention/comparison_4ckpt.png` (4 ckpt cross-model)
+  2. **(b) v2 의 v1 대비 우월점**:
+     - directed_from_sn 의 self-loop 자동 처리
+     - supernode threshold filter 후의 edge 만 capture (학습 시점과 동일 graph topology)
+     - `__exit__` 시 instance attr 깔끔히 제거 (re-entrant safe)
+     - HeteroConv 자체는 정상 forward → V-3-ext 의 `_compute_supernode_mask` / `_inject_sn_self_loop` / threshold edge filter 모두 그대로 적용
+  3. **(c) 🚨 초기 sanity 결과 (n=2 query, 2026-05-06)**:
+
+     | ckpt | L1~L3 entropy | Top-5 concentration | 해석 |
+     |---|---|---|---|
+     | DSN p80 | ~0.51~0.52 | **~0.91** | directed_from_sn + threshold 의 attention 매우 집중적 (top-5 ≈ 91% 흡수) |
+     | DSN topk20 | ~0.51~0.52 | ~0.91 | 동일 패턴 |
+     | DSN abstau07 | ~0.51~0.52 | ~0.91 | 동일 패턴 |
+     | qcond_nl3 baseline | **~0.83** | ~0.85 | 더 균일한 분포 (5 edge types only, no SuperNode) |
+  4. **(d) 🚀 핵심 발견 — Attention dispersion 가설 부정 (paradox)**:
+     - **H 가설 (dispersion)**: over-smoothing 의 root cause = attention 균일 분포 (모든 노드에 동일 가중치 → 정보 평균화 → collapse)
+     - **🚨 본 분석 결과 부정**: DSN 3 ckpt 의 attention 이 **매우 집중적** (top-5 ≈ 91%, entropy 0.51) **그럼에도 over-smoothing collapse 발생** (직전 4-단계 진단 L3_GAT cosine sim 0.96~0.98)
+     - **함의**: over-smoothing 의 root cause 가 **attention pattern 이 아닌 다른 factor** — 학위 논문 Part III mechanism deep dive evidence
+     - **Mechanism 후보 (학위 논문 Part III chapter 분석 후보)**:
+       - (i) **Aggregation 자체의 collapse 효과**: top-5 가 91% 흡수해도 그 5 노드 자체가 비슷하면 (이웃이 비슷한 schema 노드) collapse 발생
+       - (ii) **Message passing 의 normalization**: GATv2Conv 내부 normalization (예: edge softmax) 의 mechanism 이 collapse 유발
+       - (iii) **Skip residual path 의존**: 직전 over-smoothing 진단 §3 의 skip dependency pathology 와 일관 — main GAT path 가 attention 집중에도 학습 신호 약함
+       - (iv) **Schema 노드의 sibling 유사성**: 같은 table 의 column 들이 raw embedding 단계부터 비슷 → attention 집중도 결과 비슷
+     - **paradox 의 paper §V 학위 논문 Part III narrative weight ↑** — advisor 제안 사항의 새로운 mechanism finding
+  5. **(e) Phase 2 학습 진행 권장 (5/10~5/12, root)**:
+     - 단계 4-bis 가 5/6 가속 완료 → 직전 통합 timeline 의 selector 작업 완료, **Phase 2 root 핸드오프 즉시 진행 가능**
+     - DSN p80 + s06 B5 mitigation (PN + IR α=0.2 + AC + Dual-Stream + L=2) 통합 학습
+     - 신규 ckpt: `best_gat_directed_supernode_p80_b5_mitigation.pt`
+     - **본 도구 (`extract_layerwise_attention_v2`) 신규 ckpt 에 재호출** — mitigation 변형의 attention 정량 (PN / IR / AC / Dual-Stream / L=2 의 attention 영향)
+     - **5 mitigation 의 attention 영향 가설**:
+       - PN (PairNorm): attention pattern 변경 X (단순 norm), 단 collapse 약화
+       - IR (Initial Residual): attention 변동 X, gradient 회복
+       - AC (Anti-Collapse weight): aggregation 자체 영향, attention pattern 변경 가능성
+       - Dual-Stream: schema/query 분리 → attention 분포 변화 유의 (별도 stream 별 분석 필요)
+       - L=2: layer 단축, attention 누적 횟수 감소
+  6. **(f) Analyzer 후속 (5/15~5/16) — full 50 queries 재측정**:
+     - 현재 sanity n=2 → full 50 queries (Phase 1 over-smoothing 진단과 동일 sample size) 재측정
+     - **시나리오 분기 evidence**:
+       - **시나리오 A confirm 강화**: Phase 2 mitigation 적용에도 attention pattern 동일 (집중적 top-5 ≈ 91%) + final F1 plateau 유지 → over-smoothing root cause 가 attention 이 아닌 mechanism (학위 논문 Part III main finding)
+       - **시나리오 B 진입**: Phase 2 mitigation 으로 attention pattern 변화 (entropy ↑ 또는 top-5 conc ↓) + final F1 plateau 갱신 → mitigation mechanism evidence + 학위 논문 main contribution 5 항목 격상
+       - **paradox 정량**: Phase 1 vs Phase 2 attention pattern 차이 + over-smoothing 변화 + final F1 spread 3 차원 cross-reference
+  7. **(g) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로
+     - 본 paradox 발견은 학위 논문 Part III chapter 만 적용
+     - 학회 §V.5.3 Future Work 1 줄은 사용자 직접 처리
+
+- **근거**:
+  - **Selector 모듈 단계 4-bis 산출**: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 4-bis](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) (구현 + 6 smoke 통과 + Phase 1 4 ckpt 호환)
+  - **선행 결정**: DECISIONS 직전 엔트리 (사용자 (2)-A confirm — Attention 호환성 selector 위임)
+  - **선행 진단**: dsn_oversmoothing_analysis.md §7 Caveat (v1 attention extract 호환성 부재) → 본 단계 4-bis 가 그 한계 해소
+  - **Cross-reference**: 단계 1 (selector class, 5/5) → 단계 2/3 (학습/측정, 5/5~06) → 단계 4 (over-smoothing 진단, 5/6) → 단계 4-bis (attention v2, 5/6) → Phase 2 (mitigation 통합, 5/10~15)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 단계 4-bis 완료 + sanity 결과 + 🚨 attention dispersion 가설 부정 paradox + Phase 2 진행 권장
+  - **Phase 2 root 핸드오프** — 직전 (1)-A confirm 엔트리의 핸드오프 prompt 그대로 적용 가능 (단계 4-bis 완료로 대기 해소)
+  - **Analyzer 후속 prep** — Phase 2 학습 완료 (5/12) 후 full 50 queries 재측정 + 시나리오 분기 evidence
+  - **paper_research_direction.md 영향 (planner Edit, Phase 2 측정 결과 후)**:
+    - §3.5 6축 narrative 보강 가능성 (paradox 발견 → over-smoothing root cause 분리 evidence)
+    - §V Part III mechanism deep dive narrative 강화 (attention dispersion 가설 부정 + 4 mechanism 후보)
+  - **학회 논문 narrative 영향 X**
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + Phase 2 진행 권장 명문화
+  2. **사용자 (즉시)** — Phase 2 root 세션 핸드오프 prompt (직전 (1)-A confirm 엔트리 응답 본문) 그대로 사용 가능, 5/10 부터 진행
+  3. **Root (5/10~5/12)** — DSN p80 + s06 B5 mitigation 통합 학습 + 신규 ckpt + (병행) HISTORY qcond_nl3 baseline 정정
+  4. **Root (5/13~5/15)** — paper main stack alpha sweep subset (3-5 cells, ~₩2-4K)
+  5. **Analyzer (5/15~5/16)** — `extract_layerwise_attention_v2` 신규 ckpt 호출 (full 50 queries) + over-smoothing 재진단 + Phase 1 vs Phase 2 비교 → 시나리오 A/B 분기 evidence
+  6. **Planner (5/16+)** — 시나리오 분기 처리 + paper §3.5 / §V.5 narrative 갱신 + 학위 논문 Part III chapter 작성 base
+  7. **사용자 (5/16~5/22)** — 학위 논문 Part III chapter 작성
+
+- **추가 필요 분석** (Phase 2 학습 + 측정 결과 후):
+  - 신규 ckpt L3_GAT cosine sim (Phase 1 0.96~0.98 → Phase 2 0.50~0.70 추정) + attention pattern (entropy/top-5 conc) Phase 1 vs Phase 2 비교
+  - **🚀 paradox 검증 (학위 논문 Part III main mechanism)**:
+    - Phase 2 mitigation 으로 attention pattern 변화 X 시 → attention dispersion 부정 confirm + over-smoothing 의 다른 mechanism evidence (4 후보 중 어느 것)
+    - Phase 2 mitigation 으로 attention pattern 변화 ✅ + over-smoothing 회복 → 두 mechanism 의 dual evidence
+  - 4 mechanism 후보 분리 분석:
+    - (i) Aggregation collapse (top-5 노드의 sibling 유사성 정량)
+    - (ii) GATv2Conv normalization mechanism (edge softmax 분석)
+    - (iii) Skip dependency pathology (직전 §3 cross-reference)
+    - (iv) Schema 노드 sibling 유사성 (raw PLM embedding 단계 cosine sim)
+
+---
+
+## 2026-05-06 (사용자 결정 — (1)-A Phase 2 paper full version + (2)-A Attention 호환성 selector 위임 confirm) — 3 핸드오프 prompt 작성 (selector 모듈 + root 학습/측정 + root HISTORY 정정)
+
+- **결정** (사용자 직전 input):
+  1. **(A) (1)-A Phase 2 paper full version 후속 채택**:
+     - DSN p80 + s06 B5 mitigation 통합 학습 (PN + IR α=0.2 + AC + Dual-Stream + L=2) — 학위 본 심사 5/22~6/19 안 진행
+     - 시나리오 B (F1 plateau 갱신 0.870+) 진입 가능성 검증
+     - 학위 논문 Part III chapter 의 main mechanism deep dive evidence
+     - 비용: ~₩0~5K (학습 LLM-free + alpha sweep subset), ~7-10h (학습) + ~2-3h (측정)
+  2. **(B) (2)-A Attention 호환성 보강 — selector 모듈 위임 채택**:
+     - `extract_layerwise_attention_v2` (forward hook 기반, V-3-ext `directed_from_sn` 호환) 구현
+     - 학위 논문 Part III mechanism deep dive evidence (DSN attention 의 directed edge 영향 정량)
+     - 비용: ₩0 (LLM-free, selector 모듈 + analyzer)
+  3. **(C) 합산 비용/시간**: ₩0~5K + ~10-13h (selector 구현 ~1 day + root 학습 ~7-10h + alpha sweep ~2-3h + analyzer 분석 ~2-3h)
+  4. **(D) 통합 timeline**:
+     - **5/7~5/9**: selector 모듈 — `extract_layerwise_attention_v2` 구현 (Phase 2 학습 전 attention extract 도구 준비)
+     - **5/10~5/12**: root 세션 — DSN p80 + s06 B5 mitigation 통합 GAT 학습 (PN + IR α=0.2 + AC + Dual-Stream + L=2) 신규 ckpt
+     - **5/13~5/15**: root 세션 — paper main stack (Enriched + 신규 ckpt + α=0.5 + MSTPCSTUnion + XiYan GLM + LLM SQL Gen GLM) alpha sweep subset (α∈{0.0, 0.5, 1.0} 최소 + α∈{0.3, 0.7} 권장 = 3-5 cells, ~₩2-4K)
+     - **5/15~5/16**: analyzer 세션 — 신규 ckpt over-smoothing 재진단 + attention entropy 정량 + Phase 1 vs Phase 2 비교
+     - **5/16~5/22**: planner + 사용자 — 시나리오 A/B/C 분기 처리 + paper §3.5 narrative 갱신 + 학위 논문 Part III chapter 작성
+  5. **(E) Mitigation 변형 후보 — DSN p80 base + s06 B5 통합 (단일 학습 권장)**:
+     - **PairNorm (PN)**: L1 단계 collapse 차단 (s06 B2 evidence: L1 0.85 → 0.47)
+     - **Initial Residual α=0.2 (IR)**: APPNP-style, main GAT path gradient 회복 (s06 B2 IR=0.2 best)
+     - **Anti-Collapse weight (AC)**: anti_collapse_weight 0.1 (s06 B3 evidence: L_out 0.86 → 0.65)
+     - **Dual-Stream**: Schema/Query 분리 GAT (s06 B5 evidence: L_out 0.36 도달)
+     - **L=2 (2-layer 단축)**: L3_GAT 도 collapse (0.96+) → L=2 + IR 조합으로 충분
+     - **단일 학습 권장 사유**: 5 mitigation 모두 단일 ckpt 에 적용 — paper full version 진행 시 Phase 1 baseline (DSN p80 단독) 와 직접 비교 가능
+  6. **(F) 시나리오 분기 분기점**:
+     - **시나리오 A confirm 강화**: Phase 2 mitigation 적용에도 plateau spread 0.0019 유지 → Filter Dominance 6축 narrative 절대적 evidence (over-smoothing 회복까지 Filter 가 absorb)
+     - **시나리오 B 진입**: Phase 2 mitigation 으로 raw R 0.69 → 0.85+ 회복 + final F1 plateau 갱신 (>0.870) → 학위 논문 main contribution 5 항목 + paper §V 정정
+     - **시나리오 C (drop)**: 거의 불가능 — Phase 2 mitigation 은 over-smoothing 완화 (B5 L_out 0.36 evidence) 만 목적, 학습 saturation drop 가능성 X
+  7. **(G) 추가 root 핸드오프 — EXPERIMENT_HISTORY.md qcond_nl3 baseline 정정**:
+     - HISTORY 추정 ~0.55 → 실측 0.6061 (epoch 59) 정정
+     - planner 권한 외 — 별도 root 세션 핸드오프 prompt 작성 (응답 본문)
+  8. **(H) 학회 논문 narrative 영향 X (재확인)**:
+     - paper main anchor t_00 (F1=0.8657) 변경 X
+     - Filter Dominance 4 축 narrative (학회) 그대로 — 6 축 narrative 는 학위 논문 Part III chapter 만 적용
+     - 학회 논문 §V.5.3 Future Work 1 줄 (DSN Phase 2) 명시는 사용자 직접 처리 (직전 Q3)
+
+- **근거**:
+  - 사용자 직전 input (2026-05-06): "(1)(2) 모두 (A)로 진행하자"
+  - 선행 결정: DECISIONS 직전 엔트리 (DSN over-smoothing 진단 완료, Phase 2 candidate + Attention 위임 후보 권장 옵션)
+  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md §3](../notebooks/analysis_results/s06_bottleneck_comparison.md) (B2~B5 cosine sim 비교)
+  - **Cross-reference**: V-3-ext 단계 1 (selector class, 2026-05-05) + 단계 2/3 (학습/측정, 2026-05-05~06) + 단계 4 (over-smoothing 진단, 2026-05-06) + Phase 2 (mitigation 통합, 2026-05-10~15)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 사용자 결정 반영 + 통합 timeline + mitigation 변형 + 시나리오 분기 + 3 핸드오프 명문화
+  - **Selector 모듈 세션 핸드오프 prompt** (응답 본문) — `extract_layerwise_attention_v2` 구현
+  - **Root 세션 핸드오프 prompt** (응답 본문) — Phase 2 학습 + 측정
+  - **Root 세션 추가 핸드오프 prompt** (응답 본문) — EXPERIMENT_HISTORY.md qcond_nl3 정정
+  - **paper_research_direction.md 영향 (planner Edit, 향후 측정 결과 후)**: §3.5 6축 narrative 강화 (시나리오 A 확정 + Phase 2 mitigation 결과) + §8 H-DTK Phase 2 ✅ 완료 표기 (5/16+)
+  - **학회 논문 narrative 영향 X** — paper main anchor + 4 축 narrative 그대로
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + 3 핸드오프 prompt (응답 본문)
+  2. **사용자 (즉시)** — 3 prompt 사용자가 직접 해당 세션에 붙여넣기:
+     - Selector 모듈 세션 (cd `/home/hyeonjin/thesis_refactored/src/modules/selectors`) — `extract_layerwise_attention_v2`
+     - Root 세션 (cd `/home/hyeonjin/thesis_refactored`) — Phase 2 학습 + 측정
+     - Root 세션 — EXPERIMENT_HISTORY.md 정정
+  3. **Selector 모듈 (5/7~5/9)** — `extract_layerwise_attention_v2` 구현 + smoke test
+  4. **Root (5/10~5/12)** — DSN p80 + s06 B5 mitigation 통합 GAT 학습
+  5. **Root (5/13~5/15)** — paper main stack + 신규 ckpt alpha sweep subset
+  6. **Root (병행)** — EXPERIMENT_HISTORY.md qcond_nl3 baseline 0.6061 정정
+  7. **Analyzer (5/15~5/16)** — 신규 ckpt over-smoothing 재진단 + attention entropy
+  8. **Planner (5/16+)** — 시나리오 A/B/C 분기 처리 + paper narrative 갱신
+  9. **사용자 (5/16~5/22)** — 학위 논문 Part III chapter 작성 (planner narrative 인용)
+
+- **추가 필요 분석** (Phase 2 측정 결과 후):
+  - 신규 ckpt L3_GAT cosine sim (s06 B5 evidence 기준 0.50~0.70 영역 추정) — over-smoothing mitigation 정량
+  - Raw R 회복 정량 (0.69 → 0.85+ 영역) — 시나리오 B 진입 trigger
+  - DSN attention entropy + directed edge 영향 (forward hook 기반) — 학위 논문 mechanism evidence
+  - Final With-Filter F1 spread (Phase 1 0.0019 vs Phase 2) — Filter Dominance 6축 narrative 영향
+
+---
+
+## 2026-05-06 (DSN over-smoothing 진단 완료 — Phase 1 시나리오 A 확정 직후 V-3-ext 단계 4) — 🚨 H1 강력 지지 + qcond_nl3 baseline 정정 (0.55 추정 → 0.6061 실측) + Filter Dominance 5축 정량 evidence 강화 + Phase 2 candidate (post-paper)
+
+- **결정**:
+  1. **(a) Analyzer 산출 수령** — [dsn_oversmoothing_analysis.md](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) (V-3-ext 단계 4 진단, 2026-05-06, BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt):
+     - §1 Training Trajectory (best R@15 + saturation)
+     - §2 Layer-wise Over-smoothing (intra-table cosine sim)
+     - §3 Step 3 Gradient flow (skip dependency pathology)
+     - §4 Filter Dominance 와의 정합성
+     - §5 Mitigation candidates (s06 B5 evidence)
+     - §6 Phase 2 candidate (post-paper)
+     - §7 Caveat (sample size + attention entropy 미측정)
+  2. **(b) 🚨 H1 (over-smoothing) 강력 지지 — 4 ckpt 모두 L3_GAT cosine sim ≥ 0.96**:
+
+     | ID | L0_PLM | L1_GAT | L3_GAT | L_out | Best R@15 |
+     |---|---|---|---|---|---|
+     | DSN p80 | 0.5090 | 0.9079 | 0.9591 | 0.4735 | **0.6097** |
+     | DSN topk20 | 0.5090 | 0.9108 | 0.9662 | 0.4840 | 0.5839 |
+     | DSN abstau07 | 0.5090 | 0.9426 | **0.9775** | 0.5355 | 0.5805 |
+     | **qcond_nl3 baseline** | 0.5537 | **0.9887** | **0.9971 ⚠️** | 0.6299 | **0.6061** |
+
+     - **L1_GAT 부터 sharp jump**: L0 0.51 → L1 0.91~0.99 (단 1 layer 만에 collapse 의 80% 발생)
+     - **qcond_nl3 의 L3 = 0.9971 사실상 완전 collapse** (cosine ≈ 1.0 → 같은 table column 들 score ranking 무의미)
+     - **DSN 3 ckpt 의 L3 = 0.9591~0.9775**: baseline 보다 **0.02~0.04 mitigated** (`directed_from_sn` edge 의 부분적 효과). 단 절대값은 critical 0.85 line 한참 위
+     - L_out 부분 회복: DSN p80/topk20 의 0.47~0.48 (PLM 원본 0.51 와 비슷) — out_lin + skip residual 효과 약간
+  3. **(c) 🚨 qcond_nl3 baseline 정정 — HISTORY 추정 ~0.55 부정확**:
+     - **실측 best R@15 = 0.6061** (epoch 59) — DSN p80 (0.6097) 와 사실상 동등 (Δ=+0.0036)
+     - 이전 EXPERIMENT_HISTORY 의 ~0.55 추정치는 부정확 — DSN 의 graph topology 변경이 baseline 을 능가하지 못함
+     - **함의**: paper §V.5 narrative 의 "DSN 이 baseline 대비 강함" claim 약화 → "DSN ≈ baseline 동등 + 둘 다 over-smoothing 으로 raw R 한계 회복 못 함" narrative 정정
+  4. **(d) 🎯 시나리오 A 확정 narrative 강력 보강** — Filter Dominance 5축 정량 evidence (DECISIONS 직전 엔트리 V-3-ext 단계 3 plateau 확인 + 본 over-smoothing 진단):
+     - **GAT 학습 mechanism 한계까지 Filter 가 absorb**: DSN 3 변형 모두 학습 saturation (val recall@15 0.58~0.61) + over-smoothing collapse — 단 final pipeline F1 spread 0.0019 (plateau 안)
+     - **Filter Dominance 5번째 축 (topology-invariant) 정량 evidence**:
+       - Selector graph topology 변경 (bidirectional → directed top-K) ✅
+       - + Selector training mechanism imperfection (over-smoothing) ✅ — Filter 가 GAT 학습의 internal mechanism 한계까지 absorb
+       - → paper §3.5 main insight 가 단순 "Selector design choice" 가 아닌 **"Selector internal training pathology 까지 absorb"** 로 한 단계 격상
+     - **paper §3.5 narrative 보강 가능 한 줄**: "GAT 학습이 over-smoothing 으로 raw R 한계 회복 못함에도 With-Filter F1 plateau spread 0.0019 → Filter 가 selector training mechanism imperfection 까지 absorb" (analyzer §4.2 인용)
+  5. **(e) Phase 2 candidate (post-paper) — DSN p80 + s06 B5 mitigation evidence 적용**:
+     - **Mitigation 변형 후보** (analyzer §5 권장):
+       - **PairNorm + Initial Residual α=0.2** (s06 B2~B5 evidence): L1 단계 collapse 차단 (B2: L1 0.85→0.47), L_out 분산 (B4: L_out 0.86→0.56)
+       - **Dual-Stream Architecture** (s06 B5): Schema/Query 분리, 2-layer 로 충분 + L_out 0.36 도달
+       - **2-layer GAT 로 단축 + Initial Residual** 조합: L2 도 이미 collapse (0.90~0.99) → L=2 + IR 시도 가치
+     - **권장 통합**: DSN p80 + (PN + IR α=0.2 + AC + Dual-Stream + L=2)
+     - **비용/시간**: ~₩0 (LLM-free 학습), ~7-10h (단일 학습 + smoke verification)
+     - **시나리오 B 진입 candidate**: 만약 over-smoothing mitigation 으로 raw R 0.69 → 0.85+ 회복하면 Filter 가 P 정정만 담당 → F1 plateau 갱신 가능 (0.870+)
+     - **단 paper full version 후속 vs post-paper backlog 결정 사용자 의존** (학회 마감 D-2, 학위 본 심사 5/22~6/19)
+  6. **(f) Attention entropy 미측정 한계 + selector 모듈 보강 위임 후보**:
+     - **현재 미측정**: v1 `extract_layerwise_attention` 가 V-3-ext `directed_from_sn` 호환성 부재 → attention entropy / DSN aggregation pattern 정량 미수행
+     - **선택 위임**: selector 모듈 세션에 forward hook 기반 보강 (`extract_layerwise_attention_v2`) 위임 가능 — DSN attention 의 directed edge 영향 정량 → 학위 논문 Part III mechanism deep dive evidence
+     - **사용자 결정 필요**: 위임 진행 vs post-paper backlog
+  7. **(g) Step 3 Gradient flow 발견 — Skip dependency pathology** (analyzer §3):
+     - GAT layer 의 gradient 가 skip residual path 에 dominantly 의존 (skip path 차단 시 gradient 거의 사라짐)
+     - 함의: out_lin + skip_dict 가 over-smoothing 의 partial 회복을 담당하지만, GAT layer 자체의 학습 신호는 약함 → IR (Initial Residual) 추가가 main GAT path 의 gradient 회복에 효과적 (s06 B2 evidence 와 일관)
+  8. **(h) Filter Dominance 와의 정합성 (analyzer §4.2)**:
+     - DSN 3 변형 모두 학습 saturation (val recall@15 0.58~0.61) + over-smoothing collapse 에도 **paper main pipeline F1 plateau spread 0.0019** (V-3-ext 단계 3 결과)
+     - = paper §3.5 main insight ("Filter Dominance — single-stage main") 의 **강력한 추가 evidence**
+     - 단순 Selector design choice (graph topology) 변동을 absorb 하는 것을 넘어 **GAT 학습의 internal pathology (over-smoothing) 까지 흡수** — Filter "first-class stage" 학술적 정당성 한 단계 더 격상
+
+- **근거**:
+  - **Analyzer 산출**: [notebooks/analysis_results/dsn_oversmoothing_analysis.md §0~§7](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) — 2026-05-06 작성 (BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt)
+  - **재현 데이터**: outputs/analysis/dsn_oversmoothing/ (4 ckpt × plots + batch_summary.json)
+  - **재현 스크립트**: src/analysis/dsn_oversmoothing_analysis.py (hook-based extract_layerwise_dsn 포함)
+  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md](../notebooks/analysis_results/s06_bottleneck_comparison.md) §3 (s06 B2~B5 cosine sim 비교)
+  - **선행 결정**: DECISIONS 직전 엔트리 (DSN Phase 1 시나리오 A 확정, F1 plateau 0.0019 spread)
+  - **Cross-reference**: V-3-ext 단계 1 (selector class + GAT v1/v2 dispatch + smoke 7 통과, 2026-05-05) → 단계 2/3 (학습 + 측정, 2026-05-05~06) → 단계 4 (본 over-smoothing 진단, 2026-05-06)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — H1 강력 지지 + qcond_nl3 정정 + 시나리오 A 5축 evidence 강화 + Phase 2 candidate
+  - **paper_research_direction.md (planner Edit)**:
+    - §3.5 Filter Dominance 5번째 축 (topology-invariant) 정량 evidence 보강 — "GAT 학습 mechanism imperfection 까지 absorb"
+    - §V.5 학위 논문 Part III narrative candidate (analyzer §4.2 인용)
+    - §8 Future Works H-DTK 항목 보강 — V-3-ext Phase 2 candidate (s06 B5 mitigation 적용)
+    - §9 Limitations — qcond_nl3 baseline 정정 + Attention entropy 미측정 한계
+  - **EXPERIMENT_HISTORY.md 정정 권장** — qcond_nl3 baseline best R@15 = 0.6061 (이전 ~0.55 추정 부정확) — root 세션 책임 (planner 권한 외)
+  - **paper main contribution 영향 minor** — Filter Dominance 5축 narrative 강화 (시나리오 A 확정 + 정량 evidence ↑), main result anchor (t_00 F1=0.8657) 변경 X
+  - **학위 논문 Part III chapter 보강** — over-smoothing mechanism 분석 + Phase 2 candidate (post-paper)
+
+- **🚨 사용자 결정 필요 2 항목**:
+  1. **Phase 2 (s06 B5 mitigation 적용) 우선순위**:
+     - (A) **paper full version 후속** (학위 본 심사 5/22~6/19 안 진행) — 학위 논문 Part III 의 main next step
+     - (B) **post-paper backlog** (학위 본 심사 후) — 학위 논문 Part III 는 Phase 1 시나리오 A 확정만 + Phase 2 는 향후 연구
+     - **권장**: (A) — DSN p80 + (PN + IR α=0.2 + AC + Dual-Stream + L=2) 단일 학습 (~7-10h, ₩0) 으로 시나리오 B 진입 가능성 검증, 학위 논문 chapter 의 main mechanism deep dive evidence
+  2. **Attention 호환성 보강 — selector 모듈 세션 위임 여부**:
+     - (A) ✅ 위임 — `extract_layerwise_attention_v2` (forward hook 기반, V-3-ext directed_from_sn 호환) 구현, 학위 논문 mechanism deep dive evidence
+     - (B) 🟡 보류 — post-paper backlog
+     - **권장**: (A) — paper §V.5 Part III mechanism evidence 보강 + 학위 본 심사 advisor 만족도 ↑
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §3.5 / §V.5 / §8 / §9 갱신
+  2. **사용자 (즉시 의사결정 2 항목)** — Phase 2 우선순위 + Attention 위임 (응답 본문 권장 옵션)
+  3. **Root (선택, 사용자 (1)-(A) 결정 시)** — EXPERIMENT_HISTORY.md 정정 (qcond_nl3 baseline 0.6061 실측)
+  4. **Selector 모듈 (선택, 사용자 (2)-(A) 결정 시)** — `extract_layerwise_attention_v2` 구현 + V-3-ext 호환 보강
+  5. **Root (선택, 사용자 (1)-(A) 결정 시 Phase 2)** — DSN p80 + PN + IR α=0.2 + AC + Dual-Stream + L=2 학습 + 측정 (post-paper)
+  6. **Planner (Phase 2 결과 후)** — 시나리오 B 진입 여부 narrative 갱신 (F1 plateau 갱신 시 paper main contribution 5 항목 격상)
+
+- **추가 필요 분석** (Phase 2 결정 후):
+  - DSN + s06 B5 mitigation (PN + IR + AC + Dual-Stream + L=2) 학습 + 측정 → over-smoothing collapse mitigation 정량 (L3_GAT 0.96~0.99 → 0.50~0.70 영역 추정)
+  - Raw R 회복 정량 (0.69 한계 → 0.85+ 영역) — 시나리오 B 진입 trigger
+  - Attention entropy + DSN aggregation pattern (forward hook 기반) — 학위 논문 mechanism evidence
+  - Skip dependency pathology 의 IR (Initial Residual) mitigation 정량 — gradient flow 회복
+
+---
+
+## 2026-05-05 (Directed Top-K SuperNode 단계 1 구현 완료) — Selector 세션 산출물 인용 + 변경 파일 8 + root 단계 2 학습 핸드오프 + paper §2.2 / §3.5 / §V.5.3 narrative prep
+
+- **결정**:
+  1. **(a) Selector 세션 단계 1 구현 완료 (2026-05-05, 5/9~5/11 timeline 가속)**:
+     - 직전 DECISIONS 2026-05-05 (analyzer raw_score 결과 인용) 의 단계 1 (5/9~5/11) 이 selector 세션에서 동일자 (2026-05-05) 가속 완료
+     - 출처: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) — "Directed Top-K SuperNode (학위 논문 Part III, 2026-05-05) — 단계 1 구현 완료"
+  2. **(b) 단계 1 산출물 4 항목**:
+     - **(i) 신규 selector class**: `DirectedTopKSuperNodeSelector` (`EnsembleSelector` 상속, SuperNode 분기 override) — query_node x 주입 + threshold mask 산출 (per-query min-max norm cosine 기반) + `attends_to_*` directed edge 만 유지 (`attended_by_*` 비등록/0-len) + GAT 모델 측 자동 self_loop (directed_from_sn) 사용
+     - **(ii) GAT v1/v2 threshold dispatch**: `gat_network.py` + `gat_network_v2.py` 양쪽에 `_compute_supernode_mask` dispatch — `top_k` (기존 V-3 동치) / `percentile` (torch.quantile cutoff) / `abs_tau` (>= cutoff). `_compute_topk_mask` 는 backward-compat alias.
+     - **(iii) 학습 config 3 종**:
+       - `train_gat_directed_supernode_p80.yaml` (PRIMARY, percentile 80.0, |sel|=18.9 ± 5.5, Raw R=0.6133, Raw F1=0.3466)
+       - `train_gat_directed_supernode_topk20.yaml` (BASELINE, top_k 20, |sel|=20.0 ± 0.0, Raw R=0.6865, Raw F1=0.3640)
+       - `train_gat_directed_supernode_abstau07.yaml` (OPTIONAL, abs_tau 0.7, |sel|=10.2 ± 8.9, Raw R=0.4857, Raw F1=0.3942 ★ raw F1 max)
+     - **(iv) Smoke test 7 케이스 통과**: `tests/test_directed_topk_supernode.py` — P80 ~22% 선택 / top_k=20 정확 / abs_tau=0.7 선택적 / directed edge 구조 검증 / baseline SuperNode 31 vs Directed 7 edge / v1/v2 dispatch
+  3. **(c) 변경된 파일 8 항목 (cross-reference)**:
+
+     | 파일 | 변경 내용 |
+     |---|---|
+     | `src/models/gat_network.py` | `supernode_threshold_mode/value/score_normalization` 파라미터 + `_compute_supernode_mask` dispatch + alias |
+     | `src/models/gat_network_v2.py` | 동일 (v2 분기 호환) |
+     | `src/train_gat.py` | 신규 옵션 forward to GAT model |
+     | `src/modules/selectors/directed_topk_supernode_selector.py` | 신규 selector 클래스 (EnsembleSelector 상속, SuperNode 분기 override) |
+     | `src/modules/selectors/ensemble_selector.py` | `supernode_edge_direction` 옵션 노출 (GAT 모델 측 forward) |
+     | `src/modules/selectors/__init__.py` | `DirectedTopKSuperNodeSelector` 등록 |
+     | `src/modules/selectors/tests/test_directed_topk_supernode.py` | smoke test 7 케이스 |
+     | `configs/training/train_gat_directed_supernode_{p80, topk20, abstau07}.yaml` | 학습 config 3 종 |
+  4. **(d) Root 단계 2 학습 핸드오프 prompt**: 본 응답 본문 (사용자 직접 root 세션 5/12~5/13 진행)
+     - **학습 변형 3 종 병렬** (GPU 0/1 split):
+       - `python src/train_gat.py --config configs/training/train_gat_directed_supernode_p80` (PRIMARY)
+       - `python src/train_gat.py --config configs/training/train_gat_directed_supernode_topk20` (BASELINE)
+       - `python src/train_gat.py --config configs/training/train_gat_directed_supernode_abstau07` (OPTIONAL)
+     - 신규 ckpt: `best_gat_directed_supernode_{p80, topk20, abstau07}.pt`
+     - **NAS 저장 + symlink 자동화** (memory rule "저장소 규칙"): NAS path `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_*.pt` + 로컬 `outputs/checkpoints/` symlink
+     - 학습 시간: 변형 별 ~9h × 3 변형 (병렬 ~9h, 직렬 ~27h)
+     - val recall@15 검증 + dev recall@15 record (raw recall ceiling reference: P80=0.6133, top_k20=0.6865, abs_tau07=0.4857)
+  5. **(e) Root 단계 3 측정 핸드오프 (단계 2 완료 후)**:
+     - paper main stack (Enriched + 신규 ckpt + α=0.5 + MSTPCSTUnion + XiYan GLM + LLM SQL Gen GLM) 위 alpha sweep
+     - **subset (최소)**: α∈{0.0, 0.5, 1.0} (3 cells × 3 변형 = 9 cells, ~₩7K, ~3h)
+     - **full (권장)**: α∈{0.0~1.0, 0.1 step} 11 cells × P80 primary (single 변형, ~₩8.4K, ~3-4h) + α∈{0.0, 0.5, 1.0} subset × top_k20/abs_tau07 (6 cells, ~₩4.6K, ~2h) = **합산 17 cells ~₩13K, ~5-6h**
+     - 비용/시간: ~₩7-13K, ~3-6h (Wall clock GPU 0/1 split)
+  6. **(f) Paper §2.2 / §3.5 / §V.5.3 narrative 정정 prep — 시나리오 A/B/C 분기 결과 후 적용 사항 미리 정리**:
+
+     **시나리오 A (F1 ≤ 0.870, plateau 흡수, 가장 가능성 高)**:
+     - **§3.5 Filter Dominance 5 축 격상** — 4 축 (stack-invariant + α-invariant + schema-complexity-dependent + design-variant-aware) → **5 축 (🆕 topology-invariant 추가)**:
+       - 단락 3-(e) 신규: "**🆕 topology-invariant**: Selector graph topology 변경 (bidirectional → directed top-K, P80/top-K=20/abs τ=0.7) 도 final F1 plateau 안 흡수 — Filter 가 Selector graph topology 변동도 absorb"
+     - **§2.2 Selector contribution 보강**: "α-invariant + topology-invariant" — Selector design choice 의 다차원 변동 모두 Filter 가 흡수
+     - **paper main contribution claim 5 항목 추가 가능** (선택): (e) "Selector graph topology 변경의 Filter Dominance 흡수 검증 (Directed Top-K SuperNode, advisor 제안 학위 논문 Part III)"
+     - paper §III.6 단락 3 의 4 축 → 5 축 + 단락 5 의 학술적 정당성 격상 한 문장 추가
+     - **분량 영향 minor** — 학회 논문 §V.5.3 Future Work 1 줄 → 본문 §III.6 단락 3-(e) 1 줄 추가 + §IV.4.5 신규 sub-section 가능 (분량 여유 시)
+
+     **시나리오 B (F1 > 0.870, plateau 갱신, 가능성 中)**:
+     - **paper main contribution 5 항목 격상** — 기존 (a)~(d) + 🆕 **(e) Directed Top-K SuperNode mechanism**:
+       - "Selector raw score → graph topology 통합 (out-only directed edge + per-query P80 threshold) 이 paper main F1 갱신 — advisor 제안의 학위 논문 contribution"
+     - **§2.2 Selector contribution 본문 정정** — "Query-Conditioned GAT (Concat α=0.5 ensemble) + GAT-floor" → "Query-Conditioned GAT + Directed Top-K SuperNode (advisor 제안, F1 갱신 evidence)"
+     - **paper main anchor 정정 검토 필요** — t_00 vs Directed Top-K F1 차이가 학회 논문 anchor 변경 여부 결정 (anchor promote vs evidence 인용 — 직전 옵션 A 결정과 동일 분기)
+     - **분량 영향 中** — §I contribution 4 → 5 항목 + §III.5/§III.6 narrative 정정 + §IV 신규 sub-section + §V Conclusion 갱신
+
+     **시나리오 C (F1 < 0.85, 큰 손실, 가능성 低)**:
+     - **paper §V.5.3 negative result 1 paragraph 신설**:
+       - "advisor 제안 Directed Top-K SuperNode (out-only directed edge + per-query P80 threshold) 가 Filter Dominance plateau 안에 들어오지 못하고 F1 < 0.85 로 큰 손실. 가능 사유: (i) raw R 0.69 한계 + GAT 학습이 R 회복 불충분, (ii) graph topology 단방향 변경의 message passing 손실, (iii) per-query P80 의 schema 노드 누락 (DB 별 variability). 학위 논문 본 심사에서 mechanism deep dive — graph topology 변경의 message passing 손실 정량 + raw R 회복 한계 분석"
+     - paper §V Future Work 의 학위 논문 Part III 항목에 negative result + mechanism 분석 명시
+     - **학위 논문에서는 negative result 도 학술 contribution** (advisor 제안 mechanism 의 한계 발견 + 정량적 mechanism 분석)
+     - **분량 영향 minor** — §V.5.3 1 paragraph 추가
+  7. **(g) Planner 책임 분장**: 단계 2/3 진행은 **root 세션 책임**. planner 는 결과 수령 후 후속 DECISIONS 엔트리 + paper §2.2/§3.5/§V.5.3 narrative 갱신 (시나리오 A/B/C 분기 처리) 만 수행.
+
+- **근거**:
+  - **Selector 세션 단계 1 산출**: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) "Directed Top-K SuperNode (학위 논문 Part III, 2026-05-05) — 단계 1 구현 완료" — 4 산출물 + 8 변경 파일 + 학습 변형 3 종 + 시나리오 A/B/C 인용
+  - **선행 결정**: DECISIONS 2026-05-05 직전 엔트리 (analyzer raw_score 결과 인용 — threshold P80 primary 채택 + 단계 1 핸드오프 prompt) — 본 단계 1 완료의 base
+  - **Analyzer base**: [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) — Per-query ROC-AUC 0.7930, Cohen's d 1.1323, top-K=20 P78~P80 영역, Recall@20=0.6865
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — 단계 1 완료 + 산출물 4 + 변경 파일 8 + root 단계 2/3 핸드오프 + paper narrative 시나리오 A/B/C 분기 prep
+  - **paper_research_direction.md (선택, 단계 3 결과 후)** — §2.2 / §3.5 / §V.5.3 narrative 정정 (시나리오 분기에 따라)
+  - **EXPERIMENT_PLAN_selectors.md** — 이미 selector 세션이 §V-3-ext 단계 1 완료 표기 ✓
+  - **paper main contribution narrative 영향**:
+    - 시나리오 A: minor (1 축 추가 + 1 paragraph)
+    - 시나리오 B: 中 (main contribution 5 항목 + anchor 검토)
+    - 시나리오 C: minor (negative result 1 paragraph)
+  - **학회 논문 narrative 영향 X (anchor t_00 + Filter Dominance 4 축 그대로)** — 시나리오 결과 학회 마감 후 학위 논문 chapter 에 반영
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §8 H-DTK 항목 갱신 (직전 turn 완료) + Root 단계 2 핸드오프 prompt (본 응답 본문)
+  2. **사용자 (즉시)** — Root 세션 prompt 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored`, 5/12~5/13 단계 2 학습)
+  3. **Root (5/12~5/13)** — 학습 변형 3 종 (GPU 0/1 split, ~9h 직렬 또는 병렬), 신규 ckpt NAS 저장 + symlink 자동화
+  4. **Root (5/13~5/15)** — alpha sweep subset/full 측정 (~₩7-13K, ~3-6h), EXPERIMENT_HISTORY.md / CATALOG / ID_MIGRATION 갱신
+  5. **Planner (단계 3 측정 결과 수령 후)** — 시나리오 A/B/C 분기 처리 + DECISIONS 후속 + paper narrative 갱신
+  6. **사용자 (학위 논문 chapter 작성 5/16~5/22)** — 학위 논문 Part III chapter 본인 직접 작성, planner 가 narrative 정정 사항 인용
+
+- **추가 필요 분석** (단계 3 측정 결과 후):
+  - 변형 3 종 (P80 / top-K=20 / abs τ=0.7) F1/EX 비교 → 어떤 변형이 학위 논문 main 으로 갈지 결정
+  - 신규 ckpt 의 attention pattern 분석 (학위 논문 mechanism evidence — Directed Top-K 가 어떤 schema 노드에 집중하는지)
+  - 기존 SuperNode (bidirectional) ckpt 와의 attention 비교 (graph topology 변경의 mechanism 정량)
+  - per-query R 회복 정량 (raw R 0.69 → GAT 학습 후 R 변화) — 시나리오 A/B/C 분기 결정 evidence
+  - 시나리오 A 시 §3.5 5 축 narrative (topology-invariant 정량 evidence) — Directed Top-K F1 spread vs t_00 plateau spread 비교
+
+---
+
+## 2026-05-05 (analyzer raw_score_distribution 결과 인용 — Directed Top-K SuperNode 학습 변형 3 종 + threshold P80 primary 채택) — 단계 1 (5/9~5/11 구현) Selector 모듈 핸드오프 준비 완료
+
+- **결정**:
+  1. **(a) Analyzer 산출 수령** — [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) (LLM-free 즉시 위임 결과, 2026-05-05, ₩0):
+     - §2 per-query raw cosine score 분포 (P25/P50/P75/P90/P95)
+     - §3 gold vs non-gold 분리 (ROC-AUC, Cohen's d, threshold trade-off)
+     - §4 기존 top-K=20 의 score range
+     - §5 Threshold 후보 24 종 비교 (selected node 수 + recall 추정 + variability)
+     - §6 기존 SuperNode 와의 비교 base
+     - §7 Directed Top-K 학습 권장 threshold
+  2. **(b) 🎯 Threshold 결정 — Per-query P80 primary 채택**:
+     - **Primary (학습 추천 #1)**: **per-query P80** — |sel| mean = 18.9 (std 5.5), R = 0.6133, query-aware (DB 별 schema 크기 자동 보정)
+     - **사유**: (i) 기존 top-K=20 (|sel|=20) 과 가장 유사한 노드 수 → 직접 비교 가능, (ii) per-query percentile 이라 DB 별 schema 크기 variability (european_football 237 vs toxicology 20) 자동 보정 → graph topology 균질, (iii) 학습 시 stable convergence 기대
+     - **Reference (학습 추천 #2 / baseline)**: top-K=20 — 기존 SuperNode 와 직접 비교 + raw R 0.6865 (raw recall ceiling reference)
+     - **Optional (학습 추천 #3 선택)**: 절대 τ=0.7 — F1 max raw selector standalone (F1=0.3942), 단 노드 수 variability 큼 (|sel| std 8.9 vs P80 std 5.5)
+  3. **(c) 🚨 핵심 base 정량 evidence**:
+     - **Per-query ROC-AUC = 0.7930** (Cohen's d = 1.1323 large effect) — gold/non-gold raw score 분리 강함
+     - **Recall@20 = 0.6865** (cosine raw 만으로 R 천장 0.69) → **GAT 학습 mechanism evidence base** (학위 논문 §V.5 main mechanism — Directed Top-K 가 raw R 한계를 GAT 학습으로 극복하는 기전 분석)
+     - **기존 SuperNode 평균 schema 노드 수 = 92.6** → Directed Top-K (P80 |sel|=18.9) ≈ **20% 노드 보존** — graph topology 큰 변화
+     - **DB 별 schema 노드 수 variability 큼** (european_football 237 vs toxicology 20) → 절대 τ 보다 per-query Pn 이 graph topology 균질성 유리
+  4. **(d) 시나리오 A/B/C 예측 base 정량화** (raw R 0.69 한계 + GAT 학습 회복 정도가 분기 결정):
+     - **시나리오 A (plateau 흡수, F1 ≤ 0.870)**: GAT 학습이 raw R 0.69 → 0.85 영역으로 회복 + Filter 가 plateau 안 흡수 → Filter Dominance **5 축 격상** (🆕 topology-invariant 추가)
+     - **시나리오 B (plateau 갱신, F1 > 0.870)**: GAT 학습이 raw R 0.69 → 0.90+ 영역 도달 + Filter 가 P 정정 → 학위 논문 main contribution **5 항목 격상** (a~d + 🆕 (e) Directed Top-K mechanism)
+     - **시나리오 C (F1 < 0.85)**: GAT 학습이 raw R 0.69 한계 극복 못 함 → paper §V.5.3 negative result + advisor 제안 mechanism deep dive (학위 본 심사 필수)
+     - **시나리오 확률 추정** (raw R 0.69 + ROC-AUC 0.7930 base): 시나리오 A 가장 가능성 高 (Filter 가 raw R 차이 흡수 mechanism 의 직전 narrative 와 일관) — 단 GAT 학습 결과 의존
+  5. **(e) Directed Top-K SuperNode 학습 변형 3 종 정량 비교 base**:
+
+     | 변형 | threshold | \|sel\| mean | std | Raw R | Raw F1 | 학습 우선순위 |
+     |---|---|---|---|---|---|---|
+     | **변형 1 (primary)** | per-query P80 | **18.9** | 5.5 | **0.6133** | 0.3613 | **🔥 #1** (query-aware, top-K=20 와 유사) |
+     | 변형 2 (baseline) | top-K=20 | 20.0 | 0.0 | 0.6865 | 0.3640 | #2 (기존 SuperNode 직접 비교) |
+     | 변형 3 (선택) | 절대 τ=0.7 | 10.2 | 8.9 | 0.4857 | **0.3942** ★ raw F1 max | #3 (선택, F1 max 영역) |
+  6. **(f) 단계 1 (5/9~5/11 구현) Selector 모듈 세션 핸드오프 — 본 응답 본문 prompt**:
+     - 신규 selector class `DirectedTopKSuperNodeSelector` (또는 기존 `EnsembleSelector` query_supernode 분기 변형)
+     - threshold 메커니즘: per-query P80 primary + top-K=20 reference + 절대 τ=0.7 선택
+     - edge: query_node → schema 단방향 (out-only directed edge, schema → query 역방향 X)
+     - 신규 GAT ckpt: `best_gat_directed_supernode_topk.pt` (학습 시 P80/top-K=20/τ=0.7 변형 별 ckpt 가능)
+     - 학습 단계 (5/12~5/13): 신규 GAT 학습 + val recall@15 검증
+     - 측정 단계 (5/13~5/15): paper main stack + 신규 ckpt 의 alpha sweep (subset 또는 full)
+  7. **(g) 학회 논문 narrative 영향 X**: paper main anchor t_00 (F1=0.8657) 영향 X, Filter Dominance 4 축 narrative 그대로. 학회 논문 §V.5.3 Future Work 1 줄 명시는 사용자 직접 처리 (Q3).
+
+- **근거**:
+  - **Analyzer 산출**: [notebooks/analysis_results/raw_score_distribution_for_directed_topk.md §0~§7](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) — 2026-05-05 LLM-free 즉시 위임 결과
+    - §3 ROC-AUC 0.7930 + Cohen's d 1.1323 (gold/non-gold 분리)
+    - §4 top-K=20 의 score range (top-20 min score mean=0.4957, P50=0.5425, P78~P80 영역)
+    - §5 Threshold 후보 24 종 비교 raw 데이터
+    - §7 학습 권장 threshold (P80 primary, top-K=20 reference, abs τ=0.7 선택)
+  - **재현 raw 데이터**: notebooks/analysis_results/raw_score_threshold_candidates.csv (24 후보 비교) + raw_score_supernode_comparison.csv (DB 별 SuperNode 노드 수)
+  - **재현 스크립트**: src/analysis/analyze_raw_score_distribution.py (scipy 의존성 없음)
+  - **Cross-reference**: src/modules/selectors/CLAUDE.md "Score 분석 결과" — global ROC-AUC 0.741 vs 본 per-query ROC-AUC 0.7930 (per-query 분포 vs global 분포 차이)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — threshold P80 primary 채택 + 학습 변형 3 + 시나리오 분기 정량 base + Selector 모듈 핸드오프
+  - **paper_research_direction.md (planner Edit)** — §8 Future Works H10 항목 갱신 (학위 논문 Part III, analyzer base 분석 완료, 단계 1 대기)
+  - **Selector 모듈 세션 핸드오프 prompt** — 본 응답 본문 (사용자 직접 5/9 부터 진행)
+  - **학회 논문 main contribution narrative 영향 X** — anchor t_00 + Filter Dominance 4 축 그대로 (학위 논문 Part III 만 신설)
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + paper §8 H10 갱신 + Selector 모듈 핸드오프 prompt (응답 본문)
+  2. **사용자 (즉시)** — Selector 모듈 세션 prompt 직접 붙여넣기 (5/9 부터 단계 1 구현)
+  3. **Selector 모듈 (5/9~5/11)** — `DirectedTopKSuperNodeSelector` 구현 + threshold 변형 3 (P80 / top-K=20 / abs τ=0.7) + edge 단방향 처리 + smoke test
+  4. **Root (5/12~5/13)** — 신규 GAT ckpt 학습 (변형 별 1-3 ckpt) + val recall@15 검증
+  5. **Root (5/13~5/15)** — paper main stack + 신규 ckpt alpha sweep 측정 (subset 또는 full)
+  6. **Planner (측정 결과 후)** — 시나리오 A/B/C 분기 처리 + DECISIONS 후속 + paper §3.5 Filter Dominance narrative 갱신 (시나리오 A 시 5 축 격상)
+  7. **사용자 (학회 §V.5.3)** — 본인 직접 처리 (Q3)
+
+- **추가 필요 분석** (단계 3 측정 결과 후):
+  - 변형 3 종 (P80 / top-K=20 / abs τ=0.7) F1/EX 비교 → 어떤 변형이 학위 논문 main 으로 갈지 결정
+  - 신규 ckpt 의 attention pattern 분석 (학위 논문 mechanism evidence — Directed Top-K 가 어떤 schema 노드에 집중하는지)
+  - 기존 SuperNode (bidirectional) ckpt 와의 attention 비교 (graph topology 변경의 mechanism 정량)
+  - per-query R 회복 정량 (raw R 0.69 → GAT 학습 후 R 변화) — 시나리오 A/B/C 분기 결정 evidence
+
+---
+
+## 2026-05-05 (Directed Top-K SuperNode — advisor 제안 학위 논문 Part III 진행 결정) — Q1/Q2/Q3 사용자 confirm + threshold 기반 (Raw Score 분포 analyzer 위임) + 학회 §V.5.3 사용자 직접 진행
+
+- **결정**:
+  1. **(a) ✅ Q1 학위 논문 Part III 진행 confirm**: advisor (지도교수) 제안 사항 — "Graph 를 Directed Edge 로 변형 + Raw Score 기준 top-K (또는 threshold) 노드만 + SuperNode 에서 out-only edge 부여 + GAT 학습" — 학위 논문 Part III (5/9~5/22 구현+학습+측정+chapter 작성) 진행
+  2. **(b) Q2 결정 — Threshold 기반 (top-K 단일값 X)**: 사용자 의도 명확화:
+     - 옵션 (a) `top-K=20 단일값` (간단, 기존 SuperNode 와 비교 쉬움) — **사용자 보류**
+     - **옵션 (b) ✅ Threshold 기반 (Raw Score 분포 의존)** — 사용자 채택, 단 **threshold 값은 Raw Score 분포 분석 후 결정**
+     - 기존 `top-K=20` 은 baseline 비교 reference 로 유지
+     - threshold 후보 (analyzer 결과 후 결정): 절대 score (예: 0.3 / 0.5) / per-query percentile (예: P80 / P90) / mean+std 기반 / score 분포의 elbow point
+  3. **(c) Q3 학회 논문 §V.5.3 Future Work**: 사용자 본인 직접 진행 — planner 작업 X
+  4. **(d) Raw Score 분포 분석 — Analyzer 위임 (planner 권한 외)**:
+     - **목적**: Directed Top-K SuperNode 학습 시 threshold 결정의 정량 근거 + 기존 top-K=20 의 score range 와 비교
+     - 분석 데이터: `outputs/.../score_analysis_*.jsonl` (per-query × per-node raw cosine + GAT score, is_gold 라벨)
+     - 분석 항목 5 (analyzer 위임 prompt 본 응답 본문):
+       - per-query raw cosine score 분포 (P25/P50/P75/P90/P95)
+       - gold node score vs non-gold node score 분포 비교 (분리 수준)
+       - top-K=20 의 score range (절대 score / percentile)
+       - threshold 후보 (절대 / percentile / mean+std / elbow point)
+       - threshold 별 평균 selected node 수 + recall 추정
+     - 산출물: `notebooks/analysis_results/raw_score_distribution_for_directed_topk.md`
+  5. **(e) Directed Top-K SuperNode 학위 논문 Part III 단계 (analyzer 결과 후)**:
+     - **단계 1** — 구현 (5/9~5/11): 신규 selector class `DirectedTopKSuperNodeSelector` (또는 기존 SuperNode 변형) — query_node→schema 단방향 edge + raw_score threshold filter
+     - **단계 2** — 학습 (5/12~5/13): 신규 GAT ckpt `best_gat_directed_supernode_topk.pt`, threshold 변형 (analyzer 결과 후 1-3 변형) 별 학습, val recall@15 검증
+     - **단계 3** — 측정 (5/13~5/15): paper main stack + 신규 ckpt 의 alpha sweep (subset 또는 full), Filter Dominance plateau 검증
+     - **단계 4** — 분석 + 학위 논문 chapter (5/16~5/22)
+     - 비용: ~₩8-10K, 시간: ~7-13 day
+  6. **(f) Paper narrative 영향 분기 — 시나리오 A/B/C**:
+     - **시나리오 A**: Directed Top-K F1 ≤ 0.870 (plateau 안) → Filter Dominance **5 축으로 격상** (stack/α/schema/design-variant + 🆕 **topology-invariant**) — Selector graph topology 변경도 흡수 evidence
+     - **시나리오 B**: Directed Top-K F1 > 0.870 (plateau 갱신) → 학위 논문 main contribution **5 항목으로 격상** ((a)~(d) + 🆕 (e) Directed Top-K SuperNode mechanism)
+     - **시나리오 C**: Directed Top-K F1 < 0.85 (큰 손실) → paper §V.5.3 negative result + advisor 제안 mechanism deep dive (학위 본 심사 시 mechanism 분석 필수)
+  7. **(g) 학회 논문 narrative 영향 X (anchor 변경 X)**:
+     - paper main anchor t_00 (F1=0.8657, 옵션 A 유지) 영향 X
+     - 학회 논문 §V.5.3 Future Work 1 줄 명시 (사용자 직접 처리 — Q3)
+     - paper outline §V.5.3 의 Future Work 항목에 직접 추가 가능 (사용자 자율)
+
+- **근거**:
+  - 사용자 직전 input (2026-05-05): "Q1. 진행하자 / Q2. top-K=20 또는 threshold (Raw Score 분포 분석 후 결정) / Q3. 학회 논문은 직접 진행"
+  - advisor (지도교수) 제안 사항 — "Graph 를 Directed Edge / Raw Score top-K / SuperNode out-only edge / GAT 학습"
+  - 직전 엔트리 (Wave 4 + 옵션 A) — paper main anchor t_00 유지 + 학위 논문 Part II (Filter 고도화) 결정 → 본 결정으로 학위 논문 Part III (Selector 확장) 추가
+  - 기존 SuperNode 변형 (bidirectional, 모든 schema 노드) — DECISIONS 2026-04-29 SuperNode 9-cell matrix + paper main 2 cells (a05_08 Stacked 와 별도 SuperNode 검증)
+
+- **영향 범위**:
+  - **DECISIONS 본 엔트리** — Directed Top-K Part III 결정 + threshold 기반 + analyzer 위임 + 시나리오 A/B/C 분기
+  - **paper_research_direction.md (선택, 추후 갱신)** — §8 Future Works 의 학위 논문 Part III 항목 추가 (analyzer 결과 + 측정 후 갱신)
+  - **paper_outline_2026-05-08.md (사용자 자율)** — §V.5.3 Future Work 1 줄 추가 (advisor 제안 reflect)
+  - **학회 논문 main contribution narrative 영향 X** — anchor t_00 + Filter Dominance 4 축 narrative 그대로 유지
+  - **학위 논문 Part III 신설** — Filter 고도화 (Part II) 외 Selector 확장 (Part III) 추가
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — DECISIONS 본 엔트리 + analyzer 위임 prompt (응답 본문)
+  2. **사용자 (즉시)** — Analyzer 위임 prompt 를 analyzer 세션에 직접 붙여넣기 (cd `/home/hyeonjin/thesis_refactored/src/analysis`)
+  3. **Analyzer (사용자 핸드오프 후)** — Raw Score 분포 분석 → `raw_score_distribution_for_directed_topk.md` 작성
+  4. **Planner (analyzer 결과 수령 후)** — threshold 결정 + Selector 모듈 세션 핸드오프 prompt 작성
+  5. **Selector + Root (5/9~)** — 구현 + 학습 + 측정 (analyzer 결과 + planner threshold 결정 후)
+  6. **사용자 (학회 논문 §V.5.3)** — 본인 직접 처리 (Q3)
+
+- **추가 필요 분석** (analyzer Raw Score 분포 결과 후):
+  - threshold 별 selected node 수 + recall 추정 → 학습 시 어떤 threshold 가 적정한지 결정
+  - 기존 SuperNode (bidirectional) ckpt 의 attention pattern 과 비교 (학위 논문 mechanism 분석 evidence)
+  - 시나리오 A/B/C 결과 후 Filter Dominance 5 축 narrative 격상 여부 결정
+
+---
+
+## 2026-05-05 (Wave 4 Filter Ablation 14 cells GLM 완료 + 사용자 옵션 A 채택) — 🚀 신규 F1 ceiling **a05_08 Stacked F1=0.8809** (+0.0152) + a05_07 EX=0.3501 (+0.0124) + paper main anchor t_00 유지 + Filter design variation evidence
+
+- **결정**:
+  1. **(a) Wave 4 14 cells GLM 측정 완료** (root 2026-05-04 19:08 → 2026-05-05 03:06, wall 7h 58min, ~₩30-54K, GPU 0/1 split):
+     - Stack: paper main pipeline (Enriched + QCond α=0.5 + qcond_nl3 + MSTPCSTUnion + LLMSQLGenerator GLM) + **Filter 14 변형** 만 변경
+     - 출처: [EXPERIMENT_HISTORY.md L2245~ "Wave 4 Filter Ablation 14 cells GLM"](../EXPERIMENT_HISTORY.md)
+  2. **(b) 14 cells 결과 — F1 정렬 (t_00 base F1=0.8657, EX=0.3377)**:
+
+     | 순위 | Cell | R | P | F1 | EX | ΔF1 | ΔEX |
+     |---|---|---|---|---|---|---|---|
+     | **1** | **a05_08 stacked Tiered+Verifier** | 0.8880 | 0.8739 | **0.8809 ★** | 0.3351 | **+0.0152** | -0.0026 |
+     | 2 | a05_22 SymVerify+Reflection+Verifier stacked | 0.8844 | 0.8675 | 0.8759 | 0.3364 | +0.0102 | -0.0013 |
+     | 3 | a05_05 tiered_no_tools | 0.8940 | 0.8463 | 0.8695 | 0.3429 | +0.0038 | +0.0052 |
+     | 4 | a05_09 tiered_retry | 0.8932 | 0.8449 | 0.8684 | 0.3377 | +0.0027 | +0.0000 |
+     | 5 | a05_06 tiered_full_tools | 0.8931 | 0.8438 | 0.8678 | 0.3422 | +0.0021 | +0.0045 |
+     | 6 | a05_04 verifier | **0.9155 ★ R 최고** | 0.8220 | 0.8662 | 0.3383 | +0.0005 | +0.0006 |
+     | 7 | a05_19 symverify_xiyan_repair | 0.8743 | 0.8559 | 0.8650 | 0.3409 | -0.0007 | +0.0032 |
+     | 8 | a05_21 symverify_xiyan_detect | 0.8726 | 0.8565 | 0.8645 | 0.3370 | -0.0012 | -0.0007 |
+     | 9 | **a05_07 adaptive_depth** | 0.8802 | 0.8471 | 0.8633 | **0.3501 ★ EX 최고** | -0.0024 | **+0.0124** |
+     | 10 | a05_02 reflection_1iter | 0.8894 | 0.8383 | 0.8631 | 0.3429 | -0.0026 | +0.0052 |
+     | 11 | a05_10 adaptive_retry | 0.8791 | 0.8462 | 0.8623 | 0.3422 | -0.0034 | +0.0045 |
+     | 12 | a05_20 symverify_reflection_repair | 0.8903 | 0.8354 | 0.8620 | 0.3396 | -0.0037 | +0.0019 |
+     | 13 | a05_03 reflection_3iter | 0.8914 | 0.8297 | 0.8594 | 0.3344 | -0.0063 | -0.0033 |
+     | 14 | a05_01 adaptive_multi_agent | 0.7724 | 0.8448 | 0.8070 | 0.3279 | **-0.0587 ⚠️** | -0.0098 |
+  3. **(c) 🚀 핵심 발견 5 항목**:
+     - **a05_08 Stacked sweet spot — F1 신규 ceiling 0.8809** (+0.0152 vs t_00). Tiered (semantic agent) → Verifier (precision check) 2-stage stacking 이 단일 agent 변형 모두 능가
+     - **a05_07 AdaptiveDepth — 유일한 EX 개선 (+0.0124)**. F1 -0.0024 trade-off 로 EX 만 개선 — **F1 vs EX divergence 의 새 evidence** (Filter 변형으로 EX 만 개선 가능, uncertainty-gated agent depth 가 selector confidence 를 SQL gen 까지 비대칭 전파 가능성)
+     - **a05_04 VerifierFilter R 최고 (0.9155)** — t_00 R=0.8734 대비 +0.0421 (schema-linking recall ceiling 회복 약 절반). 단 P trade-off 로 F1 plateau 안
+     - **a05_01 AdaptiveMultiAgent 유일 큰 손실 (-0.0587)** — Skeptic agent over-prune (R 급락 -0.1010). 다른 13 cells 는 모두 plateau (F1 -0.01 ~ +0.015) 안 — Skeptic outlier
+     - **Reflection iter depth — 1iter > 3iter** (a05_02 0.8631 vs a05_03 0.8594, P drift over-correction)
+  4. **(d) ✅ 사용자 결정 — 옵션 A 채택 (paper main anchor t_00 유지)**:
+     - **anchor**: t_00 (`s04_pipeline_enriched_qcond_a05_mst_pcst_union_glm_sql` F1=0.8657 / EX=0.3377) **그대로 유지** (XiYan 단일, simple/clean baseline, narrative 일관)
+     - **Wave 4 결과 활용**: paper §IV.4 Filter design ablation 의 **ceiling evidence** 로 인용
+     - **paper main result 분리 표기**: t_00 anchor (main result) + a05_08 Wave 4 ceiling (Filter design 갱신 evidence)
+     - 옵션 B (a05_08 anchor promote) 거부 사유: D-3 마감 + narrative 전체 정정 부담 + 박사 후 검토 시간 부족 + Stacked Filter mechanism deep dive 학위 논문 보존
+  5. **(e) Paper narrative 갱신 — Filter design variation evidence 추가**:
+     - **❌ 직전 narrative**: "Filter on/off (ΔF1=0.63) 만 paper main insight"
+     - **✅ 신규 narrative**: "**Filter on/off (ΔF1=0.63) + Filter design variation (ΔF1=0.07) 둘 다 contribute**" — Filter "first-class stage" 학술적 정당성 한층 강화
+     - paper §3.5 Filter Dominance narrative 보강: "단일 stage main + 그 stage 안에서 algorithm choice 도 F1 driver"
+     - paper §III.5 Modular Filter design — 이론적 주장에서 **측정으로 검증된 정량 사실** 로 격상 (14 변형 측정, Stacked sweet spot + AdaptiveDepth EX trade-off)
+  6. **(f) F1 vs EX divergence 보강 — a05_07 AdaptiveDepth 의 학회 논문 §V.5.2 Limitation evidence**:
+     - 14 cells 중 유일 EX > 0.35 (0.3501) + F1 -0.0024 trade-off
+     - schema-linking F1 ↔ SQL EX **decoupling 직접 evidence** (Filter 변형으로 EX 만 개선)
+     - paper §V.5.2 1 paragraph 에 1-2 문장 보강 (Filter design 의 F1-optimal vs EX-optimal 분리 가능성)
+  7. **(g) paper_research_direction.md / paper_outline_2026-05-08.md 정정 사항 (planner Edit 즉시)**:
+     - **paper §3.5**: Filter design variation evidence 추가 (14 cells, ΔF1 spread 0.0739 = on/off 의 12%)
+     - **paper §8 Future Works**: Wave 4 ✅ 완료 표기 + Stacked Filter mechanism deep dive 신설 sub-항목 (학위 논문 Part II)
+     - **paper §10 핵심 수치**: Wave 4 14 cells 결과 표 추가 (F1 ceiling a05_08 0.8809 + EX ceiling a05_07 0.3501 + R ceiling a05_04 0.9155 + a05_01 outlier caveat)
+     - **paper_outline §III.5**: Modular Filter design 보강 (14 변형 측정 evidence)
+     - **paper_outline §IV.4.4 신설**: "Filter Design Variation (Wave 4, 14 cells GLM, paper main stack)" — Stacked sweet spot + AdaptiveDepth EX trade-off + 14 cells 표
+     - **paper_outline §V.5.1 Conclusion**: Wave 4 evidence 인용 ("Filter design 갱신 ceiling F1=0.8809")
+     - **paper_outline §V.5.2 Limitations**: a05_07 AdaptiveDepth EX +0.0124 evidence 추가 (F1 vs EX decoupling)
+     - **paper_outline §V.5.3 Future Work**: Stacked Filter narrative + 학위 논문 Part II 직접 인용
+
+- **근거**:
+  - **EXPERIMENT_HISTORY.md L2245~** "Wave 4 Filter Ablation (2026-05-04 → 05, 14 cells GLM, 🚀 신규 최고 F1=0.8809)" — 14 cells 결과 + 5 핵심 발견 + paper main anchor 옵션 A 권장
+  - **HISTORY 후속 핸드오프 권장**: DECISIONS 후속 + paper §3.5/§8/§10 갱신 + presentation_brief 갱신 + analyzer 위임 (a05_01 Skeptic over-prune mechanism / a05_07 EX 개선 mechanism / a05_08 Stacked 2-stage absorption)
+  - **사용자 직전 input** (2026-05-05): "그래 일단 옵션 A로 하자" — anchor 단순화 + narrative 일관 + 박사 후 검토 시간 확보
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit)**: §3.5 Filter design variation evidence + §8 Wave 4 완료 + Stacked Filter Future Work + §10 14 cells 표 + §12 Changelog
+  - **paper_outline_2026-05-08.md (planner Edit)**: §III.5 Modular Filter design 보강 + §IV.4.4 신설 (Filter Design Variation) + §V.5.1 ceiling evidence + §V.5.2 a05_07 EX evidence + §V.5.3 Stacked Filter Future Work + Changelog
+  - **DECISIONS 본 엔트리** — 옵션 A 채택 + 14 cells 결과 + 5 핵심 발견 + paper narrative 갱신 사항
+  - **paper main contribution claim 보강 (옵션 A)**:
+    - (a) 4 Module Co-Designed Pipeline
+    - (b) Filter Dominance discovery (3 축)
+    - (c) BIRD-Dev t_00 F1=0.8657 / EX=0.3377 (anchor 유지)
+    - **🆕 (d) Modular Filter design variation 측정 (14 cells, ceiling F1=0.8809 +0.0152, EX=0.3501 +0.0124)** — Filter design 의 추가 여지 정량 입증
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — paper §3.5/§8/§10 + paper_outline §III.5/§IV.4.4/§V + DECISIONS 본 엔트리
+  2. **사용자 (즉시)** — 학회 논문 초안에 §IV.4.4 신규 sub-section 작성 (Wave 4 14 cells 표 + Stacked sweet spot + AdaptiveDepth EX trade-off + a05_01 caveat)
+  3. **박사 후 연구원 검토 (5/6 수)** — Wave 4 narrative 정합성 + Stacked Filter 의 학술적 weight + a05_01 outlier caveat 처리
+  4. **Wave 4 후속 (선택, 학위 논문 Part II)** — Analyzer 위임:
+     - a05_01 (AdaptiveMultiAgent) Skeptic over-prune mechanism 정량 (per-query R 분포 + Skeptic veto rate)
+     - a05_07 (AdaptiveDepth) EX 개선 mechanism (uncertainty distribution vs EX 정확도)
+     - a05_08 (Stacked) 2-stage absorption stage-wise 분해 (Tiered 출력 vs Verifier 출력 differential)
+     - Filter design variation 의 R/P/F1 trade-off curve (14 cells scatter)
+
+- **추가 필요 분석** (학위 논문 Part II 진행 시):
+  - **Stacked Filter mechanism deep dive**: a05_08 의 2-stage Tiered → Verifier 흐름 정량 (Tiered prune 노드 vs Verifier 추가 prune 노드 분리)
+  - **EX-optimal Filter design**: a05_07 AdaptiveDepth + 추가 EX-aware 변형 검증 (paper section IV future evidence)
+  - **a05_01 Skeptic mechanism**: 유일한 큰 손실 cell 의 mechanism 분석 (paper §9 Limitation 의 case study)
+  - **Filter design variation per-query**: 14 cells 의 query-level F1 분포 (mechanism_final.md §2 와 cross-reference)
+
+---
+
+## 2026-05-05 (mechanism_final.md per-query 정밀화) — 🎯 §3.5 narrative 4차 정밀화 + α-invariant + schema-complexity-dependent (모든 schema net positive) 추가
+
+- **결정**:
+  1. **(a) Analyzer 산출 수령** — [mechanism_final.md](../notebooks/analysis_results/mechanism_final.md) (F-1 + H-G 17 cells 후속 per-query mechanism 정밀화, 2026-05-05 LLM-free, ₩0):
+     - §2 Filter F1 압축 per-query 분포 (히스토그램 + 변동성 ratio + difficulty 별)
+     - §3 Filter absorption type 분류 (DB / 길이 / gold count / F-1 R 별)
+     - §4 F-1 best α=0.1 vs With-Filter plateau saturation mechanism
+     - §5 paper §3.5 main insight 정량 결론 (per-query mechanism)
+     - §6 잔존 가설 + post-paper future work
+  2. **(b) 🎯 §3.5 narrative 4차 정밀화 — α-invariant + schema-complexity-dependent 추가**:
+     - **❌ 3차 narrative (DECISIONS 2026-05-05 분기 1 확정)**: "Filter dominance single-stage main + Stack-dependent Stage 1 caveat"
+     - **✅ 4차 정밀화 (analyzer mechanism_final.md per-query)**: "**Filter dominance: single-stage Filter precision absorption — stack-invariant + α-invariant + schema-complexity-dependent (모든 schema net positive)**"
+     - **신규 정량 evidence 3 항목**:
+       - **α 차원 압축 5.0850×** (F-1 spread 0.0724 → WF 0.0142, DECISIONS 2026-05-05 의 6× 와 일치)
+       - **α-invariant** (per-query gain mean +0.6462, 음 gain 1.4% only) — query-invariant 표현은 약함 (per-query std ratio 0.8493, query-level 변동성 보존)
+       - **🆕 schema-complexity-dependent**: DB 별 gain spread **0.6058** (european_football +0.82 vs toxicology +0.22) — F-1 F1 낮은 schema 일수록 Filter 더 결정적, 단 모든 DB net positive
+  3. **(c) Per-query mechanism 정밀화 (mechanism_final.md §2-§4)**:
+
+     | 측정 항목 | 값 | mechanism 함의 |
+     |---|---|---|
+     | α 차원 압축 (plateau-region F1 spread) | F-1 0.0724 → WF 0.0142 = **5.0850×** | 6× 압축 정량 재현 |
+     | Per-query gain mean (α=0.5) | **+0.6462** (P50=+0.6965) | α-invariant boost |
+     | 음 gain count | 22/1534 = **1.4%** | minor case |
+     | Per-query F1 std ratio (α=0.5) | F-1 0.1628 / WF 0.1917 = **0.8493×** | query-level 변동성 보존 |
+     | Difficulty 별 gain | Simple +0.6553 / Mod +0.6240 / Chal +0.5629 | Challenging 에서 다소 작음 |
+     | DB 별 gain spread | **0.6058** (european_football +0.82 vs toxicology +0.22) | schema-complexity-dependent |
+     | F-1 saturation sweet spot α=0.1 \|selected\| | **31.67** (R=0.85, P=0.21, F1=0.34) | sweet spot |
+     | F-1 α=0.5 saturation \|selected\| | 60.84 (R=0.99, P=0.13) | P drift +29.20 |
+     | With-Filter α=0.5 final \|selected\| | **5.82** | Filter prune ~29 노드 |
+     | Filter α=0.5 ΔR | **-0.1194** | R-P trade-off |
+  4. **(d) Mechanism 정밀화 narrative — saturation sweet spot expansion (mechanism_final.md §4)**:
+     - F-1 α=0.1 sweet spot = R 천장 직전 (0.85), P 보존 (0.21), |selected|=31.67
+     - F-1 α=0.5+ saturation = R=0.99 도달 + P drift (|selected|≈61, P=0.13)
+     - **Filter mechanism**: saturation 후 추가된 P drift 노드 ~29 개를 prune → final |selected|≈6, P=0.85
+     - **R 손실 trade-off (ΔR=-0.1194)**: Filter 가 R 약간 손실, 단 P 큰 회복 — paper §3.5 mechanism 정밀화 ("R 회복 X, P 정정 ✓" — raw signal 의 R 손실은 selector saturation 단계에서 이미 결정, Filter 는 P 정정만 담당)
+  5. **(e) paper 본문 정정 사항 (planner Edit 완료)**:
+     - **§3.5 헤더 narrative 갱신** — "Filter dominance single-stage main + Stack-dependent Stage 1" → "stack-invariant + α-invariant + schema-complexity-dependent (모든 schema net positive)"
+     - **§3.5 Per-Query Mechanism 정밀화 sub-section 신설** — 4 항목 (α 차원 압축 / α-invariant / schema-complexity-dependent / saturation sweet spot expansion)
+     - **§8 H-G followup 외 🆕 H-H Query-conditional Filter design 신설** — low priority, post-paper, ΔF1 상한 marginal 예상
+     - **§9 Limitations** — Filter gain schema-dependent (DB spread 0.6058) + 음 gain 22 queries (1.4%) 항목 신설
+     - **§10 Per-Query Mechanism 정밀화 표 신규** — 11-row 정량 + paper §3.5 직접 인용 narrative 한 문단
+
+- **근거**:
+  - **Analyzer 산출**: [notebooks/analysis_results/mechanism_final.md](../notebooks/analysis_results/mechanism_final.md) — 2026-05-05 LLM-free 즉시 위임 결과
+  - **재현 raw 데이터**: notebooks/analysis_results/mechanism_final_*.csv (시각화/검증용)
+  - **재현 스크립트**: src/analysis/analyze_mechanism_final.py (scipy 의존성 없음)
+  - **선행 분석**: alpha_plateau_mechanism.md (1차 H-B/H-F) + alpha_plateau_mechanism_validation.md (2차 보강 H-A/H-D 후)
+  - **Cross-reference**: DECISIONS 2026-05-05 분기 1 확정 (F-1 + H-G 17 cells, 6× 압축) + mechanism_final.md (per-query 5.0850× 일치)
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit 완료)**: §3.5 헤더 narrative + Per-Query Mechanism sub-section + §8 H-H + §9 Filter gain schema-dependent + 음 gain + §10 Per-Query 정량 표 + §12 Changelog
+  - **DECISIONS 본 엔트리** — mechanism_final.md 결과 인용 + paper 5 섹션 정정 사항 명문화
+  - **paper main insight 정밀화 격상**: §3.5 = "Filter dominance: stack-invariant + α-invariant + schema-complexity-dependent" — paper section IV/V draft 작성 시 per-query mechanism 직접 인용 가능
+  - **paper anchor (t_00 F1=0.8657 / EX=0.3377) 변경 X** — narrative 만 정밀화
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — paper §3.5/§8/§9/§10 + DECISIONS 본 엔트리
+  2. **사용자 (즉시)** — paper §3.5 정량 evidence 활용 paper section IV/V draft 작성 가능
+  3. **Wave 4 a05_filter_agentic** (별도 진행 가능) — 직전 turn root 핸드오프 prompt 제공 완료, 본 §3.5 정밀화 narrative 와 무관하게 진행 가능. multi-agent extension 도 동일 absorption mechanism 보이는지 후속 검증 가능
+  4. **Analyzer 후속 (선택, post-paper)** — H-H query-conditional Filter design (low priority, ΔF1 marginal 예상) / 음 gain 22 queries case study (post-paper deep dive)
+
+- **추가 필요 분석** (post-paper future work):
+  - **H-H query-conditional Filter design**: DB / R level 등 schema metadata 로 Filter strength 조정 — DB spread 0.6058 의 일부만 회수 예상
+  - **음 gain 22 queries case study**: 어떤 query 패턴 (특정 DB / specific gold node 분포) 에서 Filter 가 잘못된 prune 수행하는지 — paper §9 Limitation 정량 보강
+  - **Wave 4 a05_filter_agentic 결과 도착 후**: multi-agent Filter 도 동일 α-invariant + schema-complexity-dependent absorption 보이는지 검증 (paper §2.4 Modular design 후속 evidence)
+
+---
+
+## 2026-05-05 (F-1 + H-G alpha sweep 17 cells 완료) — 🎯 분기 1 확정 + Stage 2 Filter precision absorption 결정적 evidence + §3.5 narrative 정정 (2-stage → "Filter dominance" single-stage main + Stack-dependent Stage 1)
+
+- **결정**:
+  1. **(a) Root 측정 완료 (2026-05-05 12:57)**: F-1 + H-G alpha sweep 17 cells (10 신규 F-1 + 7 신규 H-G + 가용 baseline α=0.5 1 cell), LLM-free 합산 ₩0, wall 1h 41min (GPU 0/1 split)
+  2. **(b) 🎯 결과 분기 1 확정 — Stage 2 Filter precision absorption 결정적 evidence**:
+     - F-1 MSTPCSTUnion R spread = **0.2362**, F1 spread = **0.1265** — 사용자 정의 threshold 0.05 의 **4-6배** (분기 1 임계 > 0.05 명확 초과)
+     - H-G AdaptivePCST R spread = **0.2760**, F1 spread = **0.1441** — 분기 1 임계 더 강하게 초과
+     - **함의**: F-1 (no Filter) 에서 plateau **무너짐** → Filter 가 Stage 2 absorption 주체 결정적 evidence
+  3. **(c) 🚨 §3.5 narrative 정정 — 단일 Filter dominance + Stack-dependent Stage 1**:
+     - **❌ 직전 narrative (DECISIONS 2026-05-04 analyzer validation 보강)**: "2-stage absorption" (Stage 1 Extractor MST set saturation + Stage 2 Filter precision)
+     - **✅ 신규 narrative**: **"Filter dominance" single-stage main + Stack-dependent Stage 1**
+     - **🚨 Stage 1 가설 부정 (paper main pipeline 에서)**:
+       - 직전 H-C partial (alpha_plateau_mechanism_validation.md §3) 의 R~0.96 plateau 는 **basic PCST stack 한정 결과**
+       - paper main 의 MSTPCSTUnion 은 plateau 부재 (R 0.7585 → 0.9947, spread 0.2362)
+       - AdaptivePCST 도 plateau 부재 (R 0.5074 → 0.7834, spread 0.2760)
+       - → **Extractor 가 mechanism 주체 X** (basic PCST 한정 효과)
+     - **✅ Stage 2 결정적 evidence**:
+       - Filter 가 plateau-region (α∈[0.2,1.0]) F1 spread **0.0778 → 0.0129** 으로 **6배 압축**
+       - F-1 P 0.12-0.21 → With-Filter P 0.83-0.86 (+0.65~+0.74 평균)
+       - ΔF1 (With-Filter − F-1) α 별: α=0 +0.38, α=0.5 +0.64, α=1.0 +0.65 — α↑ 따라 Filter 효과 증가
+  4. **(d) 5 evidence 결합 갱신 (2-stage → Filter dominance)**:
+     1. **🆕 F-1 MSTPCSTUnion full 11 cells (root 2026-05-05)**: R spread 0.2362, F1 spread 0.1265 — plateau 부재
+     2. **🆕 H-G AdaptivePCST 7 cells (root 2026-05-05)**: R spread 0.2760, F1 spread 0.1441 — plateau 부재 (Stack-dependent Stage 1 입증)
+     3. **H-B ckpt-invariant** (analyzer 2026-05-04): qcond_nl3 r=0.2396 + Enriched r=0.0579, raw signal 독립
+     4. **H-F stability + ordering** (analyzer 2026-05-04): k=20 Jaccard 0.4673 stability + Ordering Spearman 0.6453
+     5. **H-A/H-D 부정** (root 2026-05-04): Enriched ckpt + minmax norm 변형 모두 plateau 원인 X
+     → **단일 Filter precision absorption 이 plateau 의 dominant 주체** — Extractor 의 set saturation 이 아닌 Filter 가 raw signal 차이 (set + ordering) 를 모두 absorb 하여 P 를 ~0.85 로 균일 elevate
+  5. **(e) F-1 MSTPCSTUnion 11 cells 결과 표** (10 신규 + α=0.5 baseline):
+
+     Stack: Enriched Builder + qcond_nl3 ckpt + α + MSTPCSTUnion(score_threshold=0.1) + No Filter + No SQL gen
+
+     | α | R | P | F1 | nodes | vs With-Filter ΔF1 |
+     |---|---|---|---|---|---|
+     | 0.0 | 0.7585 | 0.2047 | 0.3224 | 39.2 | +0.3806 |
+     | 0.1 | 0.8535 | 0.2137 | **0.3418 ★ F1 best** | 42.2 | +0.4462 |
+     | 0.2 | 0.9645 | 0.1728 | 0.2931 | 57.3 | +0.5604 |
+     | 0.3 | 0.9845 | 0.1438 | 0.2509 | 71.2 | +0.6123 |
+     | 0.4 | 0.9905 | 0.1320 | 0.2330 | 78.9 | +0.6309 |
+     | 0.5 (baseline) | 0.9927 | 0.1268 | 0.2249 | 83.1 | +0.6408 |
+     | 0.6 | 0.9939 | 0.1240 | 0.2205 | 85.6 | +0.6433 |
+     | 0.7 | 0.9940 | 0.1224 | 0.2180 | 87.1 | +0.6449 |
+     | 0.8 | 0.9943 | 0.1212 | 0.2161 | 88.1 | +0.6483 |
+     | 0.9 | 0.9945 | 0.1208 | 0.2154 | 88.6 | +0.6485 |
+     | **1.0** | **0.9947 ★ R** | 0.1207 | 0.2153 | 88.8 | +0.6511 |
+  6. **(f) H-G AdaptivePCST F-1 7 cells 결과 표**:
+
+     Stack: Enriched + qcond_nl3 + α + AdaptivePCST(per-q P80, top-K=20) + No Filter + No SQL gen
+
+     | α | R | P | F1 | nodes |
+     |---|---|---|---|---|
+     | 0.0 | 0.5074 | 0.2566 | 0.3408 | 17.0 |
+     | 0.2 | 0.6480 | 0.3142 | 0.4232 | 18.5 |
+     | 0.4 | 0.7017 | 0.3268 | 0.4459 | 19.1 |
+     | 0.5 | 0.7260 | 0.3315 | 0.4552 | 19.2 |
+     | 0.6 | 0.7500 | 0.3392 | 0.4671 | 18.9 |
+     | **0.8** | **0.7834 ★ R** | 0.3511 | **0.4849 ★ F1 best** | 18.7 |
+     | 1.0 | 0.7778 | 0.3428 | 0.4759 | 19.3 |
+  7. **(g) 추가 관찰 / interpretation**:
+     - **F-1 best at α=0.1** (saturation 직전 sweet spot): α≥0.2 부터 R 천장 도달 (0.96+) → 이후는 P drift 만 → F1 monotonic 감소
+     - **MSTPCSTUnion R 천장 0.99 vs AdaptivePCST R 천장 0.78**: Extractor 의 selectivity 차이 — MSTPCSTUnion 은 score_threshold=0.1 만 통과하면 다 포함, AdaptivePCST 는 per-q P80 percentile + top-K=20 cap
+     - **basic PCST H-C partial 의 plateau 가 stack 특화 효과**: basic PCST 는 score_threshold + cost 구조가 R 천장 일찍 도달 → α invariance. 다른 두 extractor 는 천장 늦게 도달 + P 변화 큼 → plateau 부재
+     - **paper §3.5 mechanism narrative 정정 confirm**: 단일 Filter precision absorption 이 plateau 의 dominant 주체, Stage 1 (Extractor) 은 stack 한정
+
+- **근거**:
+  - **Root 측정 결과 (2026-05-05 12:57)**: F-1 + H-G alpha sweep 17 cells, LLM-free ₩0, wall 1h 41min (GPU 0/1 split)
+  - **EXPERIMENT_HISTORY.md "F-1 Alpha Sweep + H-G Adaptive PCST F-1 (2026-05-05)"** — 17 cells 결과 + Stack 별 비교
+  - **EXPERIMENT_CATALOG.md / EXPERIMENT_ID_MIGRATION.md** — 신규 ID 등록
+  - **Configs**: `configs/experiments/s04_ablation/pipeline/t00_f1_alpha_*.yaml` (10 신규 F-1) + `t00_hg_adaptive_f1_alpha_*.yaml` (7 신규 H-G)
+  - **Scripts**: `scripts/run_f1_full_alpha_sweep.sh`, `scripts/run_hg_adaptive_f1_sweep.sh`
+  - **선행 분석 비교**: alpha_plateau_mechanism_validation.md §3 (basic PCST partial 3 cells, F1 spread 0.0039 — stack 한정 결과)
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit)**:
+    - §3.5 mechanism 정정 — "2-stage absorption" → "Filter dominance single-stage main + Stack-dependent Stage 1"
+    - §8 Future Works — H-G ✅ 검증 완료 + basic PCST saturation stack 한정 mechanism deep dive 후보
+    - §9 Limitations — F-1 partial 한계 ✅ 해소 + Stack 분기 narrative 추가
+    - §10 핵심 수치 — F-1 11 cells + H-G 7 cells + Filter 6× 압축 + ΔF1 α 별 행 추가
+  - **presentation_brief (planner Edit)**:
+    - §14 Filter dominance narrative 변경 (이전 2-stage absorption 에서)
+    - 결정적 evidence 한 슬라이드 분량 정리
+  - **DECISIONS 본 엔트리** — 분기 1 확정 + Filter dominance narrative 정정
+  - **paper main contribution narrative 강화**: "QCondGAT main" → "4 module Co-Design + **Filter dominance (single-stage main, Stack-invariant)**"
+  - **paper anchor (t_00 F1=0.8657 / EX=0.3377) 변경 X** — narrative 만 정정
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — paper §3.5/§8/§9/§10 + presentation_brief §14 + DECISIONS 본 엔트리
+  2. **사용자 (즉시)** — Analyzer 위임 prompt (응답 본문) — F-1 + H-G 결과로 §3.5 단일 Filter absorption mechanism 정밀화 + per-query 분포 + saturation 후 P 차이 absorb mechanism
+  3. **Analyzer (사용자 핸드오프 후)** — alpha_plateau_mechanism_validation.md §7 신설 또는 mechanism_final.md 작성
+  4. **Wave 4 a05_filter_agentic** (별도 진행) — 직전 turn root 핸드오프 prompt 제공 완료, 본 §3.5 정정 narrative 와 무관하게 진행 가능
+
+- **추가 필요 분석** (analyzer 위임):
+  - F-1 + H-G 결과로 **단일 Filter absorption mechanism 정밀화** — alpha_plateau_mechanism_validation.md §7 신설 또는 mechanism_final.md 작성
+  - **Filter F1 압축 비율 (plateau-region 6×) per-query 분포** — Filter 가 어떤 query type 에서 가장 강한 absorption 수행하는지
+  - **F-1 best at α=0.1 (saturation 직전 sweet spot) vs With-Filter plateau α∈[0.2,1.0]** — Filter 가 saturation 후 P 차이 absorb 하는 mechanism 정량
+  - **basic PCST vs MSTPCSTUnion vs AdaptivePCST stack 별 Filter dominance 일관성** — paper section IV per-stack heatmap 후보 (post-paper future work, H-G 후속)
+
+---
+
+## 2026-05-04 (사용자 결정 — 옵션 A 채택) — F-1 alpha sweep paper main stack 추가 10 cells + H-G Adaptive PCST F-1 비교 6-11 cells 병렬 진행 승인
+
+- **결정** (사용자 직전 input):
+  1. **(A) F-1 alpha sweep full 측정 root 핸드오프 진행 승인** (옵션 A):
+     - paper main stack (Enriched + QCond + α∈{0~1} + MSTPCSTUnion + **No Filter**) 의 추가 **10 cells** (α=0.5 이미 있음, α∈{0.0, 0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 1.0})
+     - 의도: §3.5 mechanism 정밀화 (2-stage absorption) 의 Stage 1 (Extractor MST set saturation) vs Stage 2 (Filter precision absorption) weight 결정적 evidence 확보
+     - 비용: LLM-free (Filter + SQL gen 둘 다 빠지면 ₩0), 시간 ~1h
+  2. **(B) H-G (Extractor MST set saturation) 검증 — High 우선순위 동시 진행 승인**:
+     - Adaptive PCST F-1 alpha sweep 6-11 cells 비교 — Adaptive 에서 plateau 무너지면 H-G 지지 (Extractor MST 가 mechanism Stage 1 주체 입증)
+     - 비용: LLM-free, ₩0, 시간 ~1h
+  3. **(C) 합산 비용/시간**: ₩0 + ~1-2h (병렬 GPU 0/1 split)
+  4. **(D) 결과 분기 narrative**:
+     - **분기 1**: F-1 R/F1 spread > 0.05 → Filter dominance Stage 2 결정적 evidence (현 §3.5 narrative 강화), H-G 결과로 Stage 1 weight 보강
+     - **분기 2**: F-1 R/F1 spread ≤ 0.01 → Extractor set saturation Stage 1 결정적 evidence (§3.5 mechanism 정정 확정), H-G Adaptive 비교로 MST 의 mechanism 주체 입증
+
+- **근거**:
+  - 사용자 직전 input (2026-05-04, "그래 옵션 A로 진행하자")
+  - 직전 엔트리 (analyzer validation 보강 — 2-stage absorption 정밀화 + 사용자 결정 2 항목 권장 옵션 A + High)
+
+- **영향 범위**:
+  - **Root 핸드오프 prompt 즉시 작성** (응답 본문) — 사용자 직접 root 세션에 붙여넣기
+  - **DECISIONS 본 엔트리** — 옵션 A 채택 confirm
+  - **paper_research_direction.md / DECISIONS 직전 엔트리 narrative 변경 X** — 결과 도착 후 후속 엔트리에서 분기 처리
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시)** — Root 핸드오프 prompt 작성 (응답 본문)
+  2. **사용자 (즉시)** — Root 세션에 prompt 붙여넣기 (cd /home/hyeonjin/thesis_refactored)
+  3. **Root (사용자 핸드오프 후)** — F-1 main stack 10 cells + H-G Adaptive F-1 6-11 cells 병렬 측정 (~₩0, ~1-2h)
+  4. **Planner (root 결과 수령 후)** — §3.5 Stage 1/Stage 2 weight 정량 결정 + paper §2.2/§3.5/§9/§10 narrative 분기 처리 + DECISIONS 후속
+
+- **추가 필요 분석** (root 결과 후):
+  - F-1 main stack 10 cells alpha 곡선 — plateau 유지/무너짐 정량 (R/P/F1 spread)
+  - H-G Adaptive F-1 결과 — MST 와 비교 plateau 차이 정량
+  - §3.5 2-stage absorption mechanism 의 Stage 1/Stage 2 weight 정량 결정 (analyzer 후속, alpha_plateau_mechanism_validation.md §7 신설 또는 mechanism_final.md 작성)
+
+---
+
+## 2026-05-04 (analyzer validation 보강 — H-B ckpt-invariant + H-F ordering effect + 🔥 H-C partial 검증 + §3.5 paper main insight 정밀화) — 단일 Filter absorption → "2-stage absorption: Extractor MST set saturation + Filter precision" + 사용자 결정 2 항목 (F-1 full sweep + H-G 우선순위)
+
+- **결정**:
+  1. **(a) Analyzer 보강 산출 수령** — [alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/alpha_plateau_mechanism_validation.md) (H-A/H-D 부정 + 시나리오 ② 채택 후속, LLM-free 즉시 위임, 2026-05-04, ₩0):
+     - **H-B 보강** — Enriched ckpt per-query Pearson + Spearman correlation
+     - **🔥 H-C partial 검증** — F-1 (no Filter) 가용 cells (3개, α=0/0.5/1.0) R/P/F1
+     - **H-F 보강** — Enriched ckpt top-K Jaccard + ordering vs set 효과 분리
+     - **paper §3.5 main insight 정밀화 권장** — 단일 Filter absorption → 2-stage absorption
+  2. **(b) ✅ H-B 안정성 입증 — ckpt-invariant 반증**:
+     - **Enriched ckpt Pearson r = 0.0579** (P50=0.0739, Spearman 0.0272, Gold-only -0.0713)
+     - **qcond_nl3 baseline**: r=0.2396 → Δ=**-0.1817 (더 강한 반증)**
+     - **함의**: Cosine ↔ GAT raw signal 독립성은 ckpt 무관 (mechanism 안정성). H-B 반증 ckpt-invariant 입증
+  3. **(c) ✅ H-F 안정성 + ordering effect 입증**:
+     - **Enriched k=20 α=0.5↔α=1.0 Jaccard = 0.4673** (qcond_nl3 0.5178 와 stability ✓)
+     - **🆕 common subset Ordering Spearman = 0.6453** — set 동일 영역에서도 ordering 차이 잔존 (1.0 미만)
+     - **2 효과 분리**: α 변화 효과 ≈ **53% set 변경 + 잔여는 ordering 변경**
+     - **함의**: Filter 가 set 차이까지 absorb (50% 다른 set → 동일 final node) + Ordering 차이도 absorb → §3.5 absorption 강한 claim 가능
+  4. **(d) 🔥 H-C partial 검증 — F-1 plateau 거의 유지 (paper main insight 정밀화 trigger)**:
+     - **F-1 (no Filter) 3 cells QCond stack** (basic PCST + no filter):
+       | α | R | P | F1 |
+       |---|---|---|---|
+       | 0.0 (GAT only) | 0.9651 | 0.1287 | 0.2045 |
+       | 0.5 (Ens) | 0.9581 | 0.1304 | 0.2083 |
+       | 1.0 (Cos only) | 0.9662 | 0.1302 | 0.2059 |
+     - **F1 spread = 0.0039, R spread = 0.0080** → F-1 에서도 α 차이 marginal (plateau 거의 유지)
+     - **ΔF1 (With-Filter − F-1) ≈ +0.6300** (avg 3 α): α=0.0 +0.5150 / α=0.5 +0.6554 / α=1.0 +0.6592 — Filter 가 P 0.13 → 0.85 (+0.72) 변환, **단 α-invariant**
+     - **🚨 핵심 함의**: "Filter 가 plateau absorption 주체" 가설은 F-1 plateau 무너짐을 예측하나 실제로는 plateau 유지 → **Filter 단독이 mechanism 주체 X**, Extractor MST set saturation 도 mechanism 의 또 다른 주체
+     - ⚠️ **partial sweep (3 cells)** — full 11 cells 측정으로 결정적 plateau 판정 필요 (사용자 결정 항목 ①)
+  5. **(e) 🎯 §3.5 paper main insight 정밀화 — 단일 Filter absorption → "2-stage absorption"**:
+     - **❌ 1차 narrative (DECISIONS 2026-05-04 H-A/H-D 부정 직후)**: "Modular LLM Filter 가 selector signal 차이를 prune 단계에서 absorb"
+     - **✅ 2차 정밀화 (validation §5.2 권장)**: **"2-stage absorption"**:
+       1. **Stage 1 — Extractor (MST PCST Union) set saturation**: score-threshold seed widening 으로 R 천장 도달 → α 변화가 selector top-K 의 ordering 까지만 영향, Extractor 출력 set 은 거의 동일 (F-1 R spread 0.0080 evidence)
+       2. **Stage 2 — Modular LLM Filter precision absorption**: F-1 P=0.13 → With-Filter P≈0.85 (+0.72), 그 정확도 증가가 α-invariant — Filter 가 selector noise 차이를 set + ordering 모두 absorb
+     - **5 evidence 결합 (H-B ckpt-invariant + H-F stability/ordering + H-C partial + ΔF1 +0.6300 + H-A/H-D 부정)**: 단일 stage 가 아닌 2-stage 결합 mechanism 이 ckpt-invariant 한 plateau 안정성 (ΔF1 ≤ 0.005) 의 paper main insight
+  6. **(f) paper 5 섹션 정정 (planner Edit 완료)**:
+     - **§2.2 H-B/H-F 줄 갱신**:
+       - H-B: "🚫 반증" → "🚫 **반증 ckpt-invariant** (qcond r=0.2396 + Enriched r=0.0579, Δ=-0.18)"
+       - H-F: "🟡 Partial mechanism" → "🟡 **Partial mechanism + ordering effect** (Jaccard 0.4673 stability ✓ + Ordering Spearman 0.6453)"
+     - **§3.5 paper main insight 정밀화** — 2-stage absorption + 5 evidence 결합 + Stage 1/Stage 2 narrative + paper section III/V 직접 인용 narrative
+     - **§8 Future Works** — H-B/H-F 보강 ✅ 완료 + H-C partial 완료 (full 보류, 사용자 결정) + 🆕 **H-G Extractor MST set saturation 신설** (Adaptive PCST F-1 alpha sweep 비교 검증)
+     - **§9 Limitations** — F-1 partial sweep (3 cells) 한계 항목 추가 (full 11 cells 측정 사용자 결정 대기)
+     - **§10 핵심 수치 표** — qcond_nl3 vs Enriched 2 ckpt 비교 + F-1 spread + ΔF1 행 추가
+
+- **🚨 사용자 결정 필요 2 항목**:
+  1. **F-1 alpha sweep 11 cells full 측정 root 핸드오프 작성 여부**:
+     - 측정 stack: Enriched + QCond α∈{0.0~1.0, 0.1 step} + MSTPCSTUnion + **No Filter**, LLM-free
+     - 비용: ₩0 (LLM 없음), 시간 ~1-2h
+     - 결과 분기:
+       - F-1 R/F1 spread > 0.05 → Filter dominance Stage 2 결정적 evidence (현 §3.5 narrative 강화)
+       - F-1 R/F1 spread ≤ 0.01 → Extractor set saturation Stage 1 결정적 evidence (§3.5 mechanism 정정 확정)
+     - **권장**: 진행 (저비용 + 결정적 evidence + paper section III/V draft 작성 시 §3.5 main insight 정량 결론)
+  2. **H-G (Extractor set saturation) post-deadline 우선순위 결정**:
+     - 검증 방법: 다른 Extractor (Adaptive PCST top-K=20 cap) 와 F-1 alpha sweep 비교 — Adaptive 에서 plateau 무너지면 H-G 지지 (Extractor MST 가 mechanism Stage 1 주체 입증)
+     - 비용: Adaptive PCST F-1 alpha sweep 6-11 cells LLM-free, ₩0, ~1-2h
+     - 우선순위 옵션:
+       - High (즉시 진행): paper §3.5 Stage 1 직접 evidence + paper main insight 정량 보강
+       - 中 (post-paper): paper full version future work 후보
+       - 低 (보류): paper 본문 영향 X, backlog 만 보존
+     - **권장**: High (F-1 full sweep 과 함께 진행, ~₩0, ~1-2h 추가)
+
+- **근거**:
+  - **Analyzer 보강 산출**: [notebooks/analysis_results/alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/alpha_plateau_mechanism_validation.md) — 2026-05-04 LLM-free 즉시 위임 결과
+    - §2 H-B 보강 (Enriched ckpt per-query correlation)
+    - §3 H-C partial 검증 (F-1 가용 3 cells R/P/F1 + plateau 거의 유지 판정)
+    - §4 H-F 보강 (Enriched ckpt Jaccard + ordering vs set 분리)
+    - §5 paper §3.5 main insight 정밀화 권장 (2-stage absorption narrative)
+    - §6 잔존 가설 (H-G Extractor MST set saturation 신설 + H-E SQL gen bottleneck)
+  - **선행 분석**: [alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) (qcond_nl3 ckpt 1차 분석)
+  - **F-1 cells 데이터 출처**: `outputs/.../stagewise/no_filter/qcond_{gat_basic, ens_a05, cos_a1}_no_filter/` + `outputs/.../pipeline/enriched_qcond_a05_mst_pcst_union_no_filter/`
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit)**: §2.2 H-B/H-F 줄 + §3.5 2-stage absorption 정밀화 + §8 H-G 신설 + §9 F-1 partial 한계 + §10 ckpt 비교 표 + §12 Changelog
+  - **DECISIONS 본 엔트리** — analyzer 보강 결과 인용 + paper 5 섹션 정정 + 사용자 결정 2 항목
+  - **paper main insight 정밀화 격상**: §3.5 = "2-stage absorption" — paper section III Methodology 의 Filter design + Extractor design narrative 통합 강화 (paper section V Conclusion 신규 narrative)
+  - **paper anchor (t_00 F1=0.8657 / EX=0.3377) 변경 X** — narrative 만 정정
+  - **사용자 결정 의존 후속**: F-1 full sweep + H-G 결과에 따라 §3.5 Stage 1/Stage 2 weight 결정
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — paper 5 섹션 정정 + 본 DECISIONS 엔트리
+  2. **🚨 사용자 (즉시 의사결정 2 항목)** — F-1 full sweep + H-G 우선순위 결정 (응답 본문 권장 옵션 제시)
+  3. **Root (사용자 승인 후)** — F-1 alpha sweep 11 cells + H-G Adaptive PCST F-1 alpha sweep 6-11 cells (모두 LLM-free, ₩0, ~2-3h 합산)
+  4. **Analyzer (root 결과 도착 후)** — F-1 full sweep + H-G 결과로 §3.5 Stage 1/Stage 2 weight 정밀화 분석 (alpha_plateau_mechanism_validation.md 후속 §7 또는 신규 mechanism_final.md)
+  5. **Wave 4 a05_filter_agentic** (별도 진행) — root 핸드오프 prompt 직전 turn 제공 완료, 본 §3.5 mechanism 정밀화 narrative 와 무관하게 진행 가능
+
+- **추가 필요 분석** (F-1 full sweep + H-G 결과 후):
+  - F-1 full sweep 결과로 Stage 1 (Extractor set saturation) vs Stage 2 (Filter precision) weight 정량
+  - H-G Adaptive PCST 비교로 Extractor MST 의 mechanism 주체 입증/반증
+  - paper section III Methodology 의 Filter + Extractor design 통합 narrative draft (§3.5 직접 인용)
+  - paper section V Conclusion 신규 narrative — "2-stage absorption mechanism = Modular LLM Filter + Extractor co-design 의 robustness 보장"
+
+---
+
+## 2026-05-04 (H-A/H-D 검증 완료) — 🚨 두 가설 모두 부정 + 🎯 시나리오 ② 정식 채택 (옵션 1 + 옵션 4 통합 narrative) + paper main contribution 정정 확정
+
+- **결정**:
+  1. **(a) H-A 가설 부정 (Distribution shift 해소 효과 미미)**:
+     - **Stack**: Enriched Builder + `best_gat_enriched.pt` (Enriched features 학습) + query_conditioned=False (ckpt 정합) + α∈{0.0~1.0} 11 cells + MSTPCSTUnion + XiYan(GLM, 3 ex) + SQL gen
+     - **F1 plateau α∈[0.2, 1.0] 그대로 유지** (9/10 cells within ±0.01 of best F1=0.8651)
+     - **Best F1: α=1.0 → 0.8651** (기존 qcond_nl3 의 α=1.0 F1=0.8664 와 noise 범위 ΔF1=-0.0013)
+     - **Best EX: α=0.8 → 0.3429** (기존 α=1.0 EX=0.3475 와 plateau 동등 ΔEX=-0.0046)
+     - **α=0 (GAT only) 약간 회복** (F1=0.7195, ΔF1=+0.0165 vs qcond_nl3 GAT only 0.7030) — 단 plateau 패턴 유지
+     - **결론**: Distribution match 해소가 GAT contribution 회복 못 함 → distribution shift 가 plateau 의 main 원인 X
+  2. **(b) H-D 가설 부정 (간접, α=0.5 single-point)**:
+     - **norm 변형 결과**: minmax (default) 0.8657 > none 0.8553 > zscore 0.8325
+     - **norm 제거 시 F1 -0.0104 / EX -0.0163** (normalization 자체 효과 있음, 제거 시 손실)
+     - **z-score 가장 나쁨 (ΔF1 -0.0332, ΔEX -0.0496)** — GAT/Cosine score 분포 가정 부적합
+     - **결론**: minmax 가 best, 다른 norm 변경이 plateau 의 원인 X (단 α=0.5 single-point 만 측정, strong 결론 X)
+  3. **(c) 🎯 시나리오 ② 정식 채택 — 옵션 1 + 옵션 4 통합 narrative 확정**:
+     - **❌ 기존**: "QCondGAT main contribution"
+     - **✅ 신규 (정식)**: **"4 module Co-Design + Filter dominance"**
+     - **Selector contribution 재서술**: "**GAT-floor (α=0 손실 -0.16 으로 baseline robustness 보장) + Cosine-ceiling (α≥0.2 plateau)**"
+     - **Filter contribution 격상**: first-class stage, F1 driver (P 회복 +0.6408), EX 에는 marginal (+0.0085) — F1/EX divergence main insight
+     - **§3.5 Filter ↔ Selector Absorption 정식 채택** — H-A/H-D 부정으로 §3.5 absorption mechanism 이 plateau 의 유일한 합리적 설명 (raw signal 독립 Pearson 0.2396 + top-20 Jaccard 0.5178 + 최종 plateau ΔF1 ≤ 0.005 paradox)
+  4. **(d) 13 cells 결과 표 (H-A 11 + H-D 2)**:
+
+     **H-A 11 cells (Enriched ckpt, query_conditioned=False, α∈{0.0~1.0})**:
+     | α | R | P | F1 | EX | 기존 (qcond_nl3) F1 | ΔF1 |
+     |---|---|---|---|---|---|---|
+     | 0.0 (GAT only) | 0.6993 | 0.7408 | **0.7195** | 0.2177 | 0.7030 | **+0.0165** |
+     | 0.1 | 0.7655 | 0.7992 | 0.7820 | 0.2432 | 0.7880 | -0.0060 |
+     | 0.2 | 0.8586 | 0.8547 | 0.8566 | 0.3188 | 0.8535 | +0.0031 |
+     | 0.3 | 0.8714 | 0.8555 | 0.8634 | 0.3292 | 0.8632 | +0.0002 |
+     | 0.4 | 0.8740 | 0.8557 | 0.8648 | 0.3331 | 0.8639 | +0.0009 |
+     | 0.5 | 0.8748 | 0.8529 | 0.8637 | 0.3403 | 0.8657 | -0.0020 |
+     | 0.6 | 0.8734 | 0.8533 | 0.8632 | 0.3403 | 0.8638 | -0.0006 |
+     | 0.7 | 0.8734 | 0.8518 | 0.8625 | 0.3396 | 0.8629 | -0.0004 |
+     | **0.8** | 0.8742 | 0.8529 | 0.8634 | **0.3429 ★** | 0.8644 | -0.0010 |
+     | 0.9 | 0.8762 | 0.8526 | 0.8642 | 0.3383 | 0.8639 | +0.0003 |
+     | **1.0 (Cosine only)** | 0.8767 | 0.8538 | **0.8651 ★** | 0.3390 | 0.8664 | -0.0013 |
+
+     **H-D 2 cells (norm 변형, α=0.5 single-point)**:
+     | Variant | R | P | F1 | EX | ΔF1 vs t_00 | ΔEX vs t_00 |
+     |---|---|---|---|---|---|---|
+     | t_00 (minmax, default) | 0.8734 | 0.8581 | **0.8657** | **0.3377** | (anchor) | (anchor) |
+     | norm_none | 0.8544 | 0.8562 | 0.8553 | 0.3214 | -0.0104 | -0.0163 |
+     | norm_zscore | 0.8118 | 0.8542 | 0.8325 | 0.2881 | **-0.0332** | **-0.0496** |
+  5. **(e) plateau 의 진짜 원인 — 미해결, analyzer 큐 (H-B/H-C/H-F 보강)**:
+     - **H-B re-validate**: 직전 alpha_plateau_mechanism.md 에서 r=0.2396 → redundancy 가설 반증. 단 H-A enriched ckpt 의 per-query correlation 도 동일 패턴인지 추가 검증 필요 (mechanism 안정성)
+     - **H-C Filter dominance 정량**: F-1 (no Filter) ablation 결과 F1 -0.6408 vs EX -0.0085 — Filter 가 plateau absorption 주체 가설 강력. F-1 alpha sweep LLM-free 검증으로 Filter 빠질 때 alpha 효과 격차 정량 필요
+     - **H-F re-validate**: 직전 alpha_plateau_mechanism.md 에서 k=20 Jaccard 0.5178 → partial mechanism. H-A enriched ckpt 의 top-20 Jaccard 도 동일 패턴인지 + α 변화가 top-20 ordering vs set 자체에 미치는 효과 분리 필요
+  6. **(f) paper 본문 정정 사항 (planner Edit 즉시)**:
+     - **§1 Selector 결정 narrative**: "QCondGAT main" → "GAT-floor + Cosine-ceiling + Filter dominance"
+     - **§2.2 Selector contribution**: H-A 11 cells 결과 추가 + H-A 가설 부정 + 시나리오 ② 정식 채택
+     - **§3.5 Filter ↔ Selector Absorption**: 정식 paper main insight 채택 표기 (이미 정량 evidence section 격상됨, 본 H-A/H-D 부정으로 mechanism 유일한 합리적 설명 정식 확정)
+     - **§8 Future Works**: H-A/H-D ✅ 완료 표기 + H-B/H-C/H-F analyzer 큐 새 우선순위
+     - **presentation_brief §14**: H-A/H-D ablation sub-section 신설 + 시나리오 ② 채택 narrative
+
+- **근거**:
+  - **H-A 11 cells**: `outputs/experiments/s04_ablation/pipeline/t00_enriched_ckpt_alpha_0[0~10]/`
+  - **H-D 2 cells**: `outputs/experiments/s04_ablation/pipeline/t00_norm_{none, zscore}/`
+  - **EXPERIMENT_HISTORY.md "H-A Distribution Shift 검증 + H-D Score Normalization 변형 (2026-05-04, 13 cells)"** L2155~ — 13 cells 결과 + 시나리오 ② 채택 narrative + 비용 ~₩9,928 / 3h 10min
+  - **코드 fix**: `src/modules/selectors/ensemble_selector.py:33-65, 295-318` — `score_normalization` 파라미터 추가 (modes: minmax / none / zscore)
+  - **비교 baseline**: 기존 alpha sweep (qcond_nl3) `outputs/.../t00_alpha_*/`
+  - **Cross-reference**: alpha_plateau_mechanism.md (직전 analyzer 산출 — H-B 반증 + H-F partial mechanism)
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit)**: §1 Selector 결정 narrative + §2.2 H-A 결과 + §3.5 정식 채택 격상 + §8 H-A/H-D ✅ + §10 H-A 결과 추가 + §12 Changelog
+  - **presentation_brief (planner Edit)**: §14 H-A/H-D ablation sub-section 신설
+  - **DECISIONS 본 엔트리** — H-A/H-D 부정 + 시나리오 ② 채택 + 옵션 1+4 통합 narrative 확정
+  - **paper main contribution narrative 확정 (D-day 발표 후 정식)**: "QCondGAT main" → "4 module Co-Design + Filter dominance"
+  - **paper anchor (t_00 F1=0.8657 / EX=0.3377) 변경 X** — narrative 만 정정
+  - **§3.5 Filter ↔ Selector Absorption 의 paper main insight 지위 정식 확정**: H-A/H-D 부정 + alpha_plateau_mechanism.md (Pearson 0.2396 + Jaccard 0.5178) + plateau ΔF1 ≤ 0.005 paradox = mechanism 유일한 합리적 설명
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시)** — paper §1/§2.2/§3.5/§8/§10 + presentation_brief §14 + DECISIONS 본 엔트리
+  2. **사용자 (즉시)** — Analyzer 위임 prompt 3 항목 (H-B/H-C/H-F) 사용자가 직접 analyzer 세션 열고 붙여넣기 (planner 가 정확한 prompt 제공 — 응답 본문)
+  3. **Analyzer (사용자 핸드오프 후)** — H-B per-query correlation re-validate (H-A enriched ckpt) + H-C Filter dominance 정량 (F-1 alpha sweep LLM-free) + H-F top-K=20 cap re-validate (H-A enriched ckpt + ordering vs set 분리)
+  4. **Root (선택, post-Wave 4)** — Wave 4 a05_filter_agentic GLM 통일 14 cells 진행 (사용자 직전 핸드오프 prompt 제공 완료, H-A/H-D 결과 + EXPERIMENT_HISTORY.md 갱신 후)
+
+- **추가 필요 분석** (post-analyzer H-B/H-C/H-F 결과 후):
+  - H-A enriched ckpt 의 per-query correlation 동일 패턴 확인 → mechanism 안정성 정식 입증
+  - F-1 (no Filter) alpha sweep 결과 — Filter 빠질 때 alpha plateau 무너지면 §3.5 Filter absorption 직접 evidence 강화
+  - Top-20 ordering vs set 효과 분리 → H-F partial mechanism 정확화
+  - **Wave 4 결과 도착 후**: Best Filter variant 가 paper main anchor (F1=0.8673) 갱신 시 paper §2.4 Modular design narrative 정정 (planner 분기)
+
+---
+
+## 2026-05-04 (analyzer 결과 인용 — H-B 반증 + H-F partial mechanism + H10 정량 정당화) — paper §2.2/§3.5/§8/§9/§10 narrative 보강 + Filter absorption 정량 evidence 격상
+
+- **결정**:
+  1. **(a) Analyzer 산출 수령** — [alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) (LLM-free 즉시 위임 결과, 2026-05-04, ₩0):
+     - **H-B per-query Cosine ↔ GAT correlation 분석** (Pearson + Spearman, difficulty 분해)
+     - **H-F top-K Jaccard overlap 분석** (k=10/20/30/50, α∈{0.0, 0.5, 1.0})
+     - **11 α × 3 difficulty EX/F1 heatmap** + Adaptive α oracle EX 상한
+  2. **(b) 🚫 H-B 가설 반증 (정량 결과)**:
+     - per-query Pearson r = **0.2396** (P25/P50/P75 = 0.0791/0.2345/0.4099)
+     - Spearman ρ = 0.2643
+     - Difficulty 별: Simple=0.2647 / Moderate=0.1994 / Challenging=0.2078 (모두 r < 0.3)
+     - Gold node 한정 Pearson r = **0.0691** (gold 거의 무상관)
+     - **함의**: redundancy 가설 약함 — Cosine ↔ GAT 는 raw level 에서 충분히 독립적. selector_analysis HISTORY §4 의 GAT P80 rescue +214 gold (2.1% 순기여) 와 일관 (low-correlation tail 에서 GAT 가 cosine 놓침을 rescue)
+  3. **(c) 🟡 H-F 가설 Partial mechanism (정량 결과)**:
+     - k=20 α=0.5 ↔ α=1.0 Jaccard = **0.5178** (top-20 약 50% 만 일치)
+     - k=10 → 0.4196 / k=30 → 0.5990 / k=50 → 0.7522 (saturation 시작)
+     - α=0 ↔ α=1 (extreme blend) k=20 Jaccard = 0.3236 (top-20 ⅓ 만 동일)
+     - **함의**: top-K cap 만으로 plateau 설명 불가 — selector signal 차이가 top-20 set 차이까지 명확히 전달
+  4. **(d) 🚀 H-B + H-F 결합 paradox = Filter absorption 직접 evidence (paper §3.5 main insight 격상)**:
+     - **raw signal 독립 (Pearson r=0.2396) + top-20 set 약 50% 차이 (Jaccard=0.5178)** **그럼에도** **최종 F1/EX plateau α∈[0.3,1.0] (8 cells ΔF1 ≤ 0.005)**
+     - = **Modular LLM Filter 가 selector signal 차이를 prune 단계에서 absorb 하는 직접 evidence**
+     - paper §3.5 Filter ↔ Selector Absorption 의 정량 mechanism evidence — paper section III/V 직접 인용 narrative 격상
+  5. **(e) 🔬 H10 (Adaptive α) 정량 정당화 — 사용자 보류 결정 사후 정당성**:
+     - oracle adaptive α (Simple α=1.0 / Moderate α=0.5 / Challenging α=1.0) EX = **0.3520**
+     - 단일 best α=1.0 EX = 0.3475 → **ΔEX = +0.0046** (LLM noise band ±0.005 안)
+     - 기존 t_00 (α=0.5) EX = 0.3377 → ΔEX = +0.0143 (단 difficulty 분류기 noise 미고려, oracle 상한)
+     - **결론**: post-paper 재검토 가치 marginal — 사용자 2026-05-04 의사결정 (D 보류) 정량 정당화. backlog 보존 단 paper full version 우선순위 X
+  6. **(f) paper_research_direction.md 5 섹션 정정 (planner Edit 완료)**:
+     - **§2.2 H-B 줄 갱신**: "Medium 타당성" → "🚫 **반증** (per-query Pearson r = 0.2396, 모든 difficulty r<0.3, gold-only 0.0691)" + cross-ref [alpha_plateau_mechanism.md §2.1](../notebooks/analysis_results/alpha_plateau_mechanism.md)
+     - **§2.2 H-F 줄 갱신**: "Medium" → "🟡 **Partial mechanism** (k=20 Jaccard 0.5178, k=50 0.7522 saturation)" — top-K cap 단독 plateau 설명 불가
+     - **§2.2 신규 paragraph**: "H-B 반증 + H-F partial mechanism 결과 (analyzer 2026-05-04)" — paradox 명문화
+     - **§3.5 정량 evidence section 격상**: H-B + H-F 결합 paradox + 9-row 정량 evidence 표 (Pearson 0.2396, Jaccard 0.5178, F1 plateau, oracle adaptive ΔEX +0.0046) + paper section III/V 직접 인용 narrative
+     - **§8 H10 보류 항목 갱신**: oracle adaptive α ΔEX = +0.0046 정량 근거 + post-paper 재검토 가치 marginal 명시
+     - **§9 Limitations Future work H10 항목**: 정량 근거 link ([alpha_plateau_mechanism.md §6.2](../notebooks/analysis_results/alpha_plateau_mechanism.md))
+     - **§10 핵심 수치 표**: 6 가설 검증 큐 H-B/H-F 완료 표기 (✅) + Filter ↔ Selector Absorption 정량 evidence 표 신규 (9-row, Pearson + Jaccard + F1 plateau + oracle adaptive ΔEX)
+
+- **근거**:
+  - **Analyzer 산출**: [notebooks/analysis_results/alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) — 2026-05-04 LLM-free 즉시 위임 결과
+    - §2 H-B per-query correlation (Pearson + Spearman + difficulty + gold-only)
+    - §3 H-F top-K Jaccard overlap (k=10/20/30/50, α∈{0.0, 0.5, 1.0})
+    - §4 11 α × 3 difficulty EX/F1 heatmap
+    - §5 paper §2.2/§3.5 narrative 영향 분석
+    - §6 H10 backlog 데이터 (Difficulty 별 best α 곡선 + oracle adaptive EX 상한)
+  - **Cross-reference**: selector_analysis HISTORY §4 (Cosine ROC-AUC 0.741 vs Ensemble 0.776 / PR-AUC +0.074 / GAT P80 rescue +214 순기여 / Structural ceiling 38.9%)
+
+- **영향 범위**:
+  - **paper_research_direction.md (planner Edit 완료)**: §2.2 H-B/H-F 줄 + 신규 paragraph, §3.5 정량 evidence section 격상, §8 H10 정량 정당화, §9 Limitations Future work, §10 신규 정량 evidence 표 + Changelog
+  - **DECISIONS 본 엔트리** — analyzer 결과 인용 + paper 정정 사항 명문화
+  - **paper main insight 정량 격상**: §3.5 Filter ↔ Selector Absorption = paper main contribution 핵심 — raw signal 통계 + top-K set 통계 + 최종 F1/EX plateau 결합 paradox 가 직접 evidence
+  - **사용자 H10 보류 결정 (D, 2026-05-04) 사후 정당화**: oracle adaptive α ΔEX=+0.0046 ≤ LLM noise band → 정량 근거 확보
+  - **root 진행 중 H-A/H-D 결과의 base 작업**: H-A 결과 분기 narrative (회복 vs 회복 X) 의 base 보강 — 본 정정으로 §3.5 absorption mechanism evidence 가 H-A 결과 와 무관하게 paper main insight 로 살아남음
+
+- **에스컬레이션 필요 여부**:
+  1. **Planner (즉시 완료)** — paper_research_direction.md 5 섹션 정정 + 본 DECISIONS 엔트리
+  2. **사용자 (즉시)** — 본 정정 사항 confirm + H-A/H-D root 결과 도착 후 narrative 분기 처리 합의 (회복 시 기존 narrative 강화 path / 회복 X 시 옵션 1+4 통합 path)
+  3. **Root (진행 중, 별도)** — H-A `best_gat_enriched.pt` alpha sweep 11 cells + H-D normalization 변형 1-2 cells (사용자 직전 prompt 전달 완료)
+  4. **Planner (root 결과 수령 후)** — H-A 결과 narrative 분기 처리 + DECISIONS 후속 + paper §2.2 narrative 분기 (회복 vs 회복 X 결과 반영)
+  5. **Analyzer 후속 (post-H-A 결과)** — H-A 결과 시 새 ckpt alpha sweep 의 per-query correlation + Jaccard 재측정 (mechanism 안정성 확인)
+
+- **추가 필요 분석** (post-H-A/H-D 결과 후):
+  - H-A 결과 도착 시 alpha_plateau_mechanism.md §2/§3 mechanism 안정성 확인 — 새 ckpt 에서 Pearson + Jaccard 동일 패턴 인지
+  - H-D 결과 도착 시 normalization 변형 별 Pearson + Jaccard 재측정 (norm 효과가 raw 단계 통계에도 영향?)
+  - paper section III/V draft 작성 시 §3.5 정량 evidence 표 직접 인용 (Pearson 0.2396, Jaccard 0.5178, plateau ΔF1 ≤ 0.005, oracle adaptive ΔEX +0.0046)
+  - **H10 backlog 보존 데이터** (alpha_plateau_mechanism.md §6.1) — post-paper 재검토 시 base 데이터로 활용 가능
+
+---
+
 ## 2026-05-04 (사용자 의사결정 — Alpha Sweep narrative resolution 확정) — 단-중기 채택 (옵션 4 + 옵션 2 H-A + 옵션 1 보강) + H-A/H-D root 승인 + Adaptive α (H10) 장기 보류
 
 - **결정** (사용자 직전 input):
@@ -62,23 +6122,23 @@
 
 - **결정**:
   1. **(a) Alpha sweep 11 cells (α∈{0.0~1.0}, 0.1 step) 결과 확정 — F1 plateau α∈[0.3,1.0]**:
-     | α | R | P | F1 | EX |
-     |---|---|---|---|---|
-     | 0.0 (GAT only) | 0.6549 | 0.7587 | **0.7030 ⚠️** | **0.2086 ⚠️** |
-     | 0.1 | 0.7502 | 0.8299 | 0.7880 | 0.2503 |
-     | 0.2 | 0.8492 | 0.8579 | 0.8535 | 0.3240 |
-     | 0.3 | 0.8671 | 0.8595 | 0.8632 | 0.3383 |
-     | 0.4 | 0.8708 | 0.8572 | 0.8639 | 0.3351 |
-     | **0.5** (★ t_00) | 0.8734 | 0.8581 | **0.8657** | **0.3377** |
-     | 0.6 | 0.8742 | 0.8537 | 0.8638 | 0.3351 |
-     | 0.7 | 0.8728 | 0.8533 | 0.8629 | 0.3364 |
-     | 0.8 | 0.8752 | 0.8539 | 0.8644 | 0.3370 |
-     | 0.9 | 0.8751 | 0.8530 | 0.8639 | 0.3325 |
-     | **1.0 (Cosine only)** | **0.8761** | 0.8570 | **0.8664 ★** | **0.3475 ★** |
-     - **F1 plateau α∈[0.3,1.0]**: 8 cells 내 ΔF1 ≤ 0.005 (LLM noise band ±0.003~0.005 와 일치)
-     - **EX best at α=1.0 (Cosine only)**: 0.3475 vs t_00 0.3377 (ΔEX=+0.0098 약우세)
-     - **F1 best at α=1.0**: 0.8664 vs t_00 0.8657 (ΔF1=+0.0007 noise)
-     - **α=0 (GAT only) 만 큰 손실** (F1 -0.16, EX -0.13) — GAT 가 noise floor 역할
+		| α | R | P | F1 | EX |
+		| --- | --- | --- | --- | --- |
+		| 0.0 (GAT only) | 0.6549 | 0.7587 | **0.7030 ⚠️** | **0.2086 ⚠️** |
+		| 0.1 | 0.7502 | 0.8299 | 0.7880 | 0.2503 |
+		| 0.2 | 0.8492 | 0.8579 | 0.8535 | 0.3240 |
+		| 0.3 | 0.8671 | 0.8595 | 0.8632 | 0.3383 |
+		| 0.4 | 0.8708 | 0.8572 | 0.8639 | 0.3351 |
+		| **0.5** (★ t_00) | 0.8734 | 0.8581 | **0.8657** | **0.3377** |
+		| 0.6 | 0.8742 | 0.8537 | 0.8638 | 0.3351 |
+		| 0.7 | 0.8728 | 0.8533 | 0.8629 | 0.3364 |
+		| 0.8 | 0.8752 | 0.8539 | 0.8644 | 0.3370 |
+		| 0.9 | 0.8751 | 0.8530 | 0.8639 | 0.3325 |
+		| **1.0 (Cosine only)** | **0.8761** | 0.8570 | **0.8664 ★** | **0.3475 ★** |
+	 - **F1 plateau α∈[0.3,1.0]**: 8 cells 내 ΔF1 ≤ 0.005 (LLM noise band ±0.003~0.005 와 일치)
+	 - **EX best at α=1.0 (Cosine only)**: 0.3475 vs t_00 0.3377 (ΔEX=+0.0098 약우세)
+	 - **F1 best at α=1.0**: 0.8664 vs t_00 0.8657 (ΔF1=+0.0007 noise)
+	 - **α=0 (GAT only) 만 큰 손실** (F1 -0.16, EX -0.13) — GAT 가 noise floor 역할
   2. **(b) 🚨 사용자 우려 — paper main contribution narrative 충돌 위험**:
      - 현재 narrative ("**QCondGAT 가 main contribution**") 가 α plateau 발견으로 약화
      - α=1.0 anchor 변경 시 본 연구 방향 (End-to-End Co-Design **with GAT-based selector**) 와 충돌

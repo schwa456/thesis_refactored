@@ -43,3 +43,4 @@ speed_test.py
 src/utils/mschema
 .claude/*
 ~/thesis_refactored/related_works/*
+*.sh
