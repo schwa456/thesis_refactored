@@ -17,6 +17,18 @@ config yaml 의 s06 전용 키 (training):
   loss_type: 'bce' | 'listnet' | 'bce_listnet'
   anti_collapse_weight: float (default 0.0)
   anti_collapse_tau_max: float (default 0.85)
+
+  # Phase 3 #3 (Direct AC on GAT output, 2026-05-06):
+  #   AC loss 가 model output (skip + fusion 후) 에 적용되면 skip path 가 우회 가능.
+  #   target='gat_out_L_last' 시 forward hook 으로 마지막 conv layer column output 을
+  #   capture → AC loss 그 위에 적용. main GAT path gradient 회복 의도.
+  anti_collapse_target: 'fusion' | 'gat_out_L_last'   # default 'fusion' (Phase 2 동치)
+
+  # Phase 3 #4 (Layer-wise LR, 2026-05-06):
+  #   GAT path (HeteroConv) 의 LR 을 base_lr × gat_lr_multiplier 로 별도 설정. main GAT path
+  #   gradient 가 1/10 로 축소된 mechanism null finding 의 직접 대응.
+  optimizer_layer_wise_lr: bool (default false)
+  gat_lr_multiplier: float (default 1.0)
 """
 import os
 from pathlib import Path
@@ -213,6 +225,32 @@ def run_train(config_path: str):
         ),
         diameter_path=diameter_path_cfg,
         diameter_dict=diameter_dict_cfg,
+        supernode_edge_direction=cfg["model"].get(
+            "supernode_edge_direction", "bidirectional"
+        ),
+        supernode_topk=cfg["model"].get("supernode_topk", None),
+        supernode_topk_criterion=cfg["model"].get("supernode_topk_criterion", "raw"),
+        supernode_threshold_mode=cfg["model"].get(
+            "supernode_threshold_mode", "top_k"
+        ),
+        supernode_threshold_value=cfg["model"].get(
+            "supernode_threshold_value", None
+        ),
+        supernode_score_normalization=cfg["model"].get(
+            "supernode_score_normalization", "minmax"
+        ),
+        # Mitigation v2 (DECISIONS 2026-05-07 §1(C)/(D)) — backward compat default OFF.
+        drop_message_p=cfg["model"].get("drop_message_p", 0.0),
+        use_layernorm_pre_softmax=cfg["model"].get("use_layernorm_pre_softmax", False),
+        aggregation_type=cfg["model"].get("aggregation_type", "mean"),
+        # Mitigation V4 (DECISIONS 2026-05-11) — architectural intervention.
+        gat_layer_type=cfg["model"].get("gat_layer_type", "standard"),
+        softplus_symmetric_norm=cfg["model"].get("softplus_symmetric_norm", True),
+        # Mitigation V5 (DECISIONS 2026-05-12 + 2026-05-13) — Tier 1+2 4-direction.
+        gcnii_beta_lambda=cfg["model"].get("gcnii_beta_lambda", 0.5),
+        aero_hop_attention=cfg["model"].get("aero_hop_attention", False),
+        aero_cumulative_attention=cfg["model"].get("aero_cumulative_attention", False),
+        aero_cumulative_decay=cfg["model"].get("aero_cumulative_decay", 1.0),
     ).to(device)
 
     logger.info(
@@ -221,7 +259,16 @@ def run_train(config_path: str):
         f"α={cfg['model'].get('initial_residual_alpha', 0.0)}, "
         f"JK={cfg['model'].get('jumping_knowledge', 'none')}, "
         f"nl_mode={cfg['model'].get('num_layers_mode', 'fixed')}, "
-        f"|diameter_dict|={len(gat_model.diameter_dict)}"
+        f"|diameter_dict|={len(gat_model.diameter_dict)} | "
+        f"mitV2: drop_msg_p={cfg['model'].get('drop_message_p', 0.0)}, "
+        f"layernorm_pre_softmax={cfg['model'].get('use_layernorm_pre_softmax', False)}, "
+        f"aggr={cfg['model'].get('aggregation_type', 'mean')} | "
+        f"mitV4: gat_layer_type={cfg['model'].get('gat_layer_type', 'standard')}, "
+        f"softplus_sym_norm={cfg['model'].get('softplus_symmetric_norm', True)} | "
+        f"mitV5: gcnii_beta_lambda={cfg['model'].get('gcnii_beta_lambda', 0.5)}, "
+        f"aero_hop_attention={cfg['model'].get('aero_hop_attention', False)}, "
+        f"aero_cumulative_attention={cfg['model'].get('aero_cumulative_attention', False)}, "
+        f"aero_cumulative_decay={cfg['model'].get('aero_cumulative_decay', 1.0)}"
     )
 
     classifier_types = ["table", "column", "fk_node"]
@@ -263,11 +310,45 @@ def run_train(config_path: str):
 
     wandb.watch(gat_model, log="all")
 
-    optimizer = torch.optim.AdamW(
-        list(gat_model.parameters()) + list(classifier_heads.parameters()),
-        lr=cfg["training"]["learning_rate"],
-        weight_decay=cfg["training"]["weight_decay"],
-    )
+    # Phase 3 #4 (Layer-wise LR): GAT path (HeteroConv) 만 base_lr × multiplier.
+    base_lr = float(cfg["training"]["learning_rate"])
+    weight_decay = float(cfg["training"]["weight_decay"])
+    use_layerwise = bool(cfg["training"].get("optimizer_layer_wise_lr", False))
+    gat_lr_multiplier = float(cfg["training"].get("gat_lr_multiplier", 1.0))
+
+    if use_layerwise and gat_lr_multiplier != 1.0:
+        # 'convs' 모듈 (HeteroConv 의 ModuleList) 산하 파라미터만 GAT path. 나머지 (lin_dict /
+        # out_lin_dict / skip_dict / pairnorms / fusion_head / query_encoder / classifier_heads)
+        # 는 base_lr 그대로.
+        gat_params, other_gat_params = [], []
+        for name, param in gat_model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if name.startswith("convs.") or ".convs." in name:
+                gat_params.append(param)
+            else:
+                other_gat_params.append(param)
+        cls_params = [p for p in classifier_heads.parameters() if p.requires_grad]
+        param_groups = [
+            {"params": gat_params, "lr": base_lr * gat_lr_multiplier,
+             "name": "gat_convs"},
+            {"params": other_gat_params, "lr": base_lr,
+             "name": "gat_other"},
+            {"params": cls_params, "lr": base_lr, "name": "classifier_heads"},
+        ]
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
+        logger.info(
+            f"[s06] optimizer (layer-wise LR): gat_convs={len(gat_params)} "
+            f"params @ lr={base_lr * gat_lr_multiplier:.2e} (×{gat_lr_multiplier}), "
+            f"gat_other={len(other_gat_params)} params @ lr={base_lr:.2e}, "
+            f"classifier_heads={len(cls_params)} params @ lr={base_lr:.2e}"
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            list(gat_model.parameters()) + list(classifier_heads.parameters()),
+            lr=base_lr,
+            weight_decay=weight_decay,
+        )
 
     # Loss 설정
     loss_type = cfg["training"].get("loss_type", "bce")
@@ -278,9 +359,35 @@ def run_train(config_path: str):
         tau_max=float(cfg["training"].get("anti_collapse_tau_max", 0.85))
     ).to(device)
 
+    # Phase 3 #3 (Direct AC on GAT output): AC loss target 선택.
+    #   'fusion'         (default) — node_embs (model.forward output, skip + fusion 후)
+    #   'gat_out_L_last' — 마지막 HeteroConv layer 의 column 출력 (skip + fusion 전 raw GAT)
+    anti_collapse_target = str(cfg["training"].get("anti_collapse_target", "fusion"))
+    if anti_collapse_target not in ("fusion", "gat_out_L_last"):
+        raise ValueError(
+            f"anti_collapse_target must be 'fusion' or 'gat_out_L_last', got {anti_collapse_target!r}"
+        )
+    # forward hook capture container — 매 forward 마다 갱신. backward graph 에 detach 안 함.
+    _gat_hook_capture: dict = {"column": None}
+
+    def _make_gat_hook(capture):
+        def _hook(module, inputs, output):
+            if isinstance(output, dict) and "column" in output:
+                capture["column"] = output["column"]
+        return _hook
+
+    _gat_hook_handle = None
+    if anti_collapse_weight > 0.0 and anti_collapse_target == "gat_out_L_last":
+        if len(gat_model.convs) == 0:
+            raise RuntimeError("anti_collapse_target='gat_out_L_last' requires gat_model.convs non-empty")
+        _gat_hook_handle = gat_model.convs[-1].register_forward_hook(
+            _make_gat_hook(_gat_hook_capture)
+        )
+
     logger.info(
         f"[s06] loss: type={loss_type}, pos_weight={pos_weight.item()}, "
-        f"anti_collapse_weight={anti_collapse_weight}"
+        f"anti_collapse_weight={anti_collapse_weight}, "
+        f"anti_collapse_target={anti_collapse_target}"
     )
 
     best_recall = 0.0
@@ -373,10 +480,20 @@ def run_train(config_path: str):
                     continue
 
             # Anti-collapse regularization — column embedding 기준
+            # Phase 3 #3 dispatch:
+            #   target='fusion'         (Phase 2 default) — model.forward 결과 (skip + fusion 후)
+            #   target='gat_out_L_last' (Phase 3 #3)      — 마지막 HeteroConv 직후 column 출력
+            #                                              (skip 결합 전 raw GAT, hook capture)
             step_loss_ac = torch.tensor(0.0, device=device)
-            if anti_collapse_weight > 0.0 and "column" in node_embs:
-                if COL_TO_TAB_EDGE in batch.edge_index_dict:
-                    col_embs = node_embs["column"]
+            if anti_collapse_weight > 0.0 and COL_TO_TAB_EDGE in batch.edge_index_dict:
+                if anti_collapse_target == "gat_out_L_last":
+                    col_embs = _gat_hook_capture.get("column")
+                    if col_embs is None:
+                        # 첫 step 에서 hook 미동작 (예: 'column' 이 hetero output 에 없음). skip.
+                        col_embs = node_embs.get("column")
+                else:
+                    col_embs = node_embs.get("column")
+                if col_embs is not None:
                     cb_edge = batch.edge_index_dict[COL_TO_TAB_EDGE]
                     step_loss_ac = anti_collapse_fn(col_embs, cb_edge)
 

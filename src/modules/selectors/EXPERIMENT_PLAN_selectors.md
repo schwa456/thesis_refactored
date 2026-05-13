@@ -676,6 +676,439 @@ selector:
 
 ---
 
+### V-3-ext. Directed Top-K SuperNode (학위 논문 Part III, 2026-05-05) — 단계 1 구현 완료
+
+> **Status: 단계 1 구현 완료 (2026-05-09 ~ 2026-05-11 가속, 5/5 완료).** advisor (지도교수) 제안 — "Graph 를 Directed Edge + Raw Score top-K SuperNode + GAT 학습" — 학위 논문 Part III. V-3 (top-K=raw, 단일값) 의 **threshold 일반화 + 학습 변형 3 종 + selector inference path** 를 추가.
+>
+> 근거: planning/DECISIONS.md 2026-05-05 (Q1/Q2/Q3 confirm + threshold P80 primary 채택), notebooks/analysis_results/raw_score_distribution_for_directed_topk.md.
+
+#### 동기 — V-3 와의 차이
+- V-3: `supernode_topk: int` 단일값 (top-K=20 default).
+- V-3-ext: **threshold mode 3 종**으로 일반화 — `top_k` (V-3 기존), `percentile` (per-query Pn), `abs_tau` (per-query min-max norm 후 절대 cutoff). DB 별 schema 크기 variability (european_football 237 vs toxicology 20) 자동 보정 위한 query-aware threshold (P80 primary).
+
+#### Config 스펙 (학습)
+```yaml
+model:
+  query_supernode: true
+  supernode_edge_direction: directed_from_sn
+  # V-3-ext threshold mode dispatch
+  supernode_threshold_mode: percentile   # {top_k, percentile, abs_tau}
+  supernode_threshold_value: 80.0        # P80 cutoff (or top-K count, or abs cutoff)
+  supernode_score_normalization: minmax  # {minmax, none}; analyzer 정의와 동일
+  # backward-compat (top_k mode 시): supernode_topk 그대로 사용 가능
+```
+
+#### 인터페이스 / 구현 (selector + GAT)
+- **Selector (inference)**: `src/modules/selectors/directed_topk_supernode_selector.py` 신규.
+  - `DirectedTopKSuperNodeSelector(EnsembleSelector)` 상속. SuperNode 분기 override:
+    - query_node x 주입 + threshold mask 산출 (per-query min-max norm cosine 기반)
+    - `attends_to_*` directed edge 만 (필터링된 schema 만). `attended_by_*` 비등록/0-len.
+    - GAT 모델 측 자동 self_loop (directed_from_sn) 사용.
+  - 등록: `__init__.py` (selector registry).
+- **GAT model 측**: `gat_network.py` / `gat_network_v2.py` 양쪽에 `_compute_supernode_mask` dispatch:
+  - `top_k` (기존 V-3 동치, supernode_topk 사용)
+  - `percentile` (torch.quantile cutoff)
+  - `abs_tau` (>= cutoff)
+  - `_compute_topk_mask` 는 backward-compat alias.
+- **train_gat.py**: `supernode_threshold_mode` / `supernode_threshold_value` / `supernode_score_normalization` 옵션 forward.
+- **Smoke test**: `tests/test_directed_topk_supernode.py` 7 케이스 통과 (P80 ~22% 선택, top_k=20 정확, abs_tau=0.7 선택적, directed edge 구조 검증, baseline SuperNode 31 vs Directed 7 edge, v1/v2 dispatch).
+
+#### 학습 변형 3 종 + checkpoint
+| 변형 | mode | value | \|sel\| mean (raw) | Raw R | Raw F1 | config |
+|---|---|---|---:|---:|---:|---|
+| **#1 (PRIMARY)** | percentile | 80.0 | **18.9** ± 5.5 | 0.6133 | 0.3466 | `train_gat_directed_supernode_p80.yaml` |
+| #2 (BASELINE) | top_k | 20.0 | 20.0 ± 0.0 | 0.6865 | 0.3640 | `train_gat_directed_supernode_topk20.yaml` |
+| #3 (OPTIONAL) | abs_tau | 0.7 | 10.2 ± 8.9 | 0.4857 | **0.3942** ★ raw F1 max | `train_gat_directed_supernode_abstau07.yaml` |
+
+신규 ckpt 명: `best_gat_directed_supernode_{p80, topk20, abstau07}.pt` (NAS + symlink 권장).
+
+#### 시나리오 분기 (DECISIONS 2026-05-05 §1(d) 인용)
+- **시나리오 A** (F1 ≤ 0.870, plateau 흡수): GAT 학습이 raw R 0.69 → 0.85 영역 회복 + Filter 가 plateau 안 흡수 → Filter Dominance 5 축 격상 (🆕 topology-invariant).
+- **시나리오 B** (F1 > 0.870): 학위 논문 main contribution 5 항목 격상.
+- **시나리오 C** (F1 < 0.85): paper §V.5.3 negative result + advisor 제안 mechanism deep dive.
+- **확률 추정**: 시나리오 A 가장 가능성 高 (Filter 가 raw R 차이 흡수 mechanism 의 직전 narrative 와 일관) — 단 GAT 학습 결과 의존.
+
+#### 변경된 파일 (단계 1 산출물)
+| 파일 | 변경 |
+|------|------|
+| `src/models/gat_network.py` | `supernode_threshold_mode/value/score_normalization` 파라미터 + `_compute_supernode_mask` dispatch + alias |
+| `src/models/gat_network_v2.py` | 동일 (v2 분기 호환) |
+| `src/train_gat.py` | 신규 옵션 forward to GAT model |
+| `src/modules/selectors/directed_topk_supernode_selector.py` | 신규 selector 클래스 (EnsembleSelector 상속, SuperNode 분기 override) |
+| `src/modules/selectors/ensemble_selector.py` | `supernode_edge_direction` 옵션 노출 (GAT 모델 측 forward) |
+| `src/modules/selectors/__init__.py` | `DirectedTopKSuperNodeSelector` 등록 |
+| `src/modules/selectors/tests/test_directed_topk_supernode.py` | smoke test 7 케이스 |
+| `configs/training/train_gat_directed_supernode_{p80, topk20, abstau07}.yaml` | 학습 config 3 종 |
+
+#### 다음 단계 (root + planner 핸드오프)
+- **단계 2 (5/12~5/13, root)**: 신규 GAT 학습 3 변형 × ~9h GPU. CUDA_VISIBLE_DEVICES=0,1 만 사용 (memory rule). 신규 ckpt NAS 저장 + symlink 자동화.
+- **단계 3 (5/13~5/15, root)**: paper main stack (Enriched + 신규 ckpt + α=0.5 + MSTPCSTUnion + XiYan GLM + LLM SQL Gen GLM) 위 alpha sweep subset (α∈{0.0, 0.5, 1.0} 최소 + α∈{0.3, 0.7} 권장) 또는 full 11 cells. 비용 ~₩8-10K.
+- **단계 4 (5/16~5/22, planner + 사용자)**: 시나리오 A/B/C 분기 처리, paper §3.5 Filter Dominance narrative 갱신 또는 §V.5.3 negative result.
+
+#### 단계 4-bis. Attention 호환성 보강 — `extract_layerwise_attention_v2` (2026-05-06 구현 완료)
+
+> **Status: 구현 + 6 smoke 통과 + Phase 1 4 ckpt 호환 (p80 / topk20 / abstau07 / qcond_nl3) — 통합 dsn_oversmoothing_analysis.py 에 wired.**
+>
+> 동기: V-3-ext 단계 4 진단에서 v1 `extract_layerwise_attention` 가 `directed_from_sn` self-loop + supernode threshold filter 를 manual conv 호출로 재현 못함 (matrix shape mismatch). attention entropy 미측정 한계 → forward hook 기반 v2 로 보강. 학위 논문 Part III mechanism deep dive evidence 의 base.
+>
+> 근거: planning/DECISIONS.md 2026-05-06 §1(B) (2)-A Attention 호환성 selector 위임 + notebooks/analysis_results/dsn_oversmoothing_analysis.md §7 Caveat.
+
+**구현 파일**:
+- [src/analysis/extract_layerwise_attention_v2.py](/home/hyeonjin/thesis_refactored/src/analysis/extract_layerwise_attention_v2.py) — `AttentionCapture` (monkey-patch wrap GATv2Conv.forward) + `extract_layerwise_attention_v2()` + `aggregate_attention_metrics()` + heatmap helpers.
+- [src/modules/selectors/tests/test_attention_extract_v2.py](/home/hyeonjin/thesis_refactored/src/modules/selectors/tests/test_attention_extract_v2.py) — 6 케이스: capture/restore, directed_from_sn no-reverse, value sanity, aggregate, Phase 1 ckpt 호환 (4 ckpt × forward), qcond_nl3 (no SuperNode) 검증.
+
+**메커니즘**:
+- 각 GATv2Conv 의 forward 를 monkey-patch wrap → 호출 시 `return_attention_weights=True` 강제 + alpha tensor capture. HeteroConv 자체는 정상 forward → V-3-ext 의 `_compute_supernode_mask` / `_inject_sn_self_loop` / threshold edge filter 모두 그대로 적용.
+- v2 가 v1 대비 우월한 점: (a) directed_from_sn 의 self-loop 자동 처리, (b) supernode threshold filter 후의 edge 만 capture (학습 시점과 동일 graph topology), (c) `__exit__` 시 instance attr 깔끔히 제거 (re-entrant safe).
+
+**Metric 산출**:
+- **Attention entropy** `H(α) = -Σ p_i log p_i` (per-edge-type, dst-node 별 평균)
+  - 균일 분포 (entropy 高) vs 집중 분포 (entropy 低) 정량
+- **Top-K=5 concentration** `(top-5 alpha sum) / (total alpha sum)` (dst-node 별 평균, [0,1])
+- 둘 다 layer × edge_type 별 분리. `aggregate_attention_metrics` 으로 다중 query mean/std 환원.
+
+**출력 파일** (max_queries=2 sanity 검증, 2026-05-06):
+- `outputs/analysis/dsn_attention/<ckpt>/attention_metrics.json` — per-layer × per-edge-type entropy + top-5 concentration (mean/std over queries)
+- `outputs/analysis/dsn_attention/<ckpt>/attention_entropy_layerwise.png` — heatmap
+- `outputs/analysis/dsn_attention/<ckpt>/attention_topk5_concentration.png` — heatmap
+- `outputs/analysis/dsn_attention/comparison_4ckpt.png` — 4 ckpt cross-model layer-wise 비교 (entropy + top-5 concentration 2 panel)
+
+**초기 sanity 결과 (n=2 query)**:
+- DSN 3 ckpt (p80/topk20/abstau07): L1~L3 ent ≈ 0.51~0.52, top-5 conc ≈ 0.91 — directed_from_sn + threshold 의 attention 이 매우 집중적 (top-5 가 ~91% 흡수)
+- qcond_nl3 baseline: ent ≈ 0.83, top-5 conc ≈ 0.85 — 더 균일한 분포 (5 edge types only, no SuperNode)
+- 의의: DSN 3 ckpt 의 over-smoothing 이 발생함에도 attention 자체는 집중적 → over-smoothing 의 root cause 가 **attention dispersion 이 아닌 다른 factor** (학위 논문 mechanism evidence)
+
+**다음 (Phase 2 학습 후)**:
+- root 신규 ckpt (DSN p80 + s06 B5 mitigation) 학습 완료 (5/12) 후 본 도구 재호출 → mitigation 변형의 attention 정량 (PN / IR / AC / Dual-Stream / L=2 의 attention 영향)
+- analyzer 세션 (5/15~5/16) — full 50 queries 재측정 + 시나리오 분기 evidence
+
+**변경된 파일 (단계 4-bis 산출물)**:
+| 파일 | 변경 |
+|------|------|
+| `src/analysis/extract_layerwise_attention_v2.py` | 신규 — AttentionCapture + extract_layerwise_attention_v2 + aggregate + heatmap |
+| `src/analysis/dsn_oversmoothing_analysis.py` | Step 3 attention extract 를 v1 → v2 교체 + JSON dump + per-ckpt heatmap + cross-model comparison |
+| `src/modules/selectors/tests/test_attention_extract_v2.py` | 신규 smoke test 6 케이스 (Phase 1 4 ckpt 호환 검증) |
+
+#### 단계 5. Phase 3 Skip Mitigation (Direct AC + Layer-wise LR, 2026-05-06 구현 완료)
+
+> **Status: 구현 + 7 smoke 통과. 학위 본 심사 (5/22~6/19) 전 학습 진행 — DECISIONS 2026-05-06 §1(C)/(H)/(I).**
+>
+> 동기 (Phase 2 mitigation null mechanism finding): Skip Dependence Pathology DOMINANT — main GAT path gradient 1/10 축소 + 학습이 fusion_head + query_encoder path 로 우회. AC loss 가 model output (skip + fusion 후) 에 적용되어 skip path 가 흡수 가능. → **AC loss target / optimizer LR 직접 변경으로 GAT path 회복 시도**.
+>
+> 근거: planning/DECISIONS.md 2026-05-06 §1(C)/(H)/(I), notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md §8.1 #3/#4.
+
+##### Phase 2 baseline 의 AC loss 위치 확인 (사전 작업, 코드 trace)
+
+`train_gat_s06.py:391-395` (수정 전):
+```python
+if anti_collapse_weight > 0.0 and "column" in node_embs:
+    if COL_TO_TAB_EDGE in batch.edge_index_dict:
+        col_embs = node_embs["column"]   # ← model.forward 결과
+        cb_edge = batch.edge_index_dict[COL_TO_TAB_EDGE]
+        step_loss_ac = anti_collapse_fn(col_embs, cb_edge)
+```
+
+- `node_embs` 는 `gat_model(...)` 의 반환값 = v2 model.forward 결과.
+- `dual_stream=True` 시 `forward` 의 마지막 단계가 `fusion_head[nt](concat([h, z_q, h*z_q]))` (gat_network_v2.py L390-405). 즉 **AC loss 가 fusion 후 결과에 적용** — skip path (skip_dict + fusion_head) 가 우회 가능 — **null mechanism finding 의 정확한 root cause 확인**.
+
+##### Phase 3 #3 — Direct AC on GAT output (PRIMARY)
+
+**메커니즘**: AC loss target 을 `'gat_out_L_last'` 로 변경. forward hook 으로 마지막 `HeteroConv` (= `gat_model.convs[-1]`) 의 column 출력을 capture → AC loss 그 위에 적용 → skip + fusion 우회 차단, main GAT path gradient 회복.
+
+**구현** (`train_gat_s06.py`):
+- `anti_collapse_target ∈ {'fusion' (default, Phase 2), 'gat_out_L_last' (Phase 3 #3)}` 옵션 추가.
+- `'gat_out_L_last'` 시 학습 시작 전 `gat_model.convs[-1].register_forward_hook(...)` 등록 → 매 forward 마다 column output capture.
+- step loop 의 `col_embs` 를 hook capture 로 교체 (default 시 `node_embs["column"]`).
+
+**Config**: [`configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml)
+- Base: Phase 2 b5_mitigation.yaml 그대로
+- 변경: `training.anti_collapse_target: "gat_out_L_last"`
+
+**Smoke 검증**:
+- hook capture tensor (raw GAT, [N, hidden×heads]) ≠ fusion output ([N, out_channels]) — shape 분리 확인 (24×128 vs 24×64).
+- AC loss on hook capture 의 backward 가 last conv 의 inner GATv2Conv params 에 grad 전달 (6/54).
+
+##### Phase 3 #4 — Layer-wise LR (SECONDARY)
+
+**메커니즘**: PyTorch optimizer 의 `param_groups` 활용 — `convs.*` (HeteroConv ModuleList) 와 `*.convs.*` (inner GATv2Conv) 산하 파라미터만 `base_lr × multiplier` (= 5e-4 = 5×). 그 외 (lin_dict / out_lin_dict / skip_dict / pairnorms / fusion_head / query_encoder / classifier_heads) 는 base_lr (1e-4) 그대로 → main GAT path 가 우회 path 대비 5× 빠른 학습.
+
+**구현** (`train_gat_s06.py`):
+- `optimizer_layer_wise_lr: bool` + `gat_lr_multiplier: float` 옵션 추가.
+- True 시 3 param groups (`gat_convs` / `gat_other` / `classifier_heads`) — `name.startswith("convs.") or ".convs." in name` filter 로 분리.
+- False (default) 시 기존 단일 LR optimizer (Phase 2 backward compat).
+
+**Config**: [`configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml)
+- Base: Phase 2 b5_mitigation.yaml
+- 변경: `training.optimizer_layer_wise_lr: true`, `training.gat_lr_multiplier: 5.0`
+- `anti_collapse_target` 미설정 (= 'fusion' default) — #3 와 분리 측정.
+
+**Smoke 검증**:
+- filter 정확성: gat-path 108 params / other 52 params (synthetic, num_layers=2). lin_dict / out_lin_dict / skip_dict / fusion_head / query_encoder / pairnorms 모두 other 로 분류.
+- LR assignment: gat_convs=5e-4, gat_other=1e-4, classifier_heads=1e-4.
+- backward compat: `layer_wise_lr=False` 시 1 group + lr=base_lr (Phase 2 동일).
+
+##### Smoke test (7 케이스 통과)
+
+[`src/modules/selectors/tests/test_phase3_mitigations.py`](/home/hyeonjin/thesis_refactored/src/modules/selectors/tests/test_phase3_mitigations.py):
+- `test_p3_3_hook_captures_last_conv_output` — fusion vs raw GAT shape 분리
+- `test_p3_3_hook_backward_graph_intact` — AC loss → last conv params grad 전달
+- `test_p3_4_param_group_filter_correctness` — 'convs' filter 정확
+- `test_p3_4_optimizer_lr_assignment` — 5× LR 적용
+- `test_p3_4_backward_compat_baseline` — Phase 2 단일 LR 보존
+- `test_phase3_config_parsing` — 두 신규 config 정상
+- `test_phase2_baseline_unchanged` — Phase 2 baseline regression 보존
+
+##### 다음 단계 (root + analyzer 핸드오프)
+
+- **5/13~5/16 (root)**: `train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml` 학습 (~12-13h, GPU 0 또는 1). 신규 ckpt: `best_gat_directed_supernode_p80_b5_phase3_directAC.pt`. NAS 저장 + symlink. STEP 3 alpha sweep subset 5 cells (~₩3.8K).
+- **5/16~5/19 (root)**: `train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml` 학습 동일. 신규 ckpt: `best_gat_directed_supernode_p80_b5_phase3_layerwiseLR.pt`.
+- **5/19+ (analyzer)**: 두 ckpt 의 (a) val recall ceiling 회복 정도, (b) Skip dependence ratio (gradient flow 재측정), (c) AC target 별 main GAT path gradient 회복 정도 분석. extract_layerwise_attention_v2 재호출.
+- **5/19~5/22 (사용자 + planner)**: 학위 논문 Part III chapter — mechanism finding + 4-trial mitigation 시도 narrative. 시나리오 P3-A/B/C 분기 확정.
+
+##### 시나리오 분기 (DECISIONS §1(F))
+
+- **P3-A** (가능성 高): #3 + #4 둘 다 null effect → Filter Dominance 6번째 축 절대 evidence 강화 (3-stage × 4-trial mitigation 모두 ineffective).
+- **P3-B** (가능성 中): #3 또는 #4 가 raw R 0.65~0.75 회복 + final F1 plateau 갱신 mid → Skip Dependence pathology partial mitigation 발견 (mechanism + 시도 모두 contribution).
+- **P3-C** (낮음): raw R 0.85+ + F1 plateau 결정적 갱신 → main 5 항목 격상 후보.
+
+##### 변경된 파일 (단계 5 산출물)
+
+| 파일 | 변경 |
+|------|------|
+| `src/train_gat_s06.py` | `anti_collapse_target` (fusion / gat_out_L_last) + `optimizer_layer_wise_lr` + `gat_lr_multiplier` 옵션. AC loss 의 `col_embs` source 분기 + forward hook capture. 단일 LR optimizer → 3 param groups (layer-wise 시) |
+| `configs/training/train_gat_directed_supernode_p80_b5_phase3_directAC.yaml` | 신규 — Phase 3 #3 학습 config |
+| `configs/training/train_gat_directed_supernode_p80_b5_phase3_layerwiseLR.yaml` | 신규 — Phase 3 #4 학습 config |
+| `src/modules/selectors/tests/test_phase3_mitigations.py` | 신규 smoke test 7 케이스 |
+
+#### 단계 6. Mitigation v2 — mech(ii) edge softmax mitigation 3 candidate (2026-05-07 구현 완료)
+
+> **Status: 구현 + 12 smoke 통과. 학위 본 심사 (5/22~6/19) 전 #1+#2+#3 병렬/순차 학습 — DECISIONS 2026-05-07 §1(C)/(D).**
+>
+> 동기 (4-trial dominance 진단 후속): mech(ii) edge softmax over-concentration **DOMINANT**. attention 이 top-1~5 노드에 sharp peak → 학습이 sharp neighbor selection 에 over-fit. Phase 3 #3/#4 (skip path) 와 별개 root cause. → **edge-softmax level 직접 mitigation 3 candidate 시도**.
+>
+> 근거: planning/DECISIONS.md 2026-05-07 §1(C)/(D) (사용자 (3)A+B+C 병렬 결정), notebooks/analysis_results/dsn_phase3_mitigation_results.md §8.1.
+
+##### 구현 — gat_network_v2.py 의 GATv2Conv subclass 변형 + HeteroConv aggr
+
+| Candidate | Module / Mechanism | 활성화 옵션 |
+|---|---|---|
+| **#1 PRIMARY** — DropMessage | `DropMessageGATv2Conv(GATv2Conv)` — `message(x_j, alpha)` 출력 (= x_j × α) 에 `F.dropout(p=drop_message_p, training=training)` 적용. attention α 는 그대로 유지하되 attended-to neighbor 의 feature contribution 분산 | `drop_message_p: 0.2` |
+| **#3 SECONDARY** — LayerNorm pre-softmax | `LayerNormGATv2Conv(GATv2Conv)` — `edge_update` 의 raw alpha 산출 후 softmax 직전에 `nn.LayerNorm(heads)` 삽입. softmax sharp peaking 완화 | `use_layernorm_pre_softmax: true` |
+| **#2 TERTIARY** — Sum aggregation | HeteroConv `aggr` 인자 변경 (mean → sum / max). cross-edge-type aggregation level 의 inductive bias 변경 (edge softmax 와 별개 layer) | `aggregation_type: "sum"` (또는 `"max"`) |
+
+`_make_gatv2_conv()` factory 가 옵션 조합 dispatch — `#1+#3` combo 는 multiple-inheritance 방식의 `_LayerNormDropMessageGATv2Conv` 동적 클래스 생성. 모든 옵션 default 시 기존 `GATv2Conv` (Phase 2 b8 backward compat).
+
+`SchemaHeteroGATv2.__init__` signature 에 3 옵션 추가:
+```python
+drop_message_p: float = 0.0,
+use_layernorm_pre_softmax: bool = False,
+aggregation_type: str = "mean",   # ∈ {mean, sum, max, min, mul}
+```
+
+`train_gat_s06.py` 에서 cfg["model"] 의 3 키를 v2 model 로 forward — Phase 2 b8 backward compat (옵션 미설정 시 default OFF, 동일 동작 검증됨).
+
+##### Configs (3 신규)
+
+- [`train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml)  
+  Base = Phase 2 b8 mitigation + `drop_message_p: 0.2`
+- [`train_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.yaml)  
+  Base = Phase 2 b8 mitigation + `use_layernorm_pre_softmax: true`
+- [`train_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.yaml)  
+  Base = Phase 2 b8 mitigation + `aggregation_type: "sum"`
+
+##### Smoke test (12 케이스 통과)
+
+[`src/modules/selectors/tests/test_mitigation_v2.py`](/home/hyeonjin/thesis_refactored/src/modules/selectors/tests/test_mitigation_v2.py):
+- `#1` DropMessage subclass — train ≠ rerun (random), eval deterministic
+- `#1` `drop_message_p=0.0` backward compat (super class 동일 결과, atol=1e-6)
+- `#1` SchemaHeteroGATv2 + DropMessage forward shape 정합성
+- `#3` LayerNormGATv2Conv subclass — `alpha_layernorm` 모듈 (heads,) shape 등록
+- `#3` SchemaHeteroGATv2 + LayerNorm — 18 inner convs 모두 alpha_layernorm (9 edge types × 2 layers)
+- `#2` `aggregation_type='sum'` forward + HeteroConv.aggr 검증
+- `#2` `aggregation_type='max'` forward (사용자 spec sum/max 양쪽)
+- Combo `#1+#3` — 18 inner convs 모두 LayerNorm + DropMessage 결합 클래스 적용
+- Backward compat — default vs explicit-OFF identical (params=859,008, state_dict keys=160)
+- LayerNorm 추가 overhead — +72 params (heads=2 × 2 (γ,β) × 18 LN modules)
+- 3 신규 config 파싱 + 옵션 정확
+- Phase 2 baseline regression — 신규 옵션 미설정 보존
+
+##### 다음 단계 (root + analyzer 핸드오프)
+
+- **5/9 launch (root)**: GPU 0 = `train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml`, GPU 1 = `..._v2_layernorm.yaml` **병렬 학습** (~10h, ETA 5/10 04:00 KST)
+- **5/10 launch (root)**: GPU 0 sequential = `..._v2_sum_aggr.yaml` (~10h, ETA 5/11 KST)
+- 신규 ckpt: `best_gat_directed_supernode_p80_b5_mitigation_v2_{drop_message, layernorm, sum_aggr}.pt` (NAS path + symlink)
+- **5/10, 5/11 (analyzer)**: protocol 재실행 (3 candidate 추가, 7 ckpt × 5 step). mech(ii) attention concentration 회복 정량 (top-5 conc / entropy / L1_GAT cosine).
+- **5/12~5/14 (planner)**: 통합 dominance scoring 갱신 (4-trial → 7-trial). §V.5.4 narrative 정식 채택 결정 (시나리오 V2-A/B/C).
+
+##### 시나리오 분기 (DECISIONS §1(F))
+
+- **V2-A** (가능성 高): 3 모두 fail / null effect → §V.5.4 정식 채택 + Filter Dominance 6번째 축 절대 evidence 강화 (7-trial null effect = robustness 결정적).
+- **V2-B** (가능성 中): 1-2 partial recovery (val R@15 0.62-0.70) → §V.5.4 narrative 미세 수정 + "Skip Dep null but mech(ii) partial mitigation 발견" contribution.
+- **V2-C** (가능성 낮음): 3 모두 ceiling 갱신 (R 0.85+) → §V.5.4 큰 수정 + paper main contribution 재평가 후보.
+
+##### 변경된 파일 (단계 6 산출물)
+
+| 파일 | 변경 |
+|------|------|
+| `src/models/gat_network_v2.py` | `DropMessageGATv2Conv` + `LayerNormGATv2Conv` subclass + `_make_gatv2_conv` factory + `HETEROCONV_AGGR_TYPES` constant. SchemaHeteroGATv2 __init__ 에 3 옵션 (`drop_message_p` / `use_layernorm_pre_softmax` / `aggregation_type`) + 검증 + state. HeteroConv 인스턴스화 시 factory 사용 + aggr 인자 동적 |
+| `src/train_gat_s06.py` | v2 model 인스턴스화에 3 신규 옵션 forward (default OFF backward compat) + log line 보강 |
+| `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_drop_message.yaml` | 신규 #1 학습 config |
+| `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_layernorm.yaml` | 신규 #3 학습 config |
+| `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v2_sum_aggr.yaml` | 신규 #2 학습 config |
+| `src/modules/selectors/tests/test_mitigation_v2.py` | 신규 smoke test 12 케이스 |
+
+#### 단계 7. Mitigation v3 #1 — GIN-style aggregation (2026-05-08 구현 완료)
+
+> **Status: 구현 + 7 smoke 통과. 학위 본 심사 (5/22) 전 학습 — DECISIONS 2026-05-08 §1(c) 사용자 결정 A+B 통합 (#1 GIN-style 만 학위 본 심사 전, #2/#3/#4 post-paper).**
+>
+> 동기 (Mitigation v2 7-trial null effect 후속): mech(ii) edge softmax over-concentration mitigation 3 candidate 모두 fail. softmax 내부 변경 (DropMessage / LayerNorm pre-softmax) 또는 cross-edge aggregation 변경 (Sum/Max) 모두 ineffective → **aggregation function family 자체 변경** (softmax + weighted-mean → MLP + sum) 으로 mech(ii) 가 softmax 한정인지 / family limitation 인지 분기 검증.
+>
+> 근거: planning/DECISIONS.md 2026-05-08 §1(c)/(e), Xu et al. ICLR 2019 (GIN invariance theorem — sum + injective MLP = WL test 동치).
+
+##### 구현 — gat_network_v2.py
+
+**`AGGREGATION_TYPES` 확장**:
+```python
+HETEROCONV_AGGR_TYPES = {"mean", "sum", "max", "min", "mul"}     # for HeteroConv aggr
+AGGREGATION_TYPES = HETEROCONV_AGGR_TYPES | {"gin"}              # full set
+```
+
+**`_make_gin_conv(in_channels, hidden_channels, heads)` factory**:
+- PyG `GINConv(mlp, eps=0.0, train_eps=False)` 인스턴스 반환
+- MLP = `Sequential(LazyLinear(out_dim), LeakyReLU(0.1), Linear(out_dim, out_dim))` — out_dim = hidden×heads (기존 GATv2Conv 와 동일 차원 → PairNorm/JK/skip path 호환)
+- LazyLinear 로 in_channels=-1 동치 (기존 GATv2Conv(-1, ...) 패턴 일관)
+
+**SchemaHeteroGATv2 분기**:
+```python
+if aggregation_type == "gin":
+    conv_dict = {et: _make_gin_conv(-1, hidden, heads=heads) for et in all_edge_types}
+    self.convs.append(HeteroConv(conv_dict, aggr="mean"))   # cross-type aggr fixed
+else:
+    conv_dict = {et: _make_gatv2_conv(...) for et in all_edge_types}
+    self.convs.append(HeteroConv(conv_dict, aggr=self.aggregation_type))
+```
+
+**GIN incompat 검증**: `aggregation_type='gin'` + `drop_message_p>0` 또는 `use_layernorm_pre_softmax=True` 시 `ValueError` raise — GINConv 는 attention/softmax 자체가 없어 v2 #1/#3 결합 무의미.
+
+##### Config (1 신규)
+
+[`train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml`](/home/hyeonjin/thesis_refactored/configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml)
+- Base = Phase 2 b8 mitigation 그대로 (PN+IR+JK+DS+L=2+AC fusion+ListNet)
+- 변경: `aggregation_type: "gin"`
+
+##### Smoke test (7 케이스 통과)
+
+[`src/modules/selectors/tests/test_mitigation_v3.py`](/home/hyeonjin/thesis_refactored/src/modules/selectors/tests/test_mitigation_v3.py):
+- `test_gin_factory_and_homograph_forward` — GINConv 인스턴스 + homo forward shape (8, 64)
+- `test_gin_factory_bipartite_forward` — bipartite (x_src, x_dst) 호환 (HeteroConv 호출 패턴) shape (7, 16)
+- `test_full_model_gin_forward` — 18 inner GINConvs (9 edge_types × 2 layers), HeteroConv aggr='mean' fix
+- `test_backward_compat_default_mean` — default 시 18 GATv2Convs (no GINConv) regression
+- `test_gin_incompatible_with_v2_options` — GIN + #1/#3 ValueError raise
+- `test_gin_config_parsing` — 신규 v3 config 정상 + Phase 2 baseline 영향 X
+- `test_gin_forward_backward_path` — 11 GINConvs received gradient (column dst path)
+
+##### 다음 단계 (root + analyzer 핸드오프)
+
+- **5/11~5/12 (root)**: `train_gat_s06.py --config configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml` 학습 (GPU 0, ~10h). 신규 ckpt: `best_gat_directed_supernode_p80_b5_mitigation_v3_gin.pt` (NAS path + symlink).
+- **5/12~5/14 (analyzer)**: protocol 재실행 — 7-trial → 8-trial dominance scoring. mech(ii) DOMINANT 가 softmax 한정인지 / aggregation family 한정인지 분기 정량.
+  - V3-A (가능성 中, GIN fail): mech(ii) DOMINANT 5/5 절대 강화 (8-trial null = aggregation family 자체 limitation)
+  - V3-B (가능성 中, GIN partial): mech(ii) softmax 한정 부분 부정 + GIN sum effect 발견
+  - V3-C (가능성 낮음, R 0.85+ ceiling 갱신): mech(ii) 부정 + paper main contribution 재평가
+- **5/14~5/22 (사용자)**: 학위 논문 Part III chapter draft 작성 — analyzer Phase 1 후속 3 deep dive (A1/A2/A3) + Mitigation v3 #1 결과 통합 narrative.
+
+##### 변경된 파일 (단계 7 산출물)
+
+| 파일 | 변경 |
+|------|------|
+| `src/models/gat_network_v2.py` | `AGGREGATION_TYPES = HETEROCONV_AGGR_TYPES ∪ {"gin"}` constant + `_make_gin_conv` factory (PyG GINConv + LazyLinear MLP). SchemaHeteroGATv2 의 aggregation_type 검증 확장 (gin 추가) + GIN incompat 검증 (drop_message_p / use_layernorm_pre_softmax). HeteroConv 인스턴스화 시 GIN/GAT 분기 |
+| `configs/training/train_gat_directed_supernode_p80_b5_mitigation_v3_gin.yaml` | 신규 — Mitigation v3 #1 GIN 학습 config |
+| `src/modules/selectors/tests/test_mitigation_v3.py` | 신규 smoke test 7 케이스 |
+
+---
+
+#### 단계 8. Mitigation V5 — Tier 1+2 4-Direction (2026-05-13 selector module 정식 ownership)
+
+> **Status: V5-A/V5-B/V5-C 구현 완료. 각 variant smoke 통과 (test_v5_a_gate.py: 5/5, test_v5_b_gcnii.py: 5/5, test_v5_c_aero_full.py: 6/6). 학습 ⏸ root chain 위임 (DECISIONS 2026-05-13 V5 Sweep Launch 재시도).**
+
+> 근거:
+> - planning/DECISIONS.md 2026-05-13 (V5 Sweep Launch 재시도) — module:selector 가 처음부터 V5-A/B/C 코드 구현
+> - planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan) — Tier 1+2 4 Direction 병렬 결정
+> - planning/oversmoothing_v5_plan.md §4.1/§4.2/§4.3 (학술 Agent 의 mechanism reference)
+> - V4 era 의 LN+GIN combo + AERO Softplus + Symmetric Norm 이중 fail → mech(ii-b) 5/5 absolute confirm → V5 architectural intervention 의 4 direction 후속
+
+##### V5-A `GATEGATv2Conv` (alias `GATEConv`) — Conservation Law 수정
+
+Reference: Mustafa, N., & Burkholz, R. (2024). GATE: How to Keep Out Intrusive Neighbors. **NeurIPS 2024**. arXiv:2406.00418.
+
+Mathematical form (paper §3.2 Eq. 4):
+$$e_{ij} = \mathbf{a}_s^\top \text{LeakyReLU}(\mathbf{W}\mathbf{h}_i) + \mathbf{a}_t^\top \text{LeakyReLU}(\mathbf{W}\mathbf{h}_j)$$
+
+- 단일 attention vector `a` → `a_s` (self) + `a_t` (neighbor) 분리
+- Conservation Law 수정 (paper §3.1 Theorem 1): two-parameter budget exchange 로 small norm 만으로 task-irrelevant neighbor switch-off 가능
+- W 공유 (parent GATv2Conv `lin_l/lin_r`) — paper minimal form
+- row-stochasticity 유지 (softmax 그대로) — V4-B / V5-C 와 다른 axis
+
+##### V5-B `GCNIIGATv2Conv` — Trainability (Initial Residual + Identity Mapping)
+
+Reference: Chen, M., et al. (2020). Simple and Deep Graph Convolutional Networks (GCNII). **ICML 2020**. arXiv:2007.02133.<br>
+Peng, J., Lei, R., & Wei, Z. (2024). Beyond Over-smoothing: Uncovering the Trainability Challenges in Deep Graph Neural Networks. **CIKM 2024**. DOI:10.1145/3627673.3679776.
+
+Mathematical form (Chen 2020 §3.2 Eq. 6):
+$$\mathbf{h}^{(l+1)} = \sigma\Big( \big((1-\alpha) \mathbf{P}\mathbf{h}^{(l)} + \alpha \mathbf{h}^{(0)}\big) \big((1-\beta_l) \mathbf{I} + \beta_l \mathbf{W}^{(l)}\big) \Big), \quad \beta_l = \log(\lambda/l + 1)$$
+
+- α (Initial Residual): outer `SchemaHeteroGATv2.initial_residual_alpha` 처리
+- β_l: 본 conv 의 `_beta()` — 1-indexed `gcnii_layer_idx` forwarding
+- `gcnii_w = Linear(out_dim, out_dim, bias=False)`, `nn.init.eye_` 초기화 (Chen 2020 §3.3 핵심)
+- L=2/4/6 sweep — Peng 2024 §4 gradient flow upper bound 분석 검증
+- Paradox 2 (ρ_skip ≈ 3) 의 trainability 해석 표적
+
+##### V5-C `FullAEROGATv2Conv` (alias `FullAEROGATConv`) — Full AERO (V4-B + Hop + Cumulative)
+
+Reference: Lee, S. Y., Bu, F., Yoo, J., & Shin, K. (2023). Towards Deep Attention in Graph Neural Networks: Problems and Remedies (AERO-GNN). **ICML 2023**. arXiv:2306.02376.
+
+V4-B (Softplus + Symmetric Norm) + **(b) Cumulative Attention** + **(c) Node-Adaptive Hop Attention** = AERO Theorem 3 SR2OS guarantee 의 full form.
+
+Three components:
+- **(a) Softplus + Symmetric Norm** — parent `SoftplusGATv2Conv` (V4-B 상속)
+- **(b) Cumulative Attention** (V5-C **신규**): paper §3.2 `α^(l) = α^(l-1) + softplus(e^(l))`. 본 framework 의 layer-별 별도 conv 구조에서 conv-level α 누적 불가 → outer SchemaHeteroGATv2.forward 의 layer loop 에서 **hidden-state level residual** `H^(l) ← H^(l) + λ_cum · H^(l-1)` 로 simulate. `aero_cumulative_attention=True` + `aero_cumulative_decay ∈ [0, 2]`.
+- **(c) Node-Adaptive Hop Attention** (Theorem 4): per-node weighted sum `H^out_v = Σ_l ω_v^(l) · H^(l)_v` (L+1 hops 포함 h_0). `aero_hop_attention=True`.
+
+AERO Theorem 3 SR2OS guarantee 의 본 도메인 transfer 검증 — V4-B H10.1c (Hop Attention 부재 가설) 직접 표적.
+
+##### Smoke test 결과 (2026-05-13)
+
+| 파일 | 케이스 | 핵심 검증 |
+|---|---:|---|
+| `tests/test_v5_a_gate.py` | 5 | alias + att_self Xavier + V-3-ext + att/att_self gradient decoupling + row-stochasticity 유지 |
+| `tests/test_v5_b_gcnii.py` | 5 | eye_init + β_l layer-monotone + L=2/4/6 sweep + α/β 분리 + ValueError raise |
+| `tests/test_v5_c_aero_full.py` | 6 | alias + SoftplusGATv2Conv 상속 + Theorem 3 full + Hop only + Cumulative only + symmetric_norm 상속 + raise |
+
+##### 시나리오 분기 (DECISIONS 2026-05-13)
+
+| 시나리오 | Trigger | Narrative 영향 |
+|---|---|---|
+| V5-A 또는 V5-C 단독 R 갱신 | mech(ii-b) 5/5 부분 부정 | architectural intervention 일부 path 효과 |
+| V5-B (L=2/4/6) 중 1+ R 갱신 | trainability 가설 (Peng 2024) 부분 confirm | Paradox 2 trainability 해석 confirm |
+| V5 4 Direction 모두 fail | mech(ii-b) 5/5 결정적 강화 (current working hypothesis) | 14-trial null + Filter Dominance 6번째 axis 강화 |
+
+##### 변경된 파일 (단계 8 산출물)
+
+| 파일 | 변경 |
+|---|---|
+| `src/models/gat_network_v2.py` | V5-A `GATEGATv2Conv` + V5-B `GCNIIGATv2Conv` + V5-C `FullAEROGATv2Conv` + alias `GATEConv` / `FullAEROGATConv` + `GAT_LAYER_TYPES` 확장 + `_make_gatv2_conv` dispatch + SchemaHeteroGATv2 V5 ctor (`gcnii_beta_lambda`, `aero_hop_attention`, **`aero_cumulative_attention`**, `aero_cumulative_decay`) + forward V5-C Cumulative path + V5 validation (5 raises) |
+| `src/train_gat_s06.py` | V5 kwargs forwarding (gat_layer_type / gcnii_beta_lambda / aero_hop_attention / aero_cumulative_attention / aero_cumulative_decay) |
+| `src/modules/selectors/tests/test_v5_a_gate.py` | 신규 — V5-A smoke 5 |
+| `src/modules/selectors/tests/test_v5_b_gcnii.py` | 신규 — V5-B smoke 5 |
+| `src/modules/selectors/tests/test_v5_c_aero_full.py` | 신규 — V5-C smoke 6 |
+
+##### 다음 단계 (Root chain 위임)
+
+- **5/13~5/16 (Root)**: configs 5 신규 (V5-A / V5-B L=2/4/6 / V5-C) + `scripts/run_v5_mitigation_sweep.sh` + nohup launch (GPU 0/1 병렬, ~30-40h)
+- **5/16~5/18 (Root + Analyzer)**: HISTORY/CATALOG/ID_MIGRATION + 14-trial 보고서 `notebooks/analysis_results/dsn_mitigation_v5_4dir.md`
+- **5/18~5/22 (Planner)**: narrative pivot 결정 + paper §V.5.4 final integration
+
+---
+
 ### V-1/V-2/V-3 통합 default ("SuperNode v2")
 
 - **int_05 전제 default combo**:
