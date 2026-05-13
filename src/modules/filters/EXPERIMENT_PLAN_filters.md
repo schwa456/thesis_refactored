@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 5가지 제안
+## 이 모듈이 받아야 할 6가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -18,11 +18,108 @@
 | FL-II | **Extractive Decoder-only LLM — Filter mode** (원안 #7) | LLM span extraction + logit score로 token-level pruning | 중 | 새 축 (a05 외) |
 | FL-III | **Symbolic-Neural Layer 3 — Verifier** (원안 #9 Layer 3) | FK graph 상 connectivity 검증 + disconnected 결과 reject | 상 | a05 F2 (VerifierFilter) 의 강화형 |
 | **SGBE** | **Score-Gated Batch Extractive Filter** (학술 Agent 2026-05-12) | GAT score 분포 기반 column-level 3-way routing + extractive binary LLM | **최상** | XiYan 대체 candidate. FL-I/II/III 와 직교 — 결합 가능 |
-| **RSL-A** | **RSL-SQL Backward Filter (Cao 2024)** (학술 Agent Phase 3, 2026-05-13) | XiYan forward + preliminary SQL backward → S_restore union (forward 가 놓친 column 회복) | **최상** | XiYan 의 recall 보강 path. Direction A GO 확정 (Phase 2 PASS 3/3). |
+| **RSL-A** | **RSL-SQL Backward Filter (Cao 2024)** (학술 Agent Phase 3, 2026-05-13) | XiYan forward + preliminary SQL backward → S_restore union (forward 가 놓친 column 회복) | **하 (보류)** | Direction A 정식 배포 보류 (Analyzer 2026-05-14: ΔF1 = -0.2832, P drop -0.4345). 단 EX maintained -0.0033 — paper §V.5.x.M narrative 의 R-P/F1-EX dichotomy evidence. |
+| **RSL-C** | **GRAST-SQL FD Filter (Hoang 2025)** (Direction C trigger, 2026-05-14) | XiYan forward + FD graph (declared FK + inferred_fk) Steiner-tree based selective restoration | **최상** | RSL-A 의 noise 폭증 한계를 schema graph 의 structural constraint 로 제어. LLM calls/query = 1 (XiYan only, terminal_source="forward") — RSL-A 의 2 LLM 대비 cost 절반. |
 
 ---
 
-## RSL-A. RSL-SQL Backward Filter (★ 최상, Direction A GO 확정 2026-05-13)
+## RSL-C. GRAST-SQL FD Filter (★ 최상, Direction C trigger 발효 2026-05-14)
+
+### 동기
+- Analyzer Direction A sweep 결과 (2026-05-14, `notebooks/analysis_results/direction_a_rsl_backward_sweep.md`):
+  - **ΔF1 = -0.2832** (학술 Agent threshold +0.02 의 강한 negative), P drop **-0.4345**, R gain **+0.0684** → R-P trade-off ratio = -6.4× P loss per R gain
+  - EX maintained **-0.0033** (sub-noise) — F1-EX dichotomy
+- 학술 Agent Phase 3 trigger: **ΔF1(A) < +0.02 → Direction C 타겟 launch**. C-1 feasibility 1.46× (mean fk_coverage_rate = 0.7312), C-2 mid-priority (mean is_join_complete = 0.8624, multi-table 13.76% miss).
+- **핵심 가설** (DECISIONS 2026-05-14 §2.2): Phase 2 C-2 의 multi-table miss 9~13% 는 FK declaration 부족 → join col miss. Steiner-tree 가 query mentioned cols 를 terminal 로 한 connectivity 회복 cols 만 restore → backward union 처럼 noise 폭증 없음.
+
+### 설계 — 4-step pipeline (terminal_source="forward" 시 1 LLM call/query)
+```
+Step 1  XiYan forward (anchor 정합)
+        S_fwd = XiYanFilter.refine(query, subgraph, db_id).final_nodes
+
+Step 2  FD Graph 구성 (algorithm-only, networkx)
+        nodes: "table.col" + "table"
+        edges:
+          (i) belongs_to  : column -- table         (intra-table grouping)
+          (ii) FK         : src.col -- dst.col       (metadata fk_to_id)
+          (iii) inferred  : src.col -- dst.col       (yaml `inferred_fk`,
+                            Analyzer 후속 GPT-4.1-mini 보완)
+
+Step 3  Steiner Tree Restore (networkx steiner_tree)
+        terminals ← terminal_source policy:
+          - "forward" (default, no LLM): S_fwd 의 column 노드
+          - "gat_topk": gat_scores 의 top-K + S_fwd (fallback to forward)
+          - "prelim_sql": RSL-A 의 prelim SQL prompt 재사용 (+1 LLM call)
+        steiner = nx.approximation.steiner_tree(FD_graph, terminals,
+                                                method=steiner_method)
+        S_steiner_restore = {n ∈ steiner.nodes() | "." in n} − S_fwd
+        # disconnected component 별로 따로 계산. single-terminal component skip.
+        # max_restore cap 으로 over-restoration 차단.
+
+Step 4  S_struct FK/PK hardcode (anchor 정합)
+
+Output: final_nodes = S_fwd ∪ S_steiner_restore ∪ S_struct
+```
+
+### 인터페이스
+```python
+@register("filter", "GRASTFDFilter")
+class GRASTFDFilter(BaseFilter):
+    def __init__(self,
+                 model_name="zai-org/glm-4.7", temperature=0.0,
+                 xiyan_max_iteration=1, xiyan_model_name=None,
+                 xiyan_num_examples=3,
+                 db_dir="./data/raw/BIRD_dev/dev_databases", num_examples=3,
+                 inferred_fk=None,            # ["src.col->dst.col", ...]
+                 include_belongs_to=True,
+                 terminal_source="forward",   # "forward" | "gat_topk" | "prelim_sql"
+                 top_k=10,
+                 steiner_method="default",    # "default" | "mehlhorn" | "kou"
+                 max_restore=30,
+                 fk_pk_hardcode=True,
+                 provider="glm", api_key=None, base_url=None, **kwargs): ...
+
+    def refine(self, query, subgraph, db_id=None,
+               tier2_pool=None, gat_scores=None, metadata=None,
+               evidence=None, **kwargs) -> Dict:
+        # stats: fwd_nodes, terminal_count, steiner_restore, struct, final,
+        #        graph_nodes, graph_edges, declared_fk_count, inferred_fk_count,
+        #        terminal_source_used, restore_is_empty, restore_capped_from,
+        #        steiner_skipped
+```
+
+### LLM Cost 비교
+| Filter | LLM calls/query | Token cost vs anchor |
+|---|---:|---:|
+| XiYan anchor | 1 | 1× (baseline) |
+| RSL-A (Direction A) | 2 | ~+100% (preliminary SQL full schema input) |
+| **RSL-C (terminal_source="forward")** | **1** | **+0% (algorithm-only)** ⭐ |
+| RSL-C (terminal_source="prelim_sql") | 2 | ~+100% (RSL-A 와 동일 prompt 재사용) |
+
+### inferred_fk (Analyzer 후속 prerequisite)
+- C-1 의 outlier DB: debit_card_specializing (fk_coverage=0.20) / card_games (0.5714)
+- 학술 Agent Phase 3 권고: GPT-4.1-mini 로 두 DB 의 missing FK 예측. Analyzer 후속 chain 책임.
+- 본 모듈은 yaml `inferred_fk: List[str]` (default empty) 만 받음. 형식 `"src_tbl.src_col->dst_tbl.dst_col"`.
+
+### 한계 / Caveat
+- **disconnected component**: Steiner tree 는 단일 connected graph 필요. 본 구현은 component 별로 계산 후 union — terminal 이 component 내 1 개뿐이면 그 component 의 restore 는 skip.
+- **inferred_fk 의 GPT 보완 필요**: 본 chain 의 prerequisite. 미보완 시 fk_coverage 낮은 DB (debit_card, card_games) 에서 Steiner tree 효과 제한.
+- **column name 중복**: Steiner tree 는 node id 가 "table.col" 이므로 RSL-A 의 col_name expansion 같은 중복 candidate 폭증 없음 (precision 보호).
+
+### 산출물 (본 모듈 책임, 2026-05-14)
+- [`grast_fd_filter.py`](grast_fd_filter.py) — `GRASTFDFilter` 신규 구현. FD graph + Steiner tree + 3-mode terminal_source + max_restore cap.
+- [`tests/test_grast_fd.py`](tests/test_grast_fd.py) — 17-scenario smoke test (**PASSED 17/17**). 핵심: FK 경유 join col restore / disconnected component partial restore / inferred_fk bridge / 3 terminal_source mode / max_restore cap / FK hardcode rescue / metadata fallback.
+- [`__init__.py`](__init__.py) — `GRASTFDFilter` export.
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Analyzer**: debit_card_specializing + card_games 의 GPT-4.1-mini inferred_fk 보완 (Phase 3 prerequisite). 출력: yaml-ingestible `inferred_fk: List[str]` snippet.
+- **Root**: Direction C pipeline config 작성 (terminal_source="forward" 가 cost 최소). a05 sweep 에 셀 추가 → ΔF1 / ΔEX 정량.
+
+---
+
+## RSL-A. RSL-SQL Backward Filter (직전 axis, Direction A 정식 배포 보류 2026-05-14)
+
+> ⚠️ **Status 변경 (2026-05-14)**: Analyzer Direction A sweep 결과 ΔF1 = -0.2832 (net negative) → **정식 배포 보류**. 단 EX maintained -0.0033 + paper §V.5.x.M 의 R-P/F1-EX dichotomy narrative evidence 로 유지. Direction C (위 RSL-C) 가 우선 launch.
 
 ### 동기
 - Cao 2024 RSL-SQL 의 **backward path**: forward filter (예: XiYan) 가 PCST subgraph 위에서 prune-only 로 동작 → recall 손실. backward 는 **full schema** 위에서 preliminary SQL 을 생성해 거기 등장하는 column 들을 forward 결과 위에 합쳐 (union) recall 을 보강.
@@ -394,8 +491,10 @@ a05 라인 연장선. **anchor는 a03_17 (Direct 최고) + abl_ens_basic_xiyan (
 | [extractive_llm_filter.py](extractive_llm_filter.py) | 신규 — FL-II |
 | [score_gated_batch_extractive_filter.py](score_gated_batch_extractive_filter.py) | 신규 — SGBE (완료 2026-05-12) |
 | [tests/test_sgbe.py](tests/test_sgbe.py) | 신규 — SGBE 16-scenario smoke (PASSED) |
-| [rsl_backward_filter.py](rsl_backward_filter.py) | 신규 — RSL Backward (완료 2026-05-13) |
+| [rsl_backward_filter.py](rsl_backward_filter.py) | 신규 — RSL Backward (완료 2026-05-13, 정식 배포 보류 2026-05-14) |
 | [tests/test_rsl_backward.py](tests/test_rsl_backward.py) | 신규 — RSL Backward 15-scenario smoke (PASSED) |
+| [grast_fd_filter.py](grast_fd_filter.py) | 신규 — GRAST-FD Direction C (완료 2026-05-14) |
+| [tests/test_grast_fd.py](tests/test_grast_fd.py) | 신규 — GRAST-FD 17-scenario smoke (PASSED) |
 | [tools/graph_tools.py](tools/graph_tools.py) | `get_all_tables`, `get_similar_columns_by_name` 등 추가 |
 | `src/prompts/filter.md` | `sgbe_extractive` section 추가 (완료) |
 | `src/llm_client/api_handler.py` | vLLM `logprobs` 지원 |
