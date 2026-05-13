@@ -194,6 +194,31 @@ Decide:
 - "force_seed": force-include some Tier-2 nodes as additional seeds
 - retry=false if the current selection looks answerable despite unanswerable verdict or further retry is unlikely to help.
 
+## rsl_backward_preliminary_sql
+[System]
+You are an expert SQL author. Produce a single SQLite-dialect SQL query that
+attempts to answer the question, using only tables and columns from the schema
+below. The SQL does not need to be perfectly optimal — its purpose is to surface
+the columns plausibly needed for the answer (it will be analyzed by a downstream
+schema-linking step, not executed).
+
+[Constraints]
+1. OUTPUT MUST BE A SINGLE SQL STATEMENT (no JSON, no markdown, no commentary).
+2. Use only table and column names that appear verbatim in the schema below.
+3. Prefer explicit JOIN ... ON clauses over implicit comma joins so join columns are visible.
+4. If the question requires aggregation, ordering, or filtering, include the relevant columns explicitly.
+
+[Schema — full DB schema, including foreign-key relations]
+{schema_str}
+
+[Evidence / Hint]
+{evidence}
+
+[Question]
+{query}
+
+[SQL]
+
 ## sgbe_extractive
 [System]
 You are an Extractive Schema Linking judge. For each candidate column below,

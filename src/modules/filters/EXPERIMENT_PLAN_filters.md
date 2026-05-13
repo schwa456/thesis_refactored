@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 4가지 제안
+## 이 모듈이 받아야 할 5가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -18,6 +18,94 @@
 | FL-II | **Extractive Decoder-only LLM — Filter mode** (원안 #7) | LLM span extraction + logit score로 token-level pruning | 중 | 새 축 (a05 외) |
 | FL-III | **Symbolic-Neural Layer 3 — Verifier** (원안 #9 Layer 3) | FK graph 상 connectivity 검증 + disconnected 결과 reject | 상 | a05 F2 (VerifierFilter) 의 강화형 |
 | **SGBE** | **Score-Gated Batch Extractive Filter** (학술 Agent 2026-05-12) | GAT score 분포 기반 column-level 3-way routing + extractive binary LLM | **최상** | XiYan 대체 candidate. FL-I/II/III 와 직교 — 결합 가능 |
+| **RSL-A** | **RSL-SQL Backward Filter (Cao 2024)** (학술 Agent Phase 3, 2026-05-13) | XiYan forward + preliminary SQL backward → S_restore union (forward 가 놓친 column 회복) | **최상** | XiYan 의 recall 보강 path. Direction A GO 확정 (Phase 2 PASS 3/3). |
+
+---
+
+## RSL-A. RSL-SQL Backward Filter (★ 최상, Direction A GO 확정 2026-05-13)
+
+### 동기
+- Cao 2024 RSL-SQL 의 **backward path**: forward filter (예: XiYan) 가 PCST subgraph 위에서 prune-only 로 동작 → recall 손실. backward 는 **full schema** 위에서 preliminary SQL 을 생성해 거기 등장하는 column 들을 forward 결과 위에 합쳐 (union) recall 을 보강.
+- 학술 Agent Phase 2 (fix 후, 2026-05-13) 측정:
+  - mean(`S_restore_precision`) = **0.6434** (threshold ≥ 0.60, margin 1.07×) ✅
+  - mean(Δrecall_union vs fwd) = **+0.0771** (threshold ≥ +0.05, margin 1.54×) ✅
+  - mean(`recall_gained_by_restore`) = **0.5709** — "forward 가 놓친 gold column 의 **57% 를 backward 가 회복**" (학위 논문 §V.5.x 핵심 인용)
+- 학술 Agent Phase 3 (2026-05-13) **Direction A GO 확정** + B Hold + C 재결정 ΔF1(A) trigger 분기.
+
+### 설계 — 4-step pipeline (2 LLM calls per query)
+```
+Step 1  XiYan forward (의존성)
+        S_fwd = XiYanFilter.refine(query, subgraph, db_id).final_nodes
+
+Step 2  Preliminary SQL backward (GLM 4.7, full schema input)
+        prelim_sql = client.generate_text(prompt=load("rsl_backward_preliminary_sql", schema_str=full, ...))
+        L_bwd = sqlglot.extract_columns(prelim_sql, col-only-distinct)
+        ^ Phase 2 bug fix 후 normalization 정합 (alias-distinct → col-only)
+        ^ SQL keyword 검증 (SELECT/WITH/...) 후 parse, parse 실패 시 빈 set (recall-safe)
+
+Step 3  S_restore + DB-level guard (조건부)
+        S_restore_col = L_bwd - col_only(S_fwd)
+        if db_id ∈ risky_dbs:                         ← Phase 3 margin caveat 1.07× → guard
+            S_restore = ∅
+        else:
+            S_restore = expand_to_full_paths(S_restore_col, full_schema)
+                        ^ col_name 이 여러 table 에 있으면 모두 후보
+                          (Cao 2024 RSL-SQL 정합)
+
+Step 4  S_struct FK/PK hardcode (CHESS Talaei 2024)
+
+Output: final_nodes = S_fwd ∪ S_restore ∪ S_struct
+```
+
+### 인터페이스 (계약 유지)
+```python
+@register("filter", "RSLBackwardFilter")
+class RSLBackwardFilter(BaseFilter):
+    def __init__(self,
+                 model_name="zai-org/glm-4.7", temperature=0.0,
+                 xiyan_max_iteration=1, xiyan_model_name=None,
+                 xiyan_num_examples=3,
+                 db_dir="./data/raw/BIRD_dev/dev_databases", num_examples=3,
+                 fk_pk_hardcode=True,
+                 risky_dbs=None,                    # ["toxicology", ...] 명시
+                 provider="glm", api_key=None, base_url=None, **kwargs): ...
+
+    def refine(self, query, subgraph, db_id=None,
+               tier2_pool=None, gat_scores=None,    # SGBE 와 동일 시그니처
+               metadata=None, evidence=None, **kwargs) -> Dict:
+        # 반환: {"status", "final_nodes", "reasoning",
+        #        "stats": {"fwd_nodes", "bwd_col_names", "restore_col_diff",
+        #                  "restore_expanded", "struct", "final",
+        #                  "db_guard_active", "sql_parse_ok", "restore_is_empty"},
+        #        "preliminary_sql": <str>,
+        #        "filter_info": {...}}
+```
+
+### DB-level Guard (Phase 3 margin caveat)
+- Phase 1 margin 1.20× → Phase 2 fix 후 **1.07× 좁아짐**. toxicology 외 추가 low-precision DB 발견 시 `risky_dbs` 갱신 권장.
+- Implementation 결정: yaml configurable `risky_dbs: List[str]` (default 빈 list — 전체 적용). guard 동작 시 `stats["db_guard_active"]=True` + reasoning 에 명시.
+- 학술 Agent Q3 implementation detail 위임 — 본 모듈에서는 simple skip-list 채택 (옵션 a). query-level estimate (옵션 b) 는 future work.
+
+### 비용
+- LLM calls per query: **2** (XiYan + preliminary SQL)
+- Token cost: anchor 대비 **~+100%** (preliminary SQL 의 full schema input)
+- sqlglot parse: 무시 가능 cost (CPU 수십 ms)
+
+### 한계 / Caveat
+- **margin 1.07× 좁음** — toxicology 외 추가 low-precision DB 시 risky_dbs 갱신 필요 (Phase 3).
+- **full schema input** → DB 가 큰 경우 (debit_card_specializing 100+ table 등) prompt 길이 증가. max_tokens 조정 또는 schema trimming candidate (future work).
+- **col_name 중복** — backward SQL 의 wrong-table-prefix 가 schema 의 모든 후보 table 에 expand → noise 증가 가능. 학술 Agent Phase 2 측정에서 precision 0.6434 로 PASS, 단 future work 으로 sqlglot qualify 기반 정확 table resolve 가능.
+
+### 산출물 (본 모듈 책임, 2026-05-13)
+- [`rsl_backward_filter.py`](rsl_backward_filter.py) — `RSLBackwardFilter` 신규 구현. XiYan forward composition + sqlglot col-only-distinct extraction + risky_dbs guard + FK/PK hardcode.
+- [`tests/test_rsl_backward.py`](tests/test_rsl_backward.py) — 15-scenario smoke test (**PASSED 15/15**). 핵심 시나리오: clean SQL restore / S_restore=∅ (54.50% Phase 1 정합) / risky_db guard / FK hardcode / SQL parse fail recall-safe / metadata fallback.
+- [`/home/hyeonjin/thesis_refactored/src/prompts/filter.md`](/home/hyeonjin/thesis_refactored/src/prompts/filter.md) — `rsl_backward_preliminary_sql` section 추가.
+- [`__init__.py`](__init__.py) — `RSLBackwardFilter` export.
+
+### 다음 단계 (Root 책임)
+- Direction A pipeline config 작성 (`configs/experiments/abl/.../rsl_backward_*.yaml`)
+- anchor (XiYan) + Backward sweep launch → ΔF1 / ΔEX 정량
+- Analyzer 보고: per-DB breakdown + ΔF1 trigger 분기 (≥ 0.03 → Direction C post-paper / < 0.02 → C 타겟 launch)
 
 ---
 
@@ -305,7 +393,9 @@ a05 라인 연장선. **anchor는 a03_17 (Direct 최고) + abl_ens_basic_xiyan (
 | [symbolic_verifier_filter.py](symbolic_verifier_filter.py) | 신규 — FL-III |
 | [extractive_llm_filter.py](extractive_llm_filter.py) | 신규 — FL-II |
 | [score_gated_batch_extractive_filter.py](score_gated_batch_extractive_filter.py) | 신규 — SGBE (완료 2026-05-12) |
-| [tests/test_sgbe.py](tests/test_sgbe.py) | 신규 — SGBE 10-scenario smoke (PASSED) |
+| [tests/test_sgbe.py](tests/test_sgbe.py) | 신규 — SGBE 16-scenario smoke (PASSED) |
+| [rsl_backward_filter.py](rsl_backward_filter.py) | 신규 — RSL Backward (완료 2026-05-13) |
+| [tests/test_rsl_backward.py](tests/test_rsl_backward.py) | 신규 — RSL Backward 15-scenario smoke (PASSED) |
 | [tools/graph_tools.py](tools/graph_tools.py) | `get_all_tables`, `get_similar_columns_by_name` 등 추가 |
 | `src/prompts/filter.md` | `sgbe_extractive` section 추가 (완료) |
 | `src/llm_client/api_handler.py` | vLLM `logprobs` 지원 |
