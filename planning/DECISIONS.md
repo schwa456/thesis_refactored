@@ -8,6 +8,911 @@
 
 ---
 
+## 2026-05-13 (Anchor Framework 정확한 정의 정정 — Direction A config 의 Extractor 정정 + 향후 모든 ablation 의 reference base)
+
+> **사용자 직전 input (5/13)**: "지금 anchor 프레임워크는 Enriched Builder + QCond (concat) + MST+PCST + XiYan Filter 구조야 — 지금은 Filter 를 실험하는 거니까 나머지는 anchor 와 동일해야 해. Root 에게도 알려줬으니 너도 참고해." Direction A 의 a05_23 / a05_24 config 가 Extractor 를 단일 MSTKruskalExtractor 로 설정한 것은 anchor 와 incompatibility — Root 가 정정 후 재실험.
+
+### §1. Anchor Framework 정확한 정의 (향후 모든 ablation chain 의 reference base)
+
+| Stage | Module | 정확한 클래스 이름 |
+|---|---|---|
+| **Builder** | Enriched | `EnrichedHeteroGraphBuilder` (tables.json + database_description CSV 포함) |
+| **Selector** | **QCond (concat)** | `EnsembleSelector` with `best_gat_qcond_nl3.pt` (Query-Conditioned GAT NL=3 layer, concat fusion) + `alpha=0.5` (GAT + cosine ensemble) + `top_k=20` |
+| **Extractor** | **MST + PCST (결합)** | **`MSTPCSTUnionExtractor`** (단일 `MSTKruskalExtractor` 또는 단일 `AdaptivePCSTExtractor` 와 구별) |
+| **Filter** | **XiYan** | `XiYanFilter` (GLM 4.7 era — model `zai-org/glm-4.7`, provider `glm`) |
+| (SQL Gen) | LLM | `LLMSQLGenerator` (GLM 4.7) |
+
+→ **Anchor metric**: F1 = **0.8651**, EX = **0.5202** (학회 paper main, paper §V.5.4 + §V.5.5 base, 학술 Agent 의 모든 phase 의 reference anchor)
+
+### §2. Direction A config 의 Extractor 정정 (Root 책임, planner 는 reference)
+
+| Config | 직전 (잘못된, anchor 와 incompatibility) | 정정 (Root 갱신) |
+|---|---|---|
+| `a05_23_rsl_backward_baseline.yaml` | `MSTKruskalExtractor (score_threshold=0.1)` | **`MSTPCSTUnionExtractor`** (anchor 정합) |
+| `a05_24_rsl_backward_with_guard.yaml` | `MSTKruskalExtractor (score_threshold=0.1)` | **`MSTPCSTUnionExtractor`** (anchor 정합) |
+
+→ **사용자 결정**: Root 가 a05_23 + a05_24 config 의 extractor 를 `MSTPCSTUnionExtractor` 로 갱신 후 재실험. Planner 는 코드 수정 X (planning 세션 의 boundary), 단 documentation + DECISIONS reference 갱신.
+
+→ **재실험 영향**: 직전 잘못된 stack 으로 진행 중이던 sweep 결과는 폐기 — anchor 와 incompatibility 라 정량 비교 불가. ETA + 추가 LLM cost 발생 (재실험 분).
+
+### §3. Filter Ablation 의 정확한 원칙 (학회 paper §3.5 narrative 정합)
+
+학회 paper §3.5 의 Filter Dominance 정확한 실험 원칙:
+> "Filter 의 효과 정량 측정 시 Filter 외 모든 module (Builder + Selector + Extractor + SQL Gen) 은 anchor 와 동일하게 유지. Filter 만 변경하여 정확한 isolated effect 측정."
+
+→ 직전 Filter Dominance evidence 표 의 모든 axis (#1~#9) 의 base = 본 anchor stack. 즉:
+- #4 ΔF1 +0.65 lift = anchor (Enriched + QCondGAT + MSTPCSTUnion + XiYan) vs same stack with Filter=None
+- #5 H-A/H-D Filter design 14 변형 = 위 anchor stack 의 Filter 만 14 variants
+- #7 Filter-Invariant F1+EX sweep v2 9-cell = anchor stack 의 Filter 만 9 variants
+- #8 SGBE Negative Evidence = anchor stack 의 Filter 만 SGBE 로 교체 → F1=0.3697 (anchor 0.8673 대비)
+- **#9 Direction A = anchor stack 의 Filter 만 RSLBackwardFilter 로 교체** (재실험 후 정확한 비교 가능)
+
+### §4. RSLBackwardFilter Documentation 갱신 항목
+
+- `planning/rsl_backward_filter_documentation_2026-05-13.md`:
+  - §1.1 "학술적 위치" — anchor framework 의 정확한 정의 명시
+  - §4.1 / §4.2 — anchor stack 의 정확한 module 정정 (MSTPCSTUnionExtractor)
+  - §4.3 anchor 표기 — Enriched + QCondGAT (concat) + MST+PCST + XiYan 의 통합 표기
+  - §11 chain status — Root 의 config 정정 후 재실험 상태 반영
+
+### §5. paper_research_direction.md 영향
+
+- §3.5 axis #9 placeholder — Direction A 가 anchor stack 의 Filter 만 RSLBackwardFilter 로 교체. 정확한 isolated effect 측정 정합 (학회 paper narrative 정합).
+- 직전 §1 (Paper Main Pipeline) — 이미 정확한 anchor framework 명시되어 있는지 확인 + 갱신 trigger.
+
+### §6. 사용자 의도 + Planner 의 향후 reference
+
+- Direction A 의 sweep 의 정확한 isolated effect 측정 → 학술 Agent Phase 3 의 ΔF1(A) trigger 분기 (≥0.03 / <0.02 / gray zone) 의 정량 정확성 확보
+- 향후 모든 ablation (Direction C 의 미래 trigger 시 + Filter ablation 추가 시) 의 anchor stack 정확성 유지
+- DECISIONS 의 본 entry = 향후 모든 ablation chain 의 anchor reference
+
+### §7. Chain Status 갱신 (5/13 저녁 — Root config 정정 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-10 | 직전 chains | ✅ 완료 |
+| 11 | Module:Filter `RSLBackwardFilter` 구현 + smoke 15/15 | ✅ 완료 (commit 462798d) |
+| **12** | **Root: Direction A sweep config (a05_23 + a05_24)** | ⚠️ **Extractor MSTKruskalExtractor → MSTPCSTUnionExtractor 정정 + 재실험 진행 중** |
+| 13 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+| ⏸ 14 | Analyzer Direction A 결과 보고서 (anchor 정정 후 정확한 ΔF1) | ⏸ Root 재실험 완료 의존 |
+| ⏸ 15 | 학술 Agent Phase 5 (Direction A 결과 + Direction C 재결정) | ⏸ Direction A 결과 의존 |
+| ⏸ 16 | 학위 논문 §V.5.x.9 narrative final integration | ⏸ Direction A 배포 후 ΔF1 정량 trigger |
+
+### §8. 영향 범위
+
+- planning/DECISIONS.md (본 entry — 향후 모든 ablation chain reference base)
+- planning/rsl_backward_filter_documentation_2026-05-13.md (§1.1 + §4 + §11 갱신)
+- (Root 책임) configs/experiments/abl/a05_filter_agentic/a05_23_rsl_backward_baseline.yaml + a05_24_rsl_backward_with_guard.yaml (planner 는 갱신 X, Root 세션이 정정 진행 중)
+
+### §9. 근거
+
+- 사용자 직접 input (anchor framework 정확한 정의 + Root 알림 + planner 참고 지시)
+- `src/modules/extractors/mst_pcst_union.py` (`MSTPCSTUnionExtractor` 클래스 확인)
+- `planning/paper_research_direction.md` §3.5 Filter Dominance evidence 표 — 모든 axis 의 base = anchor stack 의 Filter 만 ablation 원칙
+
+### §10. 사용자 후속 actions
+
+1. ✅ **사용자 → Root 알림** — Direction A config 의 Extractor 정정 (사용자 진행 완료)
+2. 🚀 **Root: a05_23 + a05_24 의 extractor `MSTPCSTUnionExtractor` 정정 + 재실험 launch**
+3. 🚀 **Planner: documentation §1.1 + §4 + §11 갱신** (본 entry 의 §4)
+4. ⏸ **Analyzer**: 재실험 결과 ΔF1 보고서 (재실험 완료 의존)
+
+---
+
+## 2026-05-13 (학술 Agent Phase 4 Review — Verification 정합 confirm + 3 표현 수정 + n=488 해명 요청 + Bimodal axis 위치 권장)
+
+> **사용자 직전 input (5/13)**: 학술 Agent 의 Phase 4 review 결과 공유. 본 review 는 직전 verification 의 학술 Agent 검증 — interpretation (b) 정합 + mathematical identity 정합 + auxiliary statistics 표기 권장 + 3 수정 항목.
+
+### §1. 학술 Agent Phase 4 Review 결과 요약 (6 항목)
+
+| Section | 검증 결과 | 조치 |
+|---|---|---|
+| §2 Interpretation (b) | ✅ **정합** — 정정 불필요 | n=488 vs Phase 1 n_restore_nonzero=698 차이 해명 요청 (Analyzer) |
+| §3 Mathematical Identity | ✅ **정합** — proof appendix 사용 가능 | 변경 없음 |
+| §4 Auxiliary Statistics | ✅ **정합** + 표기 권장 | main 에 conditional 0.5709 만, 각주에 pooled 0.5984 (paper_research_direction.md §V.5.x.6 갱신) |
+| §5 Bimodal Distribution | ✅ **정합** + ⚠️ **표현 수정** | "all-or-nothing" → "predominantly binary recovery behavior" (paper_research_direction.md §V.5.x.7 갱신) |
+| §6 Main 인용 SGBE contrast | ⚠️ **표현 수정** | "SGBE 의 절반 수준" → "SGBE 의 약 44% 수준 (절반 이하)" (35.66/81.22 = 43.9%) |
+| §6 §V.5.x.6 + §V.5.x.7 위계 | ✅ **적절** | 변경 없음 |
+| §9 Bimodal axis #9 포함 | 권장 표기 | 학회 paper §3.5 axis #9 포함 X, 학위 논문 §V.5.x.8 discussion 으로 통합 (paper_research_direction.md §3.5 갱신) |
+
+### §2. 학술 Agent §2 — n=488 해명 요청 (Analyzer 후속 분석)
+
+학술 Agent 의 정확 인용:
+
+> "n=537 (conditional)과 n=488 (S_restore non-empty)의 차이 해명을 요청합니다. §6의 인용 문구에서 mean(S_restore_precision)의 분모를 n=488로 표기했는데, Phase 1 시점에서는 n_restore_nonzero = 698이었습니다. Bug fix가 recall 계산 로직만 수정한 것이라면 L_bwd 집합 자체는 변하지 않아야 하므로 S_restore non-empty 쿼리 수도 698로 유지되어야 합니다. 698 → 488 변화는 column name normalization(table prefix 통일, 대소문자 처리 등) 등 L_bwd 추출 방식까지 함께 수정되었을 가능성을 시사합니다. Bug fix의 범위가 정확히 어느 라인이었는지 확인하고, n=488의 근거를 스크립트 주석에 명시해두는 것을 권장합니다."
+
+**Planner 의 추측 (Analyzer 검증 요청)**:
+- Phase 2 bug fix 가 `alias-distinct → col-only-distinct normalization` 변경 (직전 학술 Agent Phase 2 review 의 인용)
+- column name normalization 후 같은 col 의 alias variants 가 통합되어 L_bwd 집합 축소 → 같은 col 이 alias 로 두 번 나타나는 query 의 경우 Phase 1 에서는 distinct count 2 (S_restore ≥ 1), Phase 2 에서는 distinct count 1 (S_restore = 0 가능)
+- 결과: S_restore non-empty 의 query 수가 **698 → 488 감소 (-30%)**
+
+**Analyzer 의 후속 분석 spec** (본 entry 의 핸드오프 base):
+1. `src/analysis/filter_proposal_a3_restore_noise.py` 의 L_bwd 추출 로직 (sqlglot.extract_columns + normalization) 의 정확한 lines 확인
+2. Phase 1 → Phase 2 의 변경 lines 정확한 위치 (recall 계산 외에 L_bwd 추출 까지 영향 받았는지)
+3. 698 → 488 변화의 정확한 이유 — alias normalization 의 함수 / table prefix 통일 / 대소문자 처리 등
+4. **n=488 의 근거를 스크립트 주석에 명시** (학술 Agent 권장)
+5. `notebooks/analysis_results/recall_gained_denominator_verification.md` 에 §1.4 추가 — n=488 의 정확한 정의 + Phase 1 의 n=698 과의 비교 + bug fix 의 정확한 lines
+
+### §3. 학술 Agent §4 — 보조 통계 표기 권장 (paper_research_direction.md §V.5.x.6 갱신)
+
+학술 Agent 의 정확 인용:
+
+> "학위 논문 주 표기 권장: conditional mean 0.5709. Pooled 0.5984는 보조 표기로 병기할 수 있습니다. 두 수치를 모두 본문에 나열하면 독자가 혼란을 겪을 수 있으므로, §6 main 인용에는 0.5709만, 각주에 'pooled micro-average 0.5984, 두 지표 모두 backward path의 >57% 회복률 일관 지지'로 처리하는 것이 가장 깔끔합니다."
+
+**Planner 의 적용**:
+- paper_research_direction.md §V.5.x.6 main 인용 final 갱신 — pooled rate 0.5984 를 본문에서 제거, 각주로 이동
+- DECISIONS verification entry §6 갱신 (본 entry 의 §5)
+
+### §4. 학술 Agent §5 — "all-or-nothing" 표현 수정 (paper_research_direction.md §V.5.x.7 갱신)
+
+학술 Agent 의 정확 인용:
+
+> "§9에서 사용한 'all-or-nothing'이라는 표현은 수정이 필요합니다. 53건(10%)이 partial recovery (0 < recall_gained < 1) 구간에 존재하므로 엄밀한 의미의 'all-or-nothing'은 아닙니다. 'predominantly binary' 또는 'bimodal with 90% extreme cases (52% perfect + 38% zero)'가 더 정밀합니다. 학위 논문 서술 시 'RSL-SQL backward path exhibits a predominantly binary recovery behavior on BIRD-Dev: 52% of forward-imperfect queries achieve perfect column recovery, 38% achieve zero recovery, with only 10% showing partial recovery'로 표기할 것을 권장합니다."
+
+**Planner 의 적용**:
+- paper_research_direction.md §V.5.x.7 보조 인용 final 갱신 — "all-or-nothing" → "predominantly binary recovery behavior" + 정확한 정량 서술
+- DECISIONS verification entry §6 §V.5.x.7 보조 인용 갱신
+
+### §5. 학술 Agent §6 — Main 인용 "SGBE 의 절반 수준" 수정
+
+학술 Agent 의 정확 계산:
+
+> "Direction A noise rate = 1 − 0.6434 = 35.66%, SGBE S_keep_hard noise = 81.22% 이므로, 35.66% / 81.22% = 43.9%입니다. '절반 수준'(50%)보다 낮으므로 사실상 더 강한 주장이지만 표현이 부정확합니다."
+
+| 위치 | 현재 (수정 전) | 수정 후 |
+|---|---|---|
+| paper_research_direction.md §V.5.x.6 main 인용 | "Direction A 의 noise 35.66%, SGBE 의 절반 수준" | "Direction A 의 noise 35.66%, SGBE 의 약 44% 수준 (절반 이하)" |
+| paper_research_direction.md §3.5 axis #9 placeholder | "Direction A noise 35.66% << SGBE S_keep_hard noise 81.22% (~SGBE 의 절반)" | "Direction A noise 35.66% << SGBE S_keep_hard noise 81.22% (SGBE 의 약 44% 수준)" |
+| DECISIONS verification entry §6 main 인용 | "Direction A 의 noise 35.66%, SGBE 의 절반 수준" | "Direction A 의 noise 35.66%, SGBE 의 약 44% 수준 (절반 이하)" |
+
+나머지 main 인용 (precision 0.6434, threshold 1.07×, recall_gained 0.5709 conditional 정의, aggregate identity 0.0768 ≈ 0.0771) 모두 ✅ 검증 완료.
+
+### §6. 학술 Agent §V.5.x.6 main 인용 final 갱신 (3 수정 항목 통합)
+
+```
+Direction A (RSL-SQL backward path) 의 본 도메인 transfer 정량 evidence:
+
+  - mean(S_restore_precision) = 0.6434 (n=488, S_restore non-empty queries) — 학술 Agent
+    threshold 0.60 의 1.07× margin. SGBE 의 S_keep_hard noise 81.22% 와 dramatic
+    contrast (Direction A 의 noise 35.66%, SGBE 의 약 44% 수준 — 절반 이하).
+    [수정 1: "절반 수준" → "약 44% 수준 (절반 이하)" — 학술 Agent §6]
+
+  - mean(recall_gained_by_restore) = 0.5709 (n=537, forward-imperfect queries):
+    "of the gold columns that forward misses, backward recovers 57% on average per query"
+    (학술 Agent 인용, conditional mean 정합).
+
+  - [각주, 학술 Agent §4 권장]: pooled micro-average 0.5984
+    (sum |S_restore ∩ missed| / sum |missed|), 두 지표 모두 backward path 의 >57%
+    회복률 일관 지지.
+
+  - Aggregate consistency: mean(Δrecall_union) = +0.0771 = mean(recall_gained × |M|/|G|)
+    per-query identity (mathematical proof, 학술 Agent 검증 ✅ — proof appendix 사용 가능).
+```
+
+학위 논문 §V.5.x.7 보조 인용 final:
+
+```
+Forward (XiYan anchor) 가 BIRD-Dev 1534 query 중 65% (997 queries) 에서 모든 gold cols
+회수 — backward path 의 의미 있는 영역은 35% (537 queries) 만. 이 conditional 영역에서:
+  - 52% (279 queries) perfect recovery (backward 가 모든 missed gold 복원)
+  - 38% (205 queries) zero recovery (backward 가 한 col 도 복원 안 함)
+  - 10% (53 queries) partial recovery (0 < recall_gained < 1)
+→ "RSL-SQL backward path exhibits a predominantly binary recovery behavior on BIRD-Dev:
+52% of forward-imperfect queries achieve perfect column recovery, 38% achieve zero
+recovery, with only 10% showing partial recovery" (학술 Agent §5 권장 표기).
+"Selective gain on hard queries" 정량 evidence — 학술 Agent Phase 1 §3 의 challenging
+query lift 0.3287 (simple 0.2216 의 1.48×) 와 일관.
+[수정 2: "all-or-nothing" 표현 제거 → "predominantly binary recovery behavior" — 학술 Agent §5]
+```
+
+### §7. 학술 Agent §9 — Bimodal Axis 위치 권장 (학회 paper §3.5 axis #9 포함 X)
+
+학술 Agent 의 정확 인용:
+
+> "학회 paper(한국지능정보시스템학회 2026 춘계)의 §3.5 8-axis Filter Dominance가 이미 main contribution이므로, bimodal 발견은 학회 paper에 독립 axis로 추가하기보다 Direction A 배포 결과 절(§V.5.x.8)의 discussion 항목으로 통합하는 것이 학위 논문 구조상 적합합니다. 학회 paper는 현재 구조를 유지하고, bimodal 발견은 학위 논문 §V에서만 상세히 서술하는 방향이 contribution의 과잉 분산을 막습니다."
+
+**Planner 의 적용**:
+- paper_research_direction.md §3.5 axis #9 placeholder — bimodal 발견 narrative 제거 (학회 paper 의 axis 로 포함 X)
+- paper_research_direction.md §V.5.x.8 (학위 논문 chapter outline, "plan, Direction A 배포 후 trigger") — bimodal 분포 분석 + discussion 통합 명시
+
+**근거**: 학회 paper 의 main contribution 의 과잉 분산 방지. 학위 논문 §V 에서만 상세 서술.
+
+### §8. paper_research_direction.md 갱신 항목 (3 수정 적용)
+
+1. **§3.5 evidence 표 axis #9**:
+   - "SGBE 의 절반 수준" → "SGBE 의 약 44% 수준" (수정 1)
+   - Bimodal 발견 narrative 제거 (학술 Agent §9 권장, 학위 논문 §V.5.x.8 으로 통합)
+2. **§V.5.x.6 narrative final candidate sub-section**:
+   - main 인용 final 갱신 (수정 1 + 보조 통계 각주 표기)
+   - §V.5.x.7 보조 인용 final 갱신 (수정 2 "all-or-nothing" 제거)
+   - §V.5.x.8 (plan, Direction A 배포 후 trigger) row 의 scope 갱신 — bimodal discussion 통합 명시
+3. **§3.5 axis #9 의 trigger 명시** — Direction A 배포 후 정량 main update (bimodal 발견은 학위 논문 §V.5.x.8 으로만 통합)
+
+### §9. Direction A 배포 Chain Status 갱신 (5/13 저녁 — Phase 4 review 완료 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-10 | 직전 chains (verification 완료까지 포함) | ✅ 완료 |
+| **11** | **학술 Agent Phase 4 review** | ✅ **완료 (5/13)** — 3 수정 항목 + n=488 해명 요청 |
+| **12** | **Planner: 3 수정 적용 (paper_research_direction.md + DECISIONS)** | 🚀 즉시 (본 entry §8) |
+| **13** | **Analyzer: n=488 해명 후속 분석** | 🚀 trigger (본 entry §2 spec) |
+| **14** | **Module:Filter: `RSLBackwardFilter` 구현** | 🚀 진행 중 (Phase 4 review 결과 의존 없음) |
+| ⏸ 15 | Root: Direction A sweep launch | ⏸ Module:Filter 완료 의존 |
+| ⏸ 16 | Analyzer: Direction A 결과 보고서 | ⏸ Root sweep 완료 의존 |
+| ⏸ 17 | 학술 Agent Phase 5 (Direction A 결과 + Direction C 재결정) | ⏸ Direction A 결과 의존 |
+| ⏸ 18 | 학위 논문 §V.5.x.6 narrative final integration | ⏸ Direction A 배포 후 ΔF1 정량 trigger |
+
+### §10. 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md §3.5 evidence 표 axis #9 + §V.5.x.6 narrative final candidate sub-section (§V.5.x.6 main 인용 + §V.5.x.7 보조 인용 + §V.5.x.8 trigger row)
+- 후속:
+  - Analyzer 핸드오프 — n=488 해명 분석 + verification 의 §1.4 추가
+  - paper_research_direction.md §V.5.x.6 main 인용 의 n=488 표기 final 확정 (Analyzer 분석 후)
+
+### §11. 근거
+
+- 사용자 직접 input (학술 Agent Phase 4 review 결과 공유)
+- 직전 entry (verification 완료) §6 main 인용 + §V.5.x.7 보조 인용 — 본 review 의 base
+
+### §12. 사용자 후속 actions
+
+1. ✅ **Phase 4 review receive** — 학술 Agent 의 verification 검증 완료
+2. 🚀 **Analyzer 핸드오프** — n=488 vs 698 해명 분석 (본 entry §2 spec)
+3. ✅ **paper_research_direction.md 3 수정 적용** — planner 즉시 (본 entry §8)
+4. 🚀 **Module:Filter** — `RSLBackwardFilter` 구현 계속 (Phase 4 review 결과 의존 없음)
+5. ⏸ **Phase 5 cover note prep** — Direction A 배포 결과 (ΔF1) + Analyzer n=488 해명 추가 후 전달
+
+---
+
+## 2026-05-13 (recall_gained_by_restore Denominator Verification 완료 — Interpretation (b) 확정 + 학술 Agent narrative 정합 + Mathematical Identity 정합 + 학위 논문 §V.5.x.6 main 인용 final candidate)
+
+> **사용자 직전 input (5/13)**: Analyzer 의 `notebooks/analysis_results/recall_gained_denominator_verification.md` 작성 완료 보고. 학술 Agent Phase 3 의 수치 확인 요청 (recall_gained_by_restore = 0.5709 의 분모 정의 확인) 의 정식 응답 base.
+
+### §1. 핵심 결론 — Interpretation (b) 확정
+
+분모 = `|G \ L_fwd|` (forward 가 누락한 gold cols 의 수). 코드 직접 인용 (`filter_proposal_a3_restore_noise.py` lines 95-104):
+
+```python
+missed_by_fwd = set(c for c in gold_cols_raw if c.lower() not in L_fwd_compare)
+missed_size = len(missed_by_fwd)
+if missed_size > 0:
+    gained = _intersect_size(S_restore, missed_by_fwd)
+    recall_gained = gained / missed_size
+else:
+    recall_gained = 0.0
+```
+
+→ **Interpretation (b)**: `recall_gained_by_restore = |S_restore ∩ (G \ L_fwd)| / |G \ L_fwd|`
+
+### §2. 0.5709 의 정확한 해석
+
+| 카테고리 | n | % |
+|---|---:|---:|
+| missed > 0 (forward 가 ≥1 gold 누락) | **537** | 35.0% |
+| missed = 0 (forward 가 perfect recall) | 997 | 65.0% |
+| **합계** | **1534** | 100% |
+
+→ **0.5709 = 537 conditional queries 의 per-query mean** (forward 가 imperfect 한 영역). 학술 Agent narrative "of the gold columns that forward misses, backward recovers 57%" **정합** — 정정 불필요.
+
+### §3. recall_gained 분포 — Bimodal Distribution (학위 논문 §V.5.x.7 별도 axis 가능)
+
+| Bucket | n | % |
+|---|---:|---:|
+| 0 (zero recovery) | 205 | 38.2% |
+| (0, 0.5) | 4 | 0.7% |
+| [0.5, 0.75) | 46 | 8.6% |
+| [0.75, 1.0) | 3 | 0.6% |
+| **1.0 (perfect recovery)** | **279** | **52.0%** ⭐ |
+
+→ **bimodal**: 52% perfect + 38% zero + 10% middle. 단순 평균 0.5709 = dual mode 의 mid-point. 학위 논문 §V.5.x narrative 의 "selective gain on hard queries" 정량 evidence (학술 Agent Phase 1 §3 challenging query lift 0.3287 dominant 와 일관).
+
+### §4. Mathematical Identity 정합 (Δrecall_union 과의 등식)
+
+**Per-query identity** (proof):
+
+$\Delta r_q = |S \cap M| / |G| = \text{recall\_gained}_q \cdot (1 - r_{\text{fwd},q})$
+
+where $M = G \setminus L_{\text{fwd}}$, $S = L_{\text{bwd}} \setminus L_{\text{fwd}}$.
+
+**Aggregate 정합** (1534 queries):
+- $\text{mean}_q(\Delta r_q)$ = **0.0771** (A-2 summary)
+- $\text{mean}_q(\text{recall\_gained}_q \cdot |M_q|/|G_q|)$ = **0.0768** (per-query 직접 계산, rounding error 0.0003)
+
+→ **macro-aggregate identity 정합 (within rounding tolerance)**. Sample 5 queries 의 per-query identity 검증 모두 정확 일치.
+
+⚠️ **Naive product 의 caveat**: $0.5709 \cdot (1 - 0.8706) = 0.0739 \neq 0.0771$ — conditional aggregation (537 vs 1534) + per-query covariance 차이 때문. **proper conditional aggregate (mean of products)** 만 정확 등식.
+
+### §5. 보조 통계 (학위 논문 §V.5.x.6 main 인용 의 alternative)
+
+| 통계 | 정의 | 값 | 의미 |
+|---|---|---:|---|
+| **Per-query mean (conditional, n=537)** | $\text{avg}_{q: M_q \neq \emptyset}(\text{recall\_gained}_q)$ | **0.5709** ⭐ | **학술 Agent 인용 (학위 논문 main)** |
+| Per-query median (conditional, n=537) | median | 1.0000 | bimodal 의 mode |
+| Pooled rate (micro-avg) | $\sum_q |S \cap M| / \sum_q |M|$ | **0.5984** | "across all missed gold cols pooled" |
+| Per-query mean (unconditional, n=1534) | $\text{avg}_q(\text{recall\_gained}_q)$, $0$ for $M_q=\emptyset$ | 0.1999 | "across all queries" — diluted |
+
+→ 학위 논문 main 표기 = conditional mean 0.5709 + 보조 pooled 59.84% (narrative 강도 비슷).
+
+### §6. 학위 논문 §V.5.x.6 main 인용 final 권장 문구 (verification §4.2 인용)
+
+```
+Direction A (RSL-SQL backward path) 의 본 도메인 transfer 정량 evidence:
+
+  - mean(S_restore_precision) = 0.6434 (n=488, S_restore non-empty queries) — 학술 Agent
+    threshold 0.60 의 1.07× margin. SGBE 의 S_keep_hard noise 81.22% 와 dramatic
+    contrast (Direction A 의 noise 35.66%, SGBE 의 절반 수준).
+
+  - mean(recall_gained_by_restore) = 0.5709 (n=537, forward-imperfect queries):
+    "of the gold columns that forward misses, backward recovers 57% on average per query"
+    (학술 Agent 인용, conditional mean 정합).
+
+  - 보조 통계: pooled rate = 59.84% (sum |S_restore ∩ missed| / sum |missed|);
+    bimodal distribution (52% perfect recovery + 38% zero recovery).
+
+  - Aggregate consistency: mean(Δrecall_union) = +0.0771 = mean(recall_gained × |M|/|G|)
+    per-query identity (mathematical proof).
+```
+
+학위 논문 §V.5.x.7 보조 인용 (분포 분석):
+
+```
+Forward (XiYan anchor) 가 BIRD-Dev 1534 query 중 65% (997 queries) 에서 모든 gold cols
+회수 — backward path 의 의미 있는 영역은 35% (537 queries) 만. 이 conditional 영역에서:
+  - 52% (279 queries) perfect recovery (backward 가 모든 missed gold 복원)
+  - 38% (205 queries) zero recovery (backward 가 한 col 도 복원 안 함)
+  - 10% (53 queries) partial recovery (0 < recall_gained < 1)
+→ Direction A 의 학회 narrative "selective gain on hard queries" 정량 evidence — 학술
+Agent Phase 1 §3 challenging query 의 backward effect 0.3287 (simple 0.2216 의 1.48×)
+와 일관.
+```
+
+### §7. Direction A `RSLBackwardFilter` Implementation Spec 갱신 (직전 entry 의 spec 인용)
+
+직전 entry (2026-05-13 학술 Agent Phase 3 Response) 의 Implementation Spec 의 Step 3 (S_restore 측정 protocol) 의 정량 측정 base 갱신 — Module:Filter 의 Direction A 배포 후 정량 측정 시 본 verification 의 conditional protocol 정합:
+
+```python
+# Module:Filter 의 정량 측정 protocol (Direction A 배포 후 analyzer 의 ΔF1 보고서)
+# (1) S_restore_precision 측정: n=488 (S_restore non-empty), threshold = 0.60
+# (2) recall_gained_by_restore 측정: n=537 (forward imperfect, missed > 0), conditional mean
+#     분모 = |G \ L_fwd| (interpretation (b), verification 정합)
+#     "57% of forward-missed gold recovered by backward" narrative 정합
+# (3) Δrecall_union 측정: n=1534 (전체), unconditional mean
+#     per-query identity: Δr_q = recall_gained_q × (1 - r_fwd,q)
+# (4) (보조) pooled rate = sum|S ∩ M| / sum|M| (micro-avg, 59.84% for verification data)
+```
+
+### §8. 학술 Agent 응답 base (verification §5.2 cover note)
+
+학술 Agent 의 직전 수치 확인 요청 응답 cover note (verification §5.2):
+
+```
+recall_gained_by_restore 의 분모 = |G \ L_fwd| (forward 누락 gold 의 수) — interpretation (b).
+0.5709 = 537 conditional queries (missed > 0) 의 per-query 평균.
+narrative "of the gold columns that forward misses, backward recovers 57%" 정합 — 정정 불필요.
+
+보조 통계:
+  - pooled rate = 59.84% (sum 분모/분자)
+  - distribution bimodal (52% perfect + 38% zero recovery)
+  - 1534 query 중 forward perfect = 997 (65%), backward 의 의미 영역 = 537 (35%)
+  - Aggregate identity check: mean_q(recall_gained × |missed|/|gold|) = 0.0768
+    ≈ mean(Δrecall_union) = 0.0771 ✓ (within rounding tolerance)
+```
+
+→ 신규 cover note 파일 `planning/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md` 작성 (본 entry §8 인용).
+
+### §9. paper_research_direction.md 갱신 항목
+
+- **§3.5 evidence 표 (line 506 ~)**: axis #9 placeholder 추가 — "Direction A (RSL-SQL Backward) 학술 Agent Phase 3 GO 확정 + Module:Filter 배포 chain 진행 중. ΔF1(A) trigger 로 정량 main update."
+- **학위 논문 Part III Chapter Base sub-section (line 695 ~) 후속**: 신규 sub-section "§V.5.x.6 Direction A (RSL-SQL Backward) — recall_gained verification 완료, Module:Filter 배포 chain 진행 중" 추가. §V.5.x.6 main 인용 (verification §4.2) + §V.5.x.7 보조 인용 (분포 분석) + Direction A 배포 후 ΔF1 trigger 의 narrative final update plan 명시.
+
+### Chain Status 갱신 (5/13 저녁 — verification 완료 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-9 | 직전 chains (학술 Agent Phase 3 Response 포함) | ✅ 완료 |
+| **10** | **Analyzer: recall_gained 정의 확인** | ✅ **완료 (5/13)** — interpretation (b) 확정 + 학술 Agent narrative 정합 + identity 정합 |
+| **11** | **Module:Filter: `RSLBackwardFilter` 구현** | 🚀 진행 중 (병행 chain — 본 verification 결과 의존 없음, GO 확정 base) |
+| **12** | **사용자 → 학술 Agent**: Phase 4 cover note 전달 | 🚀 즉시 (본 verification §5.2 base) |
+| ⏸ 13 | Root: Direction A sweep launch | ⏸ Module:Filter 완료 의존 |
+| ⏸ 14 | Analyzer: Direction A 결과 보고서 | ⏸ Root sweep 완료 의존 |
+| ⏸ 15 | 학술 Agent Direction C 재결정 (ΔF1 trigger) | ⏸ Direction A 결과 의존 |
+| ⏸ 16 | 학위 논문 §V.5.x.6 narrative final integration | ⏸ Direction A 배포 후 ΔF1 정량 trigger |
+
+### §10. 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md (신규 파일, 본 entry §8 인용)
+- planning/paper_research_direction.md §3.5 evidence 표 + Part III Chapter Base sub-section (§9 항목)
+- 후속: Module:Filter 의 정량 측정 protocol (§7 spec 갱신 인용)
+
+### §11. 근거
+
+- 사용자 직접 input (Analyzer 보고)
+- notebooks/analysis_results/recall_gained_denominator_verification.md §1~§5 (verification 본문)
+- src/analysis/filter_proposal_a3_restore_noise.py (lines 95-104, interpretation (b) 코드 직접 인용)
+- 직전 entry (학술 Agent Phase 3 Response) §1 recall_gained 정의 정합성 — 본 verification 의 정식 응답
+
+### §12. 사용자 후속 actions (Direction A 배포 chain 의 잔여 step)
+
+1. ✅ **Analyzer 핸드오프** — recall_gained 분모 확인 완료 (interpretation (b), 학술 Agent narrative 정합)
+2. 🚀 **Module:Filter 핸드오프** — `RSLBackwardFilter` 구현 (병행 chain 진행 중, verification 결과 의존 없음)
+3. 🚀 **사용자 → 학술 Agent** — Phase 4 cover note 전달 (verification §5.2 base, planner 작성)
+4. ⏸ **Root 핸드오프 prep** — Module:Filter 완료 후 sweep launch
+5. ⏸ **Direction C 재결정** — Direction A 의 ΔF1 결과 후 (학술 Agent decision trigger)
+6. ⏸ **학위 논문 §V.5.x.6 narrative final integration** — Direction A 배포 후 ΔF1 정량 main update
+
+---
+
+## 2026-05-13 (학술 Agent Phase 3 Response — Direction A GO 확정 + C 재결정 기준 + B Hold + recall_gained 정의 확인 요청)
+
+> **사용자 직전 input (5/13)**: 학술 Agent 의 Phase 3 response 공유 (`filter_proposal_by_scholar_agent_phase2_2026-05-13.md`) — 5 cover note 질문 응답 + recall_gained 정의 정합성 분석 + C-1/C-2 정렬 패턴 발견 + Direction C 재결정 기준 (ΔF1(A) ≥ 0.03 / < 0.02 분기).
+
+### Cover Note 5 질문 응답 매핑
+
+| Q | 학술 Agent 응답 | 결정 |
+|---|---|---|
+| **Q1** Direction C priority | A 배포 후 측정 (gray zone 행동 지침) | **Option α** confirm |
+| **Q2** C DB-targeted vs all-DB | ΔF1(A) < 0.02 시 **debit_card_specializing + card_games 타겟** 구현 (inferred_fk GPT-4.1-mini 보완 선행) | **DB-level targeted** (조건부) |
+| **Q3** Direction A implementation 구체 가이드 | (직접 답변 없음 — GO 확정 단 구체 구현은 사용자 / Module 위임) | Module:Filter 위임 |
+| **Q4** Direction B trigger | A 배포 후 recall gap 잔존 시 B-1/B-2 착수 | **A 결과 후 결정** |
+| **Q5** Bug fix magnitude 영향 | A 배포 결정 영향 없음. margin 1.20× → 1.07× 좁아짐 → toxicology 외 추가 low-precision DB 시 DB-level guard 준비 | **A 결정 유지 + caveat 강화** |
+
+### 학술 Agent 의 결정적 신규 발견 (cover note 외 자체 분석)
+
+#### 1. recall_gained_by_restore 정의 정합성 — 학위 논문 §V 인용 base
+
+학술 Agent 의 spec 의도 정합 해석:
+
+| Phase | 추정 분모 | 의미 |
+|---|---|---|
+| Phase 1 | `|gold|` (전체 gold 대비) | 0.2489 = 24.89% |
+| **Phase 2 (fix)** | `|gold − (gold ∩ L_fwd)|` (forward 가 놓친 gold 대비) | **0.5709 = backward 가 forward 누락 gold 의 57% 회복** ⭐ |
+
+→ **학위 논문 §V 핵심 인용 (학술 Agent 권장)**:
+> "**Of the gold columns that forward misses, backward recovers 57%**"
+
+**🚨 수치 확인 요청 (Analyzer 후속)**: `filter_proposal_a3_restore_noise.py` 의 recall_gained_by_restore 분모가 정확히 어느 형식인지 스크립트 주석으로 확인. `|gold|` 분모일 시 Δrecall_union +0.0771 과 수학적 정합성 재점검 필요.
+
+#### 2. C-1 + C-2 의 DB-level 정렬 패턴 — "FK declaration 부족 → join col miss" BIRD 실증
+
+| DB | C-1 fk_coverage | C-2 structural miss rate |
+|---|---:|---:|
+| **debit_card_specializing** | **0.2000** (outlier) | **10.59%** ⭐ |
+| **card_games** | **0.5714** | **9.33%** ⭐ |
+| financial | (mid-range) | 13.21% (highest miss) |
+| (3 perfect DBs: formula_1, student_club, superhero) | 1.0 | (low miss) |
+
+→ **"FK declaration 부족 → join col miss" 경로의 BIRD 실증** + GRAST-SQL 의 "predicting missing keys" 기능 필요성 정량 정당화. 학위 논문 §V.5.x 의 Direction C 의 schema-dependent caveat 의 결정적 evidence.
+
+#### 3. Coverage Bimodal 패턴
+
+- formula_1 / student_club / superhero: 1.00 (완전)
+- debit_card_specializing: 0.20 (극단적 저선언)
+- → BIRD DB 의 "schema designer 의 메타데이터 충실도" 이질성 실증
+
+### Direction 별 최종 결정 표 (학술 Agent Phase 3 정식)
+
+| Direction | 상태 | 다음 행동 | 시점 |
+|---|---|---|---|
+| **A (RSL Backward)** | **GO 확정** | `RSLBackwardFilter` 구현 + anchor 대비 ΔF1 측정 | **즉시** |
+| **C (GRAST-SQL FD)** | Feasible, **mid-priority** | A EX 측정 후 ΔF1 lift 의 임계 분기 | A 배포 결과 후 |
+| **B (HN-SupCon)** | **Hold** | A 배포 후 recall gap 잔존 확인 시 B-1/B-2 착수 | A 결과 후 |
+
+### Direction C 재결정 기준 (A 배포 후, 학술 Agent 정식 trigger)
+
+| Trigger | Direction C 결정 |
+|---|---|
+| **ΔF1(A) ≥ 0.03** | C **post-paper 확정** |
+| **ΔF1(A) < 0.02** | C **debit_card_specializing + card_games 타겟 구현** (inferred_fk GPT-4.1-mini 보완 선행) |
+| 0.02 ≤ ΔF1(A) < 0.03 | gray zone (학술 Agent decision 추가 필요) |
+
+### Direction A 배포 Margin Caveat (학술 Agent Q5 응답 의 강화)
+
+Bug fix 후 magnitude 변화:
+- A-3 precision: 0.7205 → **0.6434** (margin 1.20× → **1.07×** 좁아짐)
+- → toxicology 외 추가 low-precision DB 시 **DB-level guard 준비**
+- Direction A `RSLBackwardFilter` 구현 시 **DB-level precision threshold** 조건부 적용 prep (Implementation 시 module:filter 결정 필요)
+
+### 후속 chain 계획 (학술 Agent decision 후)
+
+| Step | 책임 | 작업 |
+|---|---|---|
+| 1 | **Analyzer** (즉시, 학술 Agent confirm 요청) | A-3 recall_gained_by_restore 분모 정의 스크립트 주석 확인 → 학술 Agent 의 0.5709 해석 정합성 검증 |
+| 2 | **Module:Filter** | `RSLBackwardFilter` (또는 학술 Agent 권장 명명) 신규 클래스 — XiYan forward + Preliminary SQL (full schema) backward + S_restore union + (조건부) DB-level precision guard |
+| 3 | **Root** | Direction A pipeline config + sweep launch (anchor + Backward) → ΔF1/ΔEX 정량 |
+| 4 | **Analyzer** | Direction A 배포 결과 보고서 — ΔF1 lift 정량 + per-DB breakdown |
+| 5 | **Planner + 학술 Agent (사용자 bridge)** | 학술 Agent Direction C 재결정 (ΔF1(A) trigger 분기) — B Hold 유지 or B-1/B-2 launch |
+| 6 | **Module:Filter (조건부)** | (ΔF1(A) < 0.02 시) Direction C 의 debit_card + card_games 타겟 구현 + inferred_fk GPT-4.1-mini 보완 |
+| 7 | **Planner** | 학위 논문 §V.5.x narrative final integration (학술 Agent 의 모든 발견 + Direction A/C 결과 통합) |
+
+### Direction A `RSLBackwardFilter` Implementation Spec (학술 Agent Q3 위임 후, planner 정리)
+
+```
+Class: RSLBackwardFilter
+Module: src/modules/filters/rsl_backward_filter.py
+Interface: refine(query, subgraph, db_id, **kwargs) → {status, final_nodes, reasoning, stats}
+
+Step 1 (기존 anchor 의 XiYan forward, 의존성):
+    S_fwd = XiYanFilter.refine(query, subgraph, db_id).final_nodes
+
+Step 2 (신규, GLM 4.7 preliminary SQL):
+    full_schema_str = build_full_schema(db_schema_map, db_id)
+    prelim_sql = GLM_4_7.chat(create_messages(full_schema_str, query, evidence))
+    L_bwd = sqlglot.extract_columns(prelim_sql, col-only-distinct)  # Phase 2 bug fix 후 normalization 정합
+
+Step 3 (S_restore + DB-level guard 조건부):
+    S_restore = L_bwd - S_fwd
+    if db_id in {"toxicology", ...} (학술 Agent caveat):
+        # DB-level precision guard — threshold 결정 candidate (예: precision < 0.60 시 skip)
+        S_restore_filtered = (조건부) S_restore 또는 skip
+    else:
+        S_restore_filtered = S_restore
+
+Step 4 (S_struct FK/PK hardcode):
+    S_struct = extract_fk_pk_columns(subgraph, metadata)
+
+Output:
+    final_nodes = S_fwd ∪ S_restore_filtered ∪ S_struct
+    
+LLM calls per query: 2 (Step 1 XiYan + Step 2 preliminary SQL)
+Token cost: anchor 대비 ~+100% (preliminary SQL 의 full schema input)
+```
+
+학술 Agent Q3 의 직접 답변 없음 — Module:Filter 의 implementation 결정 (구체 detail 은 module:filter 세션 위임).
+
+### Chain status 갱신 (5/13 저녁 최종)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-6 | 직전 chains | ✅ 완료 |
+| 7 | Phase 1 (A-1/A-2/A-3) | ✅ 완료 |
+| 8 | Phase 2 (A-2 fix + C-1/C-2) | ✅ 완료 |
+| **9** | **학술 Agent Phase 3 decision** | ✅ **완료 (5/13)** — Direction A GO 확정 + C feasible-mid + B Hold |
+| **10** | **Analyzer: recall_gained 정의 확인** | 🚀 **즉시 trigger** (학술 Agent 수치 확인 요청) |
+| **11** | **Direction A 배포 chain** | 🚀 **즉시 trigger** — Module:Filter `RSLBackwardFilter` + Root sweep |
+| ⏸ 12 | Direction C 재결정 (A 결과 후) | ⏸ ΔF1(A) trigger 의존 |
+| ⏸ 13 | Direction B (HN-SupCon) launch | ⏸ A 결과 후 recall gap 잔존 시 |
+
+### 학위 논문 §V.5.x Narrative Update (학술 Agent Phase 3 의 핵심 인용)
+
+```
+§V.5.x.6 (학술 Agent 권장 핵심 인용)
+
+"Of the gold columns that forward misses, backward recovers 57%"
+(Phase 2 recall_gained_by_restore = 0.5709, fix 후 spec 의도 정합)
+
+§V.5.x.7 BIRD DB Schema Heterogeneity (학술 Agent 신규 발견)
+
+"FK declaration 부족 → join col miss 경로의 BIRD 실증":
+- C-1 fk_coverage bimodal: formula_1/student_club/superhero 1.00 ↔ debit_card 0.20
+- C-2 structural miss 의 DB-level 정렬: debit_card 10.59% + card_games 9.33%
+- → GRAST-SQL "predicting missing keys" 기능 의 필요성 정량 정당화
+
+§V.5.x.8 Direction A Margin Caveat (학술 Agent Q5 응답)
+- Phase 1 margin 1.20× → Phase 2 fix 후 1.07× 좁아짐
+- DB-level precision guard 의 implementation 차원 lesson learned
+```
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- 후속:
+  - Analyzer recall_gained 정의 확인 (즉시, 학술 Agent 수치 확인 요청)
+  - Module:Filter `RSLBackwardFilter` 구현 (즉시, 학술 Agent GO 확정)
+  - Root Direction A sweep launch (Module:Filter 완료 후)
+
+### 근거
+
+- 사용자 직접 input + 학술 Agent file `filter_proposal_by_scholar_agent_phase2_2026-05-13.md`
+- 학술 Agent §0 Decision Rules 최종 평가 + §1 bug fix 해석 + §2 C-1 분석 + §3 C-2 gray zone + §4 Direction 별 최종 권고
+
+### 사용자 후속 actions
+
+1. **Analyzer 핸드오프** — recall_gained 분모 확인 (즉시)
+2. **Module:Filter 핸드오프** — `RSLBackwardFilter` 구현 (즉시, Analyzer 확인 후속 또는 병행)
+3. **Root 핸드오프 prep** — Module:Filter 완료 후 sweep launch
+4. **Direction C 의 (조건부) 후속** — Direction A 의 ΔF1 결과 후
+
+---
+
+## 2026-05-13 (Phase 2 완료 — A-2 bug fix + C-1/C-2 측정 + Direction A 배포 GO 재확인 + Direction C feasible-mid)
+
+> **사용자 직전 input (5/13)**: Analyzer 가 Phase 2 chain 완료 — A-2 xlsx recall bug fix + A-2/A-3 재계산 + C-1/C-2 측정 + 사용자 deliverable (`filter_proposal_phase2_summary.md` + `phase2_records.xlsx`). Planner 작업 요청: DECISIONS prepend + 학술 Agent 추가 질문 list.
+
+### Phase 2 결정 Rule 평가 (5 rules)
+
+| Rule | 실측 | Threshold | 결과 |
+|---|---:|---:|:---:|
+| **A-3 core** mean(S_restore_precision) | **0.6434** | ≥ 0.60 | ✅ PASS (1.07×) |
+| **A-2 core** mean(Δrecall_union vs fwd) | **+0.0771** | ≥ +0.05 | ✅ PASS (1.54×) |
+| **A-3 보조** mean(recall_gained_by_restore) | **0.5709** | ≥ 0.05 | ✅ PASS (11.4×) |
+| **C-1** mean(fk_coverage_rate) | **0.7312** | ≥ 0.50 → feasible | ✅ Direction C **feasible** |
+| **C-2** mean(is_join_complete, multi-table) | **0.8624** | < 0.80 priority up / ≥ 0.95 post-paper | ⚠️ **mid-priority** (0.80~0.95 중간) |
+
+→ **Direction A 배포 GO 재확인** + **Direction C feasible-mid**.
+
+### A-2 Bug Fix 상세 (학술 Agent xlsx report 5/13 응답)
+
+**Bug 원인**: A-2 의 recall 계산 시 column normalization 방식 (col-only vs alias-distinct).
+- 직전 (bug): alias-distinct 로 col 추출 — gold 의 `t1.col` 과 anchor 의 `t2.col` 의 alias mismatch 가 분모 base inflation
+- Fix: **col-only normalization** (`alias-distinct → col-only-distinct`)
+
+**Fix 후 magnitude 변화**:
+- A-3 mean(S_restore_precision): **0.7205 → 0.6434** (Δ = -0.0771, -10.7%)
+- Recall ≤ 1.0 보장 확인
+- Decision Rules 재확인 PASS
+
+**의의**: 매그니튜드는 직전보다 낮아졌으나 PASS threshold 충족 + recall 정의 정확성 확보. 학술 Agent 의 의사결정 trust 회복.
+
+### C-1 결과 — Direction C Feasible 확정 단 outlier 존재
+
+- **mean(fk_coverage_rate) = 0.7312** (BIRD-Dev 11 DBs)
+- **3 perfect DBs** (coverage = 1.0)
+- **debit_card_specializing outlier**: **0.2000** (-0.53 from mean) — FK 선언 매우 sparse
+- → Direction C 의 graph quality 가 DB-level variance 큼. 학위 논문 §V.5.x footnote 의 schema-dependent caveat candidate
+
+### C-2 결과 — Join Completeness Mid-Priority
+
+- **mean(is_join_complete) = 0.8624** (multi-table queries)
+- C-2 가 < 0.80 미만이 아니라 ≥ 0.95 도 아닌 **중간 영역** — Direction C 우선순위 결정 학술 Agent decision 필요
+- **Lift target DBs** (is_join_complete 낮은 DB):
+  - **card_games**: 0.6893 (가장 낮음, anchor join col 31% missing)
+  - **debit_card_specializing**: 0.7347 (C-1 outlier 와 일관)
+- → Direction C 적용 시 두 DB 에 dominant lift candidate. all-DB 적용 vs DB-level targeted 학술 Agent decision
+
+### Direction A 배포 GO 재확인
+
+- Phase 1 (직전 5/13): A-3 0.7205 / A-2 +0.0761 / A-3 보조 0.2489 — 3/3 PASS
+- Phase 2 (재계산, bug fix 후): A-3 0.6434 / A-2 +0.0771 / A-3 보조 0.5709 — 3/3 PASS (재확인)
+- → Direction A 배포 결정 **유지**.
+- A-3 보조 (recall_gained_by_restore) 가 **0.5709 (Phase 1 0.2489 → Phase 2 0.5709, 11.4×)** — bug fix 후 magnitude 큼 (학술 Agent 의 의사결정 confirm 강력)
+
+### 학술 Agent 추가 질문 List (Phase 3 decision 정확히 받기 위해)
+
+planner 가 학술 Agent 에 전달할 5 항목 — `filter_proposal_phase2_cover_note_for_scholar_agent_2026-05-13.md` 별도 md 작성 (본 entry 의 §"산출물" 참조).
+
+### Direction C Priority 결정 — 사용자 결정 candidate
+
+| Option | trade-off |
+|---|---|
+| **(α) Direction A 배포 후 측정** (recommended) | A 의 ΔF1 lift 정량 후 C 의 marginal value 측정 — 일정 ~1주 추가. 학위 논문 §V.5.x 의 본 phase 통합 |
+| **(β) 즉시 Direction C launch** | A + C 병행 — 학위 논문 5/22 마감 빠듯, V5 chain 의 GPU 와 자원 conflict 가능 |
+| **(γ) Direction C post-paper** | C-2 mean 0.8624 가 0.95 미달이라 post-paper 전환은 trigger 부정확 단 일정 우선 시 가능 |
+
+→ **권장: (α)**. 단 학술 Agent decision 우선.
+
+### Direction A 배포 chain (post-Phase 3 학술 Agent decision)
+
+학술 Agent 의 Phase 3 response 후 Direction A 의 production 구현:
+
+| Step | 책임 | 작업 |
+|---|---|---|
+| 1 | Module:Filter | `RSLBackwardFilter` 신규 클래스 — XiYan forward + Preliminary SQL (full schema) backward + S_restore union + (조건부) DB-level guard (toxicology / debit_card_specializing) |
+| 2 | Root | Direction A pipeline config + sweep launch (anchor + Backward) — ΔF1/ΔEX 정량 |
+| 3 | Analyzer | Direction A 배포 결과 보고서 + paper §V.5.x base |
+| 4 | Planner | 학위 논문 §V.5.x narrative final integration (학술 Agent 의 4 세부 발견 + Direction A 결과) |
+
+### Direction A Implementation 의 핵심 구현 결정 (학술 Agent 추가 질문 #3 의 base)
+
+직전 spec 의 Direction A pseudo-code:
+```
+Step 1: XiYan forward prune → S_fwd  (anchor 기존)
+Step 2: GLM 4.7 로 preliminary SQL 생성 (full schema)
+        → SQL_prelim parse → L_bwd
+Step 3: S_restore = L_bwd \ S_fwd
+Step 4: final_nodes = S_fwd ∪ S_restore ∪ S_struct (FK/PK)
+LLM calls: 2 (XiYan 기존 + Preliminary SQL)
+```
+
+**구체 가이드 학술 Agent 결정 필요**:
+- (a) Step 2 의 preliminary SQL 입력 — full schema vs S_fwd? (학술 Agent §"Direction A 핵심" 의 default = full schema)
+- (b) Toxicology / debit_card_specializing DB 의 precision guard 조건 — DB-level threshold (예: precision < 0.6 시 skip backward) vs query-level threshold
+- (c) S_struct (FK/PK hardcode) 통합 — Direction C 의 일부 component (CHESS Talaei 2024) 와 동일?
+- (d) Direction A 의 학술 Agent narrative 측면 — `RSLBackwardFilter` vs `BidirectionalFilter` 의 명명 선호 (RSL 의 origin paper 정합)
+
+### Chain status 갱신 (5/13 저녁)
+
+| # | Chain | Status |
+|---|---|---|
+| 1 | Filter sweep 9-cell | ✅ 완료 |
+| 2 | V5 sweep V5-A/B/C | 🔄 active (Module:Selector ownership 완료 + Root sweep launch 대기) |
+| 3 | SGBE Phase 3-5 | ✅ 완료 (negative evidence) |
+| 4 | V5-D-1 진단 | ✅ 완료 |
+| 5 | V5-D-2 학습 | ⏸ V5 sweep 결과 후 |
+| 6 | B1'+B2'+B3' GLM Baseline | ✅ 완료 |
+| **7** | **Filter Proposal Phase 1 (A-1/A-2/A-3)** | ✅ 완료 (5/13 PASS 3/3, Direction A GO) |
+| **8** | **Filter Proposal Phase 2 (A-2 bug fix + C-1/C-2)** | ✅ **완료 (5/13)** — Direction C feasible-mid |
+| ⏸ 9 | **Filter Proposal Phase 3** | ⏸ 학술 Agent Phase 3 decision 대기 (cover note 전달 후 ~5/14 ETA) |
+| ⏸ 10 | **Direction A 배포 chain** | ⏸ 학술 Agent decision 후 Module:Filter `RSLBackwardFilter` 작성 → Root sweep |
+| ⏸ 11 | **Direction C launch** | ⏸ 학술 Agent decision 의 priority 결정 의존 (Option α/β/γ) |
+| ⏸ 12 | (Direction B) HN-SupCon | ⏸ Direction A 결과 후 학술 Agent trigger 결정 |
+
+### 학회/학위 논문 narrative 측면
+
+**학회 paper**:
+- Filter Dominance 의 8-axis evidence 유지 + Direction A 배포 결과 footnote (post-paper)
+- 학회 paper main contribution = paper §3.5 의 7번째 axis (Filter-Invariant) + 8번째 (SGBE Negative Evidence)
+
+**학위 논문 §V.5.x**:
+- §V.5.x.1 SGBE Negative Evidence (직전 5/13 entry)
+- §V.5.x.2 Direction A 배포 — 학술 Agent 의 4 세부 발견 + Phase 2 Decision Rule 통과 + bug fix lesson learned (reproducibility)
+- §V.5.x.3 Toxicology / debit_card_specializing DB-level caveat (schema-dependent outlier)
+- §V.5.x.4 Direction C feasibility (C-1 0.7312) + mid-priority (C-2 0.8624)
+
+### 산출물 위치
+
+- `notebooks/analysis_results/filter_proposal_phase2_summary.md` (347 lines, 7 sections — analyzer 작성)
+- `outputs/analysis/filter_proposal/phase2_records.xlsx` (4 sheets, 0.20 MB)
+- `outputs/analysis/filter_proposal/{A2,A3,C1,C2}*.{jsonl,csv,json}` (재계산 + 신규)
+- `src/analysis/filter_proposal_{a2_backward_recall,c1_fd_graph,c2_structural_miss}.py`
+- `src/analysis/tests/test_filter_proposal_phase{1,2}.py` (28 tests passed)
+- **🆕** `planning/filter_proposal_phase2_cover_note_for_scholar_agent_2026-05-13.md` (본 entry 후속, planner 작성)
+
+### 근거
+
+- 사용자 직접 input (Phase 2 결과 + planner 작업 요청)
+- Analyzer 의 deliverable (phase2_summary.md + phase2_records.xlsx)
+- Phase 2 결정 Rule 5 항목 평가 (3 A-PASS + C-1 feasible + C-2 mid)
+
+### 후속 chain
+
+1. **Planner (본 entry)** — DECISIONS prepend ✅ + cover note 작성 (학술 Agent 5 질문 list)
+2. **사용자** — cover note + phase2_summary.md + phase2_records.xlsx 학술 Agent 에 전달
+3. **학술 Agent** — Phase 3 response (~5/14 ETA) — Direction A implementation 구체 가이드 + Direction C priority decision
+4. **사용자** — 학술 Agent response → planner 에 전달
+5. **Planner** — DECISIONS prepend + Direction A 배포 chain 작성 (Module:Filter + Root + Analyzer) → root 핸드오프
+6. **Module:Filter + Root** — Direction A `RSLBackwardFilter` 구현 + sweep launch
+7. **Analyzer + Planner** — 결과 통합 + 학위 논문 §V.5.x narrative final
+
+---
+
+## 2026-05-13 (Phase 1 PASS 3/3 — Direction A 배포 결정 확정 + Phase 2 GO + A-2 xlsx bug fix)
+
+> **사용자 직전 input (5/13)**: 학술 Agent 의 Phase 1 데이터 review response — **Decision Rule 3/3 PASS** + Direction A (RSL-SQL Backward) 즉시 배포 권장 + Phase 2 (C-1, C-2) GO + A-2 xlsx recall 계산 bug 확인 요청.
+
+### 🎯 Phase 1 Decision Rule 3/3 PASS
+
+| Rule | 지표 | Threshold | 실측 | 결과 |
+|---|---|---|---|---|
+| **A-3 core** | `mean(S_restore_precision)` | ≥ 0.60 | **0.7205 (1.20×)** | ✅ PASS |
+| **A-2 core** | `mean(recall_union) - mean(recall_fwd)` | +Δ ≥ 0.05 | **+0.0761 (1.52×)** | ✅ PASS |
+| **A-3 보조** | `mean(recall_gained_by_restore)` | ≥ 0.05 | **0.2489 (4.98×)** | ✅ PASS |
+
+→ **Direction A (RSL-SQL Backward) 즉시 배포 결정 확정**.
+
+### SGBE vs Direction A — Noise Rate Contrast
+
+| Filter | S_restore (또는 S_keep_hard) noise rate |
+|---|---:|
+| SGBE (5/13 부정) | **81.22% noise** ⚠️ |
+| **Direction A (5/13 PASS)** | **27.95% noise** ✅ (1 - 0.7205) |
+
+→ Direction A 의 noise rate 가 SGBE 의 **~1/3** — 극적 정량 contrast. 학위 논문 §V.5.x 의 결정적 evidence.
+
+### 학술 Agent 의 4 세부 발견 (학위 논문 narrative)
+
+**(1) 비용 구조 매우 양호**:
+- `mean(|S_restore|) = 1.40 column/query` (실질 token 부담 작음)
+- **전체 query 54.50% (836건) 는 S_restore = ∅** (forward 가 이미 backward 전체 포함 — backward path 의 incremental cost 없음)
+- → Direction A 의 cost 효율성 정량
+
+**(2) Low-recall query 구제 효과**:
+- recall_fwd < 0.50 인 query **123건 → recall_union < 0.50 이 32건** (-73.98% 탈출)
+- Perfect-recall query **2건 → 17건** (+8.5×)
+- → backward path 가 low-recall 영역의 결정적 구제
+
+**(3) Challenging query 에서 효과 최대**:
+
+| Difficulty | mean(recall_gained_by_restore) |
+|---|---:|
+| simple | 0.2216 |
+| moderate | 0.2682 |
+| **challenging** | **0.3287** ⭐ |
+
+→ 어려운 query 일수록 backward path 의 기여 큼. **학위 논문 §V.5.x narrative 의 결정적 layer** (schema linking 의 difficulty stratification + Direction A 의 selective gain).
+
+**(4) Toxicology DB caveat**:
+- 11 BIRD-Dev DB 중 **toxicology 만 mean(S_restore_precision) = 0.5770** (기준 0.60 에 -0.023 미달)
+- → DB-level precision guard (조건부 적용) 또는 toxicology case study 학위 논문 §V.5.x footnote
+- Schema-dependent caveat — over-smoothing 의 A3 stratified analysis 와 일관 (toxicology 의 specific outlier 특성)
+
+### ⚠️ A-2 xlsx Bug — recall 계산 로직 확인 필요
+
+학술 Agent 발견:
+- **xlsx**: recall_bwd max = 1.75, recall_union max = 2.0 (1.0 초과 — recall 정의 위반)
+- **md summary**: recall_fwd = 0.7551, recall_union = 0.8311 (정상)
+- **xlsx**: recall_fwd = 0.6125, recall_union = 0.7583 (md 와 차이)
+
+추정 원인:
+- `filter_proposal_a2_backward_recall.py` 의 recall 계산 시 분모가 `|gold_cols|` 대신 `|L_bwd|` 또는 0-division fallback 사용
+- 또는 jsonl → xlsx 변환 script 의 column rename / 잘못된 field mapping
+
+학술 Agent 결정: **의사결정 기준은 md summary 수치 (정확)**. 단 Phase 2 수집 전에 A-2 bug fix 필요 — 학위 논문 의 reproducibility 측면 + 향후 Phase B-1/B-2 의 xlsx 의 trust 측면.
+
+### Phase 2 GO — C-1 + C-2
+
+학술 Agent 의 Phase 2 진행 의견:
+- **C-1**: BIRD tables.json + PRAGMA parse 만 — LLM 무관, ~수 시간
+- **C-2**: A-1 의 predictions.jsonl + gold SQL — LLM 무관, ~수 시간
+- 둘 다 A-1 산출물에 의존 X, 독립 수집 가능
+
+**Phase 2 Decision Rules**:
+- C-1 `mean(fk_coverage_rate)` < **0.50** → Direction C 전체 feasibility 흔들 → B-1/B-2 만 남음
+- C-2 `mean(is_join_complete)` < **0.80** → Direction C 우선순위 상향 (Steiner tree expected gain 큼)
+- C-2 ≥ **0.95** → Direction C post-paper 전환
+
+### 결정 + 후속 chain
+
+**3 후속 chain 동시 launch**:
+
+1. **A-2 xlsx bug fix** (Analyzer) — recall 분모 issue 디버그 + 재계산 + xlsx 재변환
+2. **Phase 2 C-1 + C-2 launch** (Analyzer) — BIRD-Dev/Train DB FK/PK 분석 + structural miss
+3. **Direction A 배포 chain 작성** (Planner, 후속) — Direction A 의 production pipeline 구현 (XiYan forward + Preliminary SQL backward + union)
+
+### 학회 / 학위 논문 narrative 영향
+
+**학회 paper (한국지능정보시스템학회 2026 춘계)**:
+- 본 Phase 1 결과 = Filter Dominance 의 **enhancement evidence** (학회 main contribution 변경 X, footnote)
+- Direction A 배포 시 anchor F1=0.8651/EX=0.5202 → 추가 lift 정량 evidence
+
+**학위 논문 §V.5.x**:
+- 학술 Agent 의 4 세부 발견 모두 narrative 의 결정적 layer:
+  - §V.5.x.1: Direction A 의 noise rate 27.95% vs SGBE 81.22% contrast
+  - §V.5.x.2: 비용 효율성 (54.50% query S_restore=∅)
+  - §V.5.x.3: Low-recall query 구제 (-73.98% 탈출)
+  - §V.5.x.4: Challenging query 의 backward effect 0.3287 — difficulty stratification narrative
+  - §V.5.x.5: Toxicology DB caveat — schema-dependent (over-smoothing A3 와 일관)
+
+### Direction A 배포 implementation (post-Phase 2)
+
+Direction A 의 production 구현:
+
+```
+입력: query Q, db_id, anchor pipeline (Enriched + QCond + MST + XiYan + GLM 4.7)
+
+Step 1 (기존 anchor): XiYan forward prune → S_fwd
+Step 2 (신규): GLM 4.7 로 preliminary SQL 생성 (full schema 입력)
+              → SQL_prelim parse (sqlglot) → L_bwd
+Step 3 (신규): S_restore = L_bwd \ S_fwd
+Step 4 (신규): final_nodes = S_fwd ∪ S_restore ∪ S_struct (FK/PK)
+
+LLM calls: 2 (Step 1 기존 + Step 2 prelim SQL)
+Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권고)
+```
+
+→ Module:Filter 의 신규 클래스 `RSLBackwardFilter` 또는 `BidirectionalFilter` 구현 candidate (post-Phase 2).
+
+### 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/filter_proposal_scholar_agent_response_phase2_2026-05-13.md (신규 — 학술 Agent response 보존)
+- (Analyzer) `src/analysis/filter_proposal_a2_backward_recall.py` bug fix
+- (Analyzer) `src/analysis/filter_proposal_c1_fd_graph.py` + `filter_proposal_c2_structural_miss.py` 신규
+- (Module:Filter, post-Phase 2) `src/modules/filters/rsl_backward_filter.py` (Direction A 배포)
+- (Root, post-Phase 2) Direction A 배포 anchor + sweep launch
+
+### 학위 논문 일정 (5/14~5/22)
+
+- 5/14: A-2 bug fix + Phase 2 C-1/C-2 launch (병행, LLM 무관 ~수 시간)
+- 5/14~5/15: 사용자 가 Phase 2 md + xlsx 변환 → 학술 Agent 전달
+- 5/15: 학술 Agent Direction C decision + Direction A 배포 chain start
+- 5/15~5/22: Direction A 배포 implementation + 학위 논문 §V.5.x narrative 통합
+
+### 근거
+
+- 사용자 직접 input (학술 Agent Phase 1 response 공유)
+- 학술 Agent 의 Decision Rule 3/3 PASS + 4 세부 발견 + xlsx bug 발견 + Phase 2 GO
+
+### 후속 actions (즉시)
+
+1. Analyzer: A-2 bug fix + Phase 2 (C-1 + C-2) script 작성 + smoke test
+2. Root: Phase 2 launch (LLM 무관, GPU 무관, ~수 시간)
+3. 사용자: Phase 2 결과 md + xlsx 변환 → 학술 Agent 전달
+4. Planner (post-Phase 2): Direction A 배포 implementation plan
+
+---
+
 ## 2026-05-13 (학술 Agent Phase 1 GO Response — A-1 truncated 필드 보강 + B-1/B-2 summary 항목 정식 + Phase 1 launch 결정)
 
 > **사용자 직전 input (5/13)**: 학술 Agent 의 response 공유 — Phase 1 (A-1/A-2/A-3) 결과 우선 receive + Decision Rules 표 정식 + B-1/B-2 summary 항목 명시 + A-1 truncated 필드 보강 제안.
