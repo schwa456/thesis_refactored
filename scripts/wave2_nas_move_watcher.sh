@@ -7,6 +7,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 NAS_CKPT_DIR="/SSL_NAS/peoples/khj/thesis/checkpoints"
 

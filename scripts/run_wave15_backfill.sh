@@ -8,6 +8,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIGS=(
     "experiments/s04_ablation/stagewise/ensemble_raw_a0"

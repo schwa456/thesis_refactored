@@ -13,6 +13,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 export CUDA_VISIBLE_DEVICES=0
 export TOKENIZERS_PARALLELISM=false

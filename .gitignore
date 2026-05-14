@@ -44,3 +44,9 @@ src/utils/mschema
 .claude/*
 ~/thesis_refactored/related_works/*
 *.sh
+
+# torch_geometric MessagePassing wrapper (runtime artifact, root level fallback)
+/models.*.py
+
+# torch + wandb runtime temp (TMPDIR fallback 의 root level)
+/tmp*

@@ -4,6 +4,7 @@
 
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIGS=(
     "abl/a04_direct_binary_steiner_sweep/abl_a04_01_supernode_t005_steiner_xiyan"

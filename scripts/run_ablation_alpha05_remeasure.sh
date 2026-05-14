@@ -10,6 +10,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 # GLM endpoint health check
 set -a; source .env 2>/dev/null; set +a

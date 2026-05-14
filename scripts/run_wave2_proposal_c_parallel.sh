@@ -13,6 +13,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 if [ $# -lt 2 ]; then
     echo "usage: $0 <NL1_PID> <NL2_PID>"

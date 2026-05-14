@@ -4,6 +4,7 @@
 # Step 2: Exp A (linear, GPU 0) + Exp B (mlp, GPU 1) 병렬 학습
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIG="configs/experiments/s06_gat_bottleneck_fix/a01_additive_ablation/s06_a01_06_b5_dual_stream.yaml"
 CKPT="/SSL_NAS/peoples/khj/thesis/checkpoints/s06_gat_bottleneck_fix/best_gat_s06_a01_06_b5.pt"

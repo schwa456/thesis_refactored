@@ -8,6 +8,7 @@
 #   - GPU 0 전용.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIG_REL="experiments/s06_gat_bottleneck_fix/a01_additive_ablation/s06_a01_07_b5_enriched_dual_stream"
 TAG="s06_a01_07_b5_enriched"

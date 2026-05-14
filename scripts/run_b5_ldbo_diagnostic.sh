@@ -5,6 +5,7 @@
 # GPU 0만 사용, 순차 실행 (B / C / D / E 4종).
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 OUT_BASE="outputs/analysis/s06_bottleneck/B5/retrain"
 OUT="${OUT_BASE}/ldbo"

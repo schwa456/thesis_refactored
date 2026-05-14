@@ -9,6 +9,7 @@
 
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 GROUP="${1:-all}"
 

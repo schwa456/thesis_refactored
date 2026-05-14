@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export TMPDIR=/tmp
 # B0 학습 종료를 감시하다가 끝나면 local checkpoint 를 NAS 로 옮긴다.
 # Driver 가 _summary.log 에 "END   s06_a01_01_b0" 라인을 찍을 때까지 60초 간격으로 폴링.
 

@@ -7,6 +7,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CFGS_GPU0=(
     "experiments/s04_ablation/stagewise/qcond_gat_basic_selector_only"

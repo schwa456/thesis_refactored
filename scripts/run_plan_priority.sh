@@ -11,6 +11,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 LOG_DIR="logs/plan_priority_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"

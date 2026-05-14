@@ -7,6 +7,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 ROOT="$(pwd)"
 
 DRY_RUN=false

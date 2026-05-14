@@ -6,6 +6,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIGS=(
     "a05_05_tiered_no_tools"

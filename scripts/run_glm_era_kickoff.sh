@@ -7,6 +7,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 # GLM endpoint health check — minimal POST /chat/completions (기존 /models GET 은 400 반환 확인됨)
 set -a; source .env 2>/dev/null; set +a

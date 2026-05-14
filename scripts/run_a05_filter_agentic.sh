@@ -13,6 +13,7 @@
 
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 ALL_CONFIGS=(
     "a05_01_adaptive_multi_agent"

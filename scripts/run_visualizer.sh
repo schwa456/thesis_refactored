@@ -8,6 +8,7 @@
 set -e
 
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 PORT="${1:-8501}"
 
 # conda base 의 python 경로 확정

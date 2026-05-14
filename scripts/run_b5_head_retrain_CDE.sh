@@ -5,6 +5,7 @@
 #   E = mlp + listnet  + zscore
 set -e
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 OUT="outputs/analysis/s06_bottleneck/B5/retrain"
 CACHE_TR="${OUT}/lout_cache_train.pt"

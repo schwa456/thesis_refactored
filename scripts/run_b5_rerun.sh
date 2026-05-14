@@ -5,6 +5,7 @@ set -u
 set -o pipefail
 
 cd /home/hyeonjin/thesis_refactored
+export TMPDIR=/tmp
 export CUDA_VISIBLE_DEVICES=0
 export PYTHONPATH=src
 

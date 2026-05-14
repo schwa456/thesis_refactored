@@ -4,6 +4,7 @@
 #   default: configs/training/train_gat_config.yaml
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 CONFIG="${1:-configs/training/train_gat_config.yaml}"
 LOG_NAME=$(basename "$CONFIG" .yaml)

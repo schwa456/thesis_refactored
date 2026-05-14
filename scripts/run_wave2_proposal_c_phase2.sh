@@ -6,6 +6,7 @@
 
 set -u
 cd "$(dirname "$0")/.."
+export TMPDIR=/tmp
 
 # GLM endpoint health check (.env 의 GLM_BASE_URL / GLM_API_KEY 사용)
 set -a; source .env 2>/dev/null; set +a

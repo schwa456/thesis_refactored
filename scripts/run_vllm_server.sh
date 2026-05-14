@@ -1,3 +1,4 @@
+export TMPDIR=/tmp
 export CUDA_VISIBLE_DEVICES=0,1
 export HF_HOME="/SSL_NAS/peoples/khj/huggingface_cache"
 
