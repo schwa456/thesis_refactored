@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 6가지 제안
+## 이 모듈이 받아야 할 7가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -20,6 +20,104 @@
 | **SGBE** | **Score-Gated Batch Extractive Filter** (학술 Agent 2026-05-12) | GAT score 분포 기반 column-level 3-way routing + extractive binary LLM | **최상** | XiYan 대체 candidate. FL-I/II/III 와 직교 — 결합 가능 |
 | **RSL-A** | **RSL-SQL Backward Filter (Cao 2024)** (학술 Agent Phase 3, 2026-05-13) | XiYan forward + preliminary SQL backward → S_restore union (forward 가 놓친 column 회복) | **하 (보류)** | Direction A 정식 배포 보류 (Analyzer 2026-05-14: ΔF1 = -0.2832, P drop -0.4345). 단 EX maintained -0.0033 — paper §V.5.x.M narrative 의 R-P/F1-EX dichotomy evidence. |
 | **RSL-C** | **GRAST-SQL FD Filter (Hoang 2025)** (Direction C trigger, 2026-05-14) | XiYan forward + FD graph (declared FK + inferred_fk) Steiner-tree based selective restoration | **최상** | RSL-A 의 noise 폭증 한계를 schema graph 의 structural constraint 로 제어. LLM calls/query = 1 (XiYan only, terminal_source="forward") — RSL-A 의 2 LLM 대비 cost 절반. |
+| **RSL-C-GT** | **GRAST-SQL + Graph Transformer reranking (Hoang 2025 Option β)** (학술 Agent Phase 5, 2026-05-14) | RSL-C 의 Steiner terminal selection 전 Step 2 add-on — Relation-aware Graph Transformer (3 layer, hidden 1024, 8 head, edge types R={fk, col→fk, col→pk}×{fwd,rev}) 가 column-level relevance score 출력. 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent §0). | **최상** | h^0 = anchor LLM column scorer 출력 재활용 (Step 1 학습 생략, 5/22 일정 정합). Fallback to terminal_source="forward" on checkpoint 부재 / divergence (학술 Agent Q5). |
+
+---
+
+## RSL-C-GT. GRAST-SQL + Graph Transformer reranking (★ 최상, 학술 Agent Phase 5 Option β, 2026-05-14)
+
+### 동기
+- Direction A (RSL-A) + Direction C (RSL-C) 둘 다 **F1 -0.28 붕괴 + EX sub-noise ±0.003** — 학술 Agent Phase 5 §0 의 학술 frame 재정의: "Filter-Invariant 경계 확정 실험".
+- Graph Transformer 의 query-aware encoding 이 Steiner tree 의 query-무관 selection 한계 mitigation 의 **유일 candidate** (학술 Agent Q4(b)). 단 근본적 R-P 긴장 해소 사전 보증 X.
+- positive (R-P trade-off mitigation) / null (Filter-Invariance 경계 추가 evidence) 모두 학술적 가치 — paper §V.5.x.M.6 "Mechanism-Agnostic R-P Limit" narrative 강화.
+
+### 학술 Agent Phase 5 Q1+Q2 확정 spec
+| 항목 | 원문 / 학술 Agent 권고 | 본 구현 |
+|---|---|---|
+| Integration 위치 | **Option β** (Module:Filter GRASTFDFilter Step 2 add-on) | `GRASTFDFilterWithTransformer(GRASTFDFilter)` 상속 |
+| Step 1 (LLM-Reranker) | **Skipped** — 현 anchor LLM column scorer 출력 h^0 재활용 (5/22 일정) | `_build_h0`: XiYan selected bit + GAT score + FK/PK flag concat → in_dim |
+| Encoder | 3 layers, hidden 2048 (ROC-AUC) / **1024 (PR-AUC, default)**, heads 미명시 (default 8) | `GraphTransformerEncoder(3, 1024, 8)` |
+| Edge types R | `{fk, col→fk, col→pk}` directed + reverse = **6 channels** | 6 distinct `edge_type` enum |
+| PE | Relation-specific attention coefficient ψ^(ℓ)(i,j) — 표준 RPE 아님 | per-layer + per-head + per-edge-type learnable scalar bias |
+| Belongs_to | **별도 채널 없음** — node feature (학술 Agent §1.1) | h^0 에 table membership 인코딩, edge type 에 미포함 |
+| Loss | margin-based contrastive (gold > non-gold), lr 5e-5, **40 epochs**, batch 32 | `margin_contrastive_loss` |
+| GPU 시간 | Step 2 only ~1~3h (Step 1 생략) | training script 외부 |
+
+### Pipeline (per query)
+```
+Step 1   XiYan forward                 (anchor 정합)
+         S_fwd, h^0 = anchor LLM column scorer output 재활용
+
+Step 2   Relation-aware Graph Transformer
+         input  : h^0 [N, in_dim], edge_index [2, E], edge_type [E]
+         output : refined node repr [N, 1024], column scores [N]
+
+Step 3   Steiner Tree (기존 GRASTFDFilter)
+         terminal_source="graph_transformer":
+           - relevance = sigmoid(GT_score)
+           - top-K (default 10) or threshold filter → terminal columns
+           - ∪ S_fwd (connectivity 확보 위한 forward retention)
+         steiner_tree(FD_graph, terminals) → restore columns
+
+Step 4   FK/PK hardcode (기존)
+
+Output  final_nodes = S_fwd ∪ S_steiner_restore ∪ S_struct
+```
+
+### Fallback (학술 Agent Q5 fallback plan)
+- **checkpoint 부재 / load 실패**: `transformer=None` 으로 두고 `terminal_source` 자동 fallback to `"forward"` (recall-safe, RSL-C base behavior 와 동일)
+- **GT forward divergence (NaN/Inf, exception)**: forward 호출 try/except → fallback to `"forward"` + `diag["terminal_fallback"]` 기록
+- **40 epoch 학습 divergence**: `smoke_train_protocol()` 의 plateau detector → early stop + 보고서에 "Step 2 없이 Step 1 단독 결과" Caveat 3 variant 로 학술 위치 부여 (학술 Agent §6.3)
+
+### 인터페이스
+```python
+@register("filter", "GRASTFDFilterWithTransformer")
+class GRASTFDFilterWithTransformer(GRASTFDFilter):
+    def __init__(self,
+                 transformer_checkpoint_path=None,
+                 transformer_in_dim=16, transformer_hidden_dim=1024,
+                 transformer_num_layers=3, transformer_num_heads=8,
+                 transformer_dropout=0.1,
+                 transformer_score_top_k=10,
+                 transformer_score_threshold=None,
+                 transformer_device="cpu",
+                 terminal_source="graph_transformer",
+                 # GRASTFDFilter args 모두 그대로 (inferred_fk, fk_pk_hardcode, ...)
+                 **kwargs): ...
+
+    # GRASTFDFilter.refine 의 _resolve_terminals override —
+    # terminal_source=="graph_transformer" 일 때 GT forward + top-K/threshold 선택
+```
+
+### Smoke Test (학술 Agent Q5 protocol — 본 모듈 구현)
+- `smoke_train_protocol(model, batches, val_batches, num_epochs=5, ...)`:
+  - train margin loss < 0.3 + val PR-AUC Δ ≥ +0.01 → pass
+  - 2 epoch 연속 loss 개선 없음 → plateau → early stop
+  - NaN/Inf loss → divergence → early stop + fallback flag
+- 본 chain 의 unit test (`test_grast_fd_transformer.py`):
+  - GT architecture forward shape / gradient flow / edge type bias distinct
+  - margin loss boundary (pos < neg / pos > neg / no pos)
+  - filter integration (checkpoint 부재 fallback / random-init GT 활성 / top-K / threshold / FK metadata 경유)
+  - invalid arg ValueError
+
+### 한계 / Caveat (학술 Agent Phase 5 §5.2 + §6.1)
+- **P/R ratio 9.07× 개선 보증 안 됨** — GT query-aware 가 mitigation candidate 일 뿐, R-P 긴장 해소 사전 보증 X
+- **Risk High** (GAT 7-trial null 재현 가능성 + NaN divergence) — Step 2 only ~1~3h 학습 시간 단 학습 결과 null 가능
+- **EX 개선 기대 낮음** — Filter-Invariant boundary 확정 frame 정합. positive/null 모두 학술적 가치
+- **h^0 quality 의존** — Step 1 fine-tune 생략으로 anchor LLM column scorer 의 representational power 가 GT 의 ceiling 결정
+
+### 산출물 (본 모듈 책임, 2026-05-14)
+- [`grast_fd_transformer.py`](grast_fd_transformer.py) — `GraphTransformerEncoder` (3 layer, hidden=1024, 8 head, edge type bias) + `RelationAwareGTLayer` (sparse relation-aware attention with index_add aggregation) + `margin_contrastive_loss` + `smoke_train_protocol` (학술 Agent Q5).
+- [`grast_fd_filter_with_transformer.py`](grast_fd_filter_with_transformer.py) — `GRASTFDFilterWithTransformer(GRASTFDFilter)` — Step 2 add-on, h^0 builder, GT forward, top-K/threshold terminal selection, checkpoint load + fallback.
+- [`tests/test_grast_fd_transformer.py`](tests/test_grast_fd_transformer.py) — 16-scenario smoke test (**PASSED 16/16**): GT architecture + training loss + filter integration + fallback paths.
+- [`configs/.../a05_26_grast_with_transformer_glm.yaml`](../../../configs/experiments/abl/a05_filter_agentic/a05_26_grast_with_transformer_glm.yaml) — Direction C-GT sweep config (checkpoint path placeholder, 학습 완료 후 갱신).
+- [`__init__.py`](__init__.py) — `GRASTFDFilterWithTransformer` export.
+
+### 다음 단계 (Root 책임)
+- **학습 launch** (학술 Agent §6.4 5/15~5/22 일정): BIRD-Train 으로 Step 2 GT 40 epoch 학습 — `smoke_train_protocol` 로 5 epoch (12.5%) 사전 smoke + plateau detect → 정식 학습 진행 or fallback.
+- **Checkpoint 저장**: `outputs/checkpoints/grast_fd_transformer_*.pt` + a05_26 yaml 의 `transformer_checkpoint_path` 갱신.
+- **Sweep launch**: a05_26 BIRD-Dev 1534 query.
+- **Analyzer 보고**: `notebooks/analysis_results/direction_c_gt_sweep.md` — RSL-A / RSL-C / RSL-C-GT 3-way 비교 + Filter-Invariant boundary 확정 narrative + Mechanism-Agnostic R-P Limit (paper §V.5.x.M.6) 정량 evidence 확장.
 
 ---
 
@@ -495,6 +593,10 @@ a05 라인 연장선. **anchor는 a03_17 (Direct 최고) + abl_ens_basic_xiyan (
 | [tests/test_rsl_backward.py](tests/test_rsl_backward.py) | 신규 — RSL Backward 15-scenario smoke (PASSED) |
 | [grast_fd_filter.py](grast_fd_filter.py) | 신규 — GRAST-FD Direction C (완료 2026-05-14) |
 | [tests/test_grast_fd.py](tests/test_grast_fd.py) | 신규 — GRAST-FD 17-scenario smoke (PASSED) |
+| [grast_fd_transformer.py](grast_fd_transformer.py) | 신규 — Relation-aware Graph Transformer (Hoang 2025 §3.3 Option β) + training utility (2026-05-14) |
+| [grast_fd_filter_with_transformer.py](grast_fd_filter_with_transformer.py) | 신규 — Direction C-GT Filter (Step 2 add-on) |
+| [tests/test_grast_fd_transformer.py](tests/test_grast_fd_transformer.py) | 신규 — GT 16-scenario smoke (PASSED) |
+| `configs/.../a05_26_grast_with_transformer_glm.yaml` | 신규 — Direction C-GT sweep config (checkpoint placeholder) |
 | [tools/graph_tools.py](tools/graph_tools.py) | `get_all_tables`, `get_similar_columns_by_name` 등 추가 |
 | `src/prompts/filter.md` | `sgbe_extractive` section 추가 (완료) |
 | `src/llm_client/api_handler.py` | vLLM `logprobs` 지원 |

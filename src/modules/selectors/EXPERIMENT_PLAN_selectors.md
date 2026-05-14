@@ -1109,6 +1109,89 @@ AERO Theorem 3 SR2OS guarantee 의 본 도메인 transfer 검증 — V4-B H10.1c
 
 ---
 
+#### 단계 9. Direction B — Hard Negative Supervised Contrastive (HN-SupCon) — 2026-05-14 selector module ownership
+
+> **Status: 구현 완료. smoke 8/8 통과 (toy data: margin mask + NT-Xent + multi-positive + n_per_query truncation + Ensemble inheritance + registry + hyperparam defaults). 학습 ⏸ root chain 위임.**
+
+> 근거:
+> - planning/DECISIONS.md 2026-05-14 (학술 Agent Phase 5 Response 통합) §4 Direction B HN-SupCon Spec + §6 Risk Mitigation + Smoke + Fallback
+> - planning/filter_proposal_by_scholar_agent_phase5_2026-05-14.md §3.1~§3.5 (Piao 2025 LitE-SQL 원문 확정값)
+> - 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent Phase 5 §0 + Q4(c) 권고). EX 개선 아닌 Filter-Invariant boundary 추가 evidence — null result 도 학술적 가치.
+
+##### Reference
+
+Piao et al. 2025. LitE-SQL: Lightweight Embedding for Text-to-SQL with Hard Negative Supervised Contrastive Learning. (학술 Agent Phase 5 §4 원문 확정값)
+
+##### Spec (학술 Agent Phase 5 §4)
+
+**Hard Negative Mining (Static, §4.1)**:
+$$m_{ij} = 1[s(q_i, n_{ij}) > s(q_i, p_i) - 0.1]$$
+
+- positive 대비 cosine similarity 0.1 이내 non-gold column 만 hard negative + 나머지 학습 제외
+- Pre-computed embeddings 기반, Dynamic mining 없음
+
+**Loss (NT-Xent multi-positive, §4.2)**:
+$$L = \log \frac{\exp(s(q_i, p_i)/\tau)}{\exp(s(q_i, p_i)/\tau) + \sum_j m_{ij} \cdot \exp(s(q_i, n_{ij})/\tau)}$$
+
+각 gold column 이 별도 anchor 로 사용.
+
+**Hyperparameters (학술 Agent §4.3 원문 확정)**:
+
+| 파라미터 | 값 |
+|---|---|
+| Temperature τ | 0.07 |
+| Negative count N_i | 8 (3~8 ablation, 8 최적) |
+| Margin | 0.1 ({0, 0.1, 0.2} ablation, 0.1 최적) |
+| Backbone | sentence-transformers/all-MiniLM-L6-v2 (anchor 동일, 학술 Agent §4.5 primary) |
+| 1 epoch, AdamW, lr 5e-5, batch 16 (BIRD) | GPU 시간 ~30분~1시간 |
+
+##### Anchor framework 정합 (학술 Agent §4.5 본 도메인 transfer 권장)
+
+- **Primary**: 현 anchor embedding model (`sentence-transformers/all-MiniLM-L6-v2`) 위에 HN-SupCon 목적함수 적용 — 구현 속도 우세
+- **Fallback** (smoke fail 시): Qwen3-0.6B-Embedding backbone 교체 — 원문 재현 충실
+
+Direction B 의 fine-tuned encoder 가 anchor 의 EnsembleSelector 의 encoder 만 교체 — alpha blending + top_k 등 기존 logic 유지. Filter (XiYanFilter GLM 4.7) / Extractor (MSTKruskalExtractor) / SQL Gen anchor 정합.
+
+##### Smoke test (학술 Agent Phase 5 §6.2)
+
+| 단계 | 내용 | Pass 조건 | Fail 시 |
+|---|---|---|---|
+| Module:Selector | toy data: margin mask + NT-Xent + multi-positive + n_per_query truncation + Ensemble inheritance + registry + hyperparam defaults | 8/8 unit smoke pass ✅ | 본 chain 에서 처리 (5/14 완료) |
+| Root | 10% data (700 queries), 0.1 epoch | loss curve + val SLR Δ ≥ +1.0%p | lr 5e-5 → 1e-4 |
+
+##### Fallback (학술 Agent §6.3)
+
+- Smoke fail → backbone 교체 (anchor MiniLM → Qwen3-0.6B-Embedding) 후 재시도. 0.6B 빠르므로 재시도 비용 낮음
+- 학습 결과 (positive / null) 모두 학술적 가치 — **null result = EX precision-invariant 의 Filter-Invariant 추가 evidence**
+
+##### 시나리오 분기 (학술 Agent Phase 5 §0 + Q4(c))
+
+| 시나리오 | Trigger | Narrative 영향 |
+|---|---|---|
+| EX 개선 | F1↑ 와 EX↑ 동반 | F1-EX coupling mechanism evidence |
+| **EX null (R-stable, P↑, F1↑)** | EX 가 precision 개선에도 invariant | **Filter-Invariant 경계 확정 + 8th axis 강화** |
+| F1 null (학습 자체 fail) | smoke fail | fallback (Qwen3-0.6B backbone) |
+
+##### 변경된 파일 (단계 9 산출물)
+
+| 파일 | 변경 |
+|---|---|
+| `src/modules/selectors/hn_supcon_selector.py` | 신규 — `HNSupConSelector(EnsembleSelector)` (encoder 만 fine-tuned ckpt 교체) + `build_hard_negative_mask` (margin mask utility) + `hn_supcon_loss` (NT-Xent multi-positive). 학술 Agent Phase 5 §4.1/§4.2 form 그대로. |
+| `src/modules/selectors/__init__.py` | `HNSupConSelector` import + `__all__` 추가 |
+| `src/train_hn_supcon.py` | 신규 — training entry. BIRD-Train load + static hard negative pre-compute + NT-Xent training + SentenceTransformer ckpt save. argparse defaults = 학술 Agent §4.3 원문 정합. |
+| `src/modules/selectors/tests/test_hn_supcon.py` | 신규 — 8 smoke 케이스 (margin mask form / multi-positive / margin ablation grid / NT-Xent form / n_per_query truncation / EnsembleSelector inheritance / registry / hyperparam defaults) |
+| `configs/experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm.yaml` | 신규 — Direction B sweep config. anchor pipeline 의 nlq_encoder + seed_selector 만 HN-SupCon backbone 으로 swap. Filter/Extractor/SQL Gen anchor 정합. |
+
+##### 다음 단계 (Root chain 위임, 학술 Agent Phase 5 §6.4 일정)
+
+- **5/15~5/16 (Root)**: smoke launch (700 queries, 0.1 epoch) + loss curve 확인 + lr 조정 fallback
+- **5/17 (Root)**: full 1-epoch 학습 (~1h, GPU 0) + ckpt 저장 → `outputs/checkpoints/hn_supcon/`
+- **5/17~5/18 (Root)**: `b06_01_hn_supcon_glm` config 로 anchor pipeline 평가 (BIRD-dev 1534 query × GLM 4.7) + HISTORY/CATALOG/ID_MIGRATION 갱신
+- **5/19~5/20 (Analyzer)**: Direction B 결과 보고서 (Filter-Invariant 경계 narrative + EX precision-invariance 정량)
+- **5/21~5/22 (Planner)**: paper §V.5 narrative 학술 frame 통합 ("Filter-Invariant 경계 확정 실험")
+
+---
+
 ### V-1/V-2/V-3 통합 default ("SuperNode v2")
 
 - **int_05 전제 default combo**:
