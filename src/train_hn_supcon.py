@@ -150,6 +150,46 @@ def collate_hn_supcon(batch: List[Dict]) -> Dict:
     }
 
 
+def evaluate_val_slr(
+    encoder,
+    val_records: List[Dict],
+    top_k: int = 15,
+    device: str = "cuda",
+) -> float:
+    """Val Schema Linking Recall (학술 Agent Q5 metric).
+
+    각 query 마다:
+      - encoder.encode(question) + encoder.encode(schema_cols)
+      - cosine similarity → top-K columns
+      - recall = |gold ∩ top-K| / |gold|
+    Return: mean recall over val records.
+    """
+    if not val_records:
+        return 0.0
+    encoder.eval()
+    recalls: List[float] = []
+    with torch.no_grad():
+        for rec in val_records:
+            schema = rec.get("schema_cols", [])
+            gold = set(rec.get("gold_cols", []))
+            if not schema or not gold:
+                continue
+            q_emb = encoder.encode(
+                [rec["question"]], convert_to_tensor=True, device=device
+            )
+            col_embs = encoder.encode(schema, convert_to_tensor=True, device=device)
+            sim = F.cosine_similarity(q_emb, col_embs, dim=-1)
+            if len(schema) <= top_k:
+                top_indices = list(range(len(schema)))
+            else:
+                top_indices = sim.topk(top_k).indices.tolist()
+            top_cols = {schema[i] for i in top_indices}
+            r = len(top_cols & gold) / max(1, len(gold))
+            recalls.append(r)
+    encoder.train()
+    return sum(recalls) / max(1, len(recalls))
+
+
 def train_hn_supcon(args):
     from sentence_transformers import SentenceTransformer
 
@@ -182,12 +222,24 @@ def train_hn_supcon(args):
         print("[ERROR] No records — abort", file=sys.stderr)
         return
 
-    if args.epoch_fraction < 1.0:
-        n_steps = int(len(records) * args.epoch_fraction)
-        records = records[:n_steps]
-        print(f"[train_hn_supcon] epoch_fraction={args.epoch_fraction} → {n_steps} records")
+    # Val split (학술 Agent Q5 의 val SLR 측정용) — hard-negative filtered records 의 fraction
+    val_fraction = getattr(args, "val_fraction", 0.1)
+    n_val = max(1, int(len(records) * val_fraction)) if val_fraction > 0 else 0
+    val_records = records[:n_val] if n_val > 0 else []
+    train_records = records[n_val:] if n_val > 0 else records
+    print(f"[train_hn_supcon] val_fraction={val_fraction} → train={len(train_records)} / val={len(val_records)}")
 
-    ds = HNSupConDataset(records)
+    if args.epoch_fraction < 1.0:
+        n_steps = int(len(train_records) * args.epoch_fraction)
+        train_records = train_records[:n_steps]
+        print(f"[train_hn_supcon] epoch_fraction={args.epoch_fraction} → {n_steps} train records")
+
+    # Initial val SLR (학습 전 baseline)
+    eval_top_k = getattr(args, "eval_top_k", 15)
+    initial_slr = evaluate_val_slr(encoder, val_records, top_k=eval_top_k, device=device)
+    print(f"[train_hn_supcon] initial val SLR @{eval_top_k} = {initial_slr:.4f} (n={len(val_records)})")
+
+    ds = HNSupConDataset(train_records)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_hn_supcon)
     optimizer = torch.optim.AdamW(encoder.parameters(), lr=args.lr, weight_decay=0.01)
 
@@ -263,9 +315,29 @@ def train_hn_supcon(args):
                 avg = sum(losses[-args.log_every:]) / min(args.log_every, len(losses))
                 print(f"[step {global_step:5d}] loss={loss.item():.4f} avg_recent={avg:.4f}")
 
+    # Final val SLR (학습 후) — 학술 Agent Q5 pass 조건 정량
+    final_slr = evaluate_val_slr(encoder, val_records, top_k=eval_top_k, device=device)
+    slr_delta = final_slr - initial_slr
+    pass_slr = slr_delta >= 0.01  # Q5: val SLR Δ ≥ +1.0%p
+    print(f"[train_hn_supcon] final val SLR @{eval_top_k} = {final_slr:.4f}")
+    print(f"[train_hn_supcon] SLR Δ = {slr_delta:+.4f} (pass condition: ≥ +0.01) → {'PASS' if pass_slr else 'FAIL'}")
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     encoder.save(str(output_dir))
+    with open(output_dir / "smoke_result.json", "w") as f:
+        json.dump({
+            "passed": bool(pass_slr),
+            "initial_val_slr": float(initial_slr),
+            "final_val_slr": float(final_slr),
+            "slr_delta": float(slr_delta),
+            "pass_threshold": 0.01,
+            "n_train": len(train_records),
+            "n_val": len(val_records),
+            "eval_top_k": eval_top_k,
+            "final_train_loss": float(losses[-1]) if losses else None,
+            "config": vars(args),
+        }, f, indent=2)
     with open(output_dir / "loss_curve.json", "w") as f:
         json.dump({"losses": losses, "config": vars(args)}, f, indent=2)
     final = losses[-1] if losses else None
@@ -289,6 +361,10 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--log-every", type=int, default=20)
     ap.add_argument("--cpu", action="store_true")
+    ap.add_argument("--val-fraction", type=float, default=0.1,
+                    help="hard-negative filtered records 의 fraction (val SLR 측정)")
+    ap.add_argument("--eval-top-k", type=int, default=15,
+                    help="val SLR 의 top-K (default 15, schema linking 표준)")
     args = ap.parse_args()
     train_hn_supcon(args)
 

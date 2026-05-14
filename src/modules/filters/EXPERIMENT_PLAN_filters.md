@@ -312,7 +312,7 @@ class RSLBackwardFilter(BaseFilter):
   - Filter✗ (wrong-pruned gold) mean **0.6394**
   - TN (non-gold+dropped) mean **~0.40**
 - 세 group 의 score 분포가 **이미 구간으로 분리**되어 있다는 사실이 핵심. LLM 이 전체 subgraph 를 한 번에 보면 Filter✗ 그룹을 잘못 판단 → recall 손실. **Column-level routing** 으로 LLM 의 판단 범위를 mid-confidence 구간으로 좁히면 recall+precision+속도가 동시에 개선됨.
-- 학술 Agent 2026-05-12 ([planning/filtering_suggestion_by_scholar_agent_2026-05-12.md](/home/hyeonjin/thesis_refactored/planning/filtering_suggestion_by_scholar_agent_2026-05-12.md)) 가 5 references (Glass 2025 / Hoang 2025 / Talaei 2024 / Maamari 2024 / Yuan 2025) 로 합성한 hybrid 설계.
+- 학술 Agent 2026-05-12 ([planning/filter/filtering_suggestion_by_scholar_agent_2026-05-12.md](/home/hyeonjin/thesis_refactored/planning/filter/filtering_suggestion_by_scholar_agent_2026-05-12.md)) 가 5 references (Glass 2025 / Hoang 2025 / Talaei 2024 / Maamari 2024 / Yuan 2025) 로 합성한 hybrid 설계.
 
 ### 설계 — 3-step routing
 ```

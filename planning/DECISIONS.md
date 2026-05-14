@@ -8,6 +8,2140 @@
 
 ---
 
+## 2026-05-15 (Module 구현 Chain 완료 — Direction B + Direction C-GT 둘 다 Implementation 완료 + Root Sweep Launch Trigger 준비 + Module:Filter/Module:Selector 통합 보고)
+
+> **사용자 직전 input (5/14 저녁 ~ 5/15)**: Module:Filter 핸드오프 receive (Direction C-GT 완료 fb92775) + Module:Selector 핸드오프 receive (Direction B HN-SupCon 완료 fb92775 + ec4c2a9 ownership marker). 학술 Agent Phase 5 §6.4 일정의 **5/16 implementation 병렬 단계 둘 다 완료** — Root sweep launch chain 의 통합 핸드오프 작성 요청.
+
+### §1. 본 Chain 의 위치 — 학술 Agent Phase 5 §6.4 일정의 5/16 단계 완료
+
+학술 Agent Phase 5 §6.4 권고 일정의 정합:
+
+```
+5/14: 학술 Agent Phase 5 response receive ✅
+5/15: Planner DECISIONS prepend (학술 Agent 통합 + Module:Selector ownership) ✅
+🆕 5/16: Module:Filter + Module:Selector implementation 병렬 ✅ 완료 (commits fb92775 + ec4c2a9)
+   ↓ (본 entry)
+🚀 5/17: Root smoke test (B + C-GT) + 학습 launch
+🚀 5/17~5/18: Root sweep launch
+🚀 5/19~5/20: Analyzer 두 결과 보고서 병렬
+🚀 5/21~5/22: Root 학위 논문 chapter draft + 학회 paper §3.5 draft
+5/22: 학위 본 심사 마감
+```
+
+→ **5/16 implementation 병렬 단계 완료**, 본 entry 의 Root sweep launch chain trigger 가 5/17~5/22 일정의 critical path 의 next step.
+
+### §2. Module:Filter — Direction C-GT 산출물 (commit fb92775, smoke 16/16 PASSED)
+
+| File | 내용 |
+|---|---|
+| `src/modules/filters/grast_fd_transformer.py` | **GraphTransformerEncoder** (3 layer / hidden 1024 PR-AUC 최적 / 8 head / 6 edge types R={fk, col→fk, col→pk}×{fwd,rev}, **belongs_to 별도 채널 없음** — 학술 Agent §1.1 정합) + **RelationAwareGTLayer** (sparse attention with index_add aggregation, ψ^(ℓ)(i,j) per-layer/head/type learnable bias) + margin_contrastive_loss + smoke_train_protocol (학술 Agent Q5: 5 epoch / loss<0.3 / PR-AUC Δ≥+0.01 / plateau early-stop + NaN-Inf divergence detect) |
+| `src/modules/filters/grast_fd_filter_with_transformer.py` | **GRASTFDFilter 상속**, terminal_source="graph_transformer" 신규 mode. **h⁰ = anchor LLM column scorer 재활용** (Step 1 학습 생략, 학술 Agent Q2 권장). **Checkpoint 부재 / forward 예외 시 자동 fallback** to terminal_source="forward" (학술 Agent Q5 fallback) |
+| `src/modules/filters/tests/test_grast_fd_transformer.py` | **PASSED 16/16** |
+| `src/modules/filters/__init__.py` | `GRASTFDFilterWithTransformer` export |
+| `src/modules/filters/EXPERIMENT_PLAN_filters.md` | RSL-C-GT entry (★ 최상, 7번째 축, lines 23 + 27 + 74) |
+| `configs/experiments/abl/a05_filter_agentic/a05_26_grast_with_transformer_glm.yaml` | sweep config placeholder (`transformer_checkpoint_path` 학습 후 root 갱신) |
+
+→ **학술 frame 정합** (학술 Agent §0): "Filter-Invariant 경계 확정 실험". Positive (R-P trade-off mitigation) / null (Filter-Invariance 경계 추가 evidence) 모두 학술적 가치 — paper §V.5.x.M.6 "Mechanism-Agnostic R-P Limit" narrative evidence 확장 candidate.
+
+### §3. Module:Selector — Direction B HN-SupCon 산출물 (commit fb92775 mixed + ec4c2a9 ownership marker, smoke 8/8 PASSED)
+
+직전 entry (Module:Selector Direction B HN-SupCon Ownership 완료) §2 인용 — 본 entry 의 §2 (Filter) 와 통합 보고.
+
+| File | 내용 |
+|---|---|
+| `src/modules/selectors/hn_supcon_selector.py` | `HNSupConSelector(EnsembleSelector)` 신규 194 lines |
+| `src/modules/selectors/tests/test_hn_supcon.py` | **PASSED 8/8** |
+| `src/modules/selectors/EXPERIMENT_PLAN_selectors.md` | §단계 9 신설 +83 lines |
+| `src/modules/selectors/__init__.py` | `HNSupConSelector` registry |
+| `src/train_hn_supcon.py` | HN-SupCon 학습 loop (학술 Agent §4.3 원문 정합) |
+| `configs/experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm.yaml` | sweep config (anchor swap, `.gitignore` 정책 미commit, working dir placeholder) |
+
+**사용자 결정**: 분리 정정 commit 불필요, fb92775 mixed 그대로 유지. Module:Selector ownership 은 ec4c2a9 docs commit 으로 명시.
+
+### §4. Root Sweep Launch Chain 의 학술 Agent §6.4 일정 정합
+
+#### 4.1 5/17 Smoke + 학습 launch
+
+| Direction | Smoke (학술 Agent Q5) | Full 학습 | Risk |
+|---|---|---|:---:|
+| **B (HN-SupCon)** | 10% data (700 queries), 0.1 epoch → val SLR Δ ≥ +1.0%p | ~30분~1h, GPU 0 권장 (Low risk, fast) | **Low** |
+| **C-GT (Graph Transformer)** | 5 epoch (12.5%) → train margin loss < 0.3 + val PR-AUC Δ ≥ +0.01 + plateau early-stop | ~1~3h, GPU 1 권장 (High risk, lengthy) | **High** |
+
+#### 4.2 5/17~5/18 Sweep
+
+| Direction | Config | ETA |
+|---|---|---|
+| B sweep | `experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm` (anchor 의 nlq_encoder + seed_selector swap) | ~30분~1h |
+| C-GT sweep | `experiments/abl/a05_filter_agentic/a05_26_grast_with_transformer_glm` (anchor 의 filter 만 GT 로 교체) | **~5~9h GLM API** (긴 sweep, 분산 학습 chain 의 critical path) |
+
+#### 4.3 5/19~5/20 Analyzer 결과 보고서 병렬
+
+| 산출물 | 내용 |
+|---|---|
+| `notebooks/analysis_results/direction_b_hn_supcon_sweep.md` | F1 / R / P / EX / SLR / per-DB + Filter-Invariant 경계 확정 narrative (시나리오 α/β/γ/δ 분기) |
+| `notebooks/analysis_results/direction_c_gt_sweep.md` | F1 / R / P / EX / per-DB + Mechanism-Agnostic Limit narrative (Direction C original 대비) |
+
+#### 4.4 5/21~5/22 학위 논문 chapter draft + 학회 paper §3.5 draft (마감)
+
+### §5. GPU 자원 조율 (메모리 규칙 정합)
+
+- `CUDA_VISIBLE_DEVICES=0,1` only (GPU 2,3 reserved — 다른 연구자, **memory rule 정합**)
+- **Option (α) 병렬 (권장)**: GPU 0 = Direction B (~1h Low risk) + GPU 1 = Direction C-GT Step 2 (~1~3h High risk). Total wall = max(1h, 3h) = 3h
+- Option (β) 직렬: GPU 1 only. Sequence = B (~1h) → B sweep (~1h) → C-GT (~3h) → C-GT sweep (~9h). Total wall ~14h
+- → **Option (α) 채택 권고** — Total wall ~3h 학습 + ~9h sweep = 5/17~5/18 일정 안에 완료
+
+### §6. Analyzer 후속 Chain Prerequisite — `inferred_fk` 보완 상태 확인
+
+직전 chain 의 `inferred_fk` (debit_card_specializing + card_games, GPT-4.1-mini) 보완 = `outputs/analysis/direction_c_inferred_fk.yaml` 의 4 entries (5/14 완료):
+
+| 항목 | 상태 |
+|---|:---:|
+| debit_card_specializing FK coverage 보완 (3 entries) | ✅ 완료 (Analyzer 5/14) |
+| card_games FK coverage 보완 (1 entry) | ✅ 완료 (Analyzer 5/14) |
+| **a05_25 (Direction C original) 의 inferred_fk 적용** | ✅ 완료 (commit e90d91a) |
+| **a05_26 (Direction C-GT) 의 inferred_fk 적용** | ✅ **자동 정합** (a05_26 의 GRASTFDFilter 가 GRASTFDFilter 상속, inferred_fk 인자 정합) |
+
+→ **Direction C-GT 의 sweep 이 a05_26 yaml 에 inferred_fk 정합 자동** (GRASTFDFilter 상속). 추가 a05_27 cell 불필요 — Direction C-GT sweep 으로 충분.
+
+→ **Post-paper extension candidate** (학술 Agent 4.5c): 다른 9 DBs 의 inferred FK 보완 (학위 논문 §V appendix), 5/22 이전 launch 불필요.
+
+### §7. paper §V.5.x.M Narrative 갱신 항목
+
+| §V.5.x.M.x | 신규 evidence (Analyzer 보고서 receive 후) |
+|---|---|
+| §V.5.x.M.6 (Mechanism-Agnostic R-P Limit) | Direction C-GT 의 정량 — algorithmic Steiner (Direction C) + query-aware encoding (Direction C-GT) 의 동일 결과 시 → mechanism-agnostic limit 의 **추가 evidence** (학습-aware encoding 도 limit inherit). 또는 C-GT positive 시 → "query-aware encoding 이 R-P trade-off mitigation" narrative |
+| §V.5.x.M.7 (Filter-Invariant 경계 확정 실험) | Direction B 의 정량 — F1 ↑ EX null 시 → **EX-axis Filter-Invariant 의 결정적 확장 evidence** (precision 개선 도 EX invariant). 학술 Agent §0 frame 인용 강화 |
+| §V.5.x.M.4 (Three-Caveat) | Direction B (discriminate) + Direction C-GT (restore + query-aware) 의 결과 → Three-Caveat → **Four-Caveat or Five-Caveat 확장 candidate** (학습-aware mechanism axis 추가) |
+
+### §8. Root 통합 핸드오프 Prompt (paste-ready form, 본 entry 의 핵심 산출물)
+
+다음 turn 의 사용자 paste-ready form 으로 제공 (본 entry 의 후속 응답 의 main 산출물).
+
+### §9. Chain Status 갱신 (5/14 저녁 ~ 5/15)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-29 | 직전 chains (Module:Filter Direction C-GT + Module:Selector Direction B 산출물) | ✅ 완료 |
+| **30** | **Planner: DECISIONS prepend 통합 (Module:Filter + Module:Selector + Root 통합 핸드오프) + git push 규칙 명문화** | 🚀 **즉시 (본 entry + 다음 turn)** |
+| ⏸ 31 | Root: Direction B smoke test (5/17) | ⏸ 사용자 launch |
+| ⏸ 32 | Root: Direction C-GT smoke test (5/17) | ⏸ 사용자 launch (병렬 GPU) |
+| ⏸ 33 | Root: Direction B 학습 (~1h, GPU 0) + sweep | ⏸ 5/17~5/18 |
+| ⏸ 34 | Root: Direction C-GT 학습 (~1~3h, GPU 1) + sweep (~5~9h) | ⏸ 5/17~5/18 |
+| ⏸ 35 | Root: a05_26 + b06_01 config 의 checkpoint path 갱신 | ⏸ 학습 완료 후 |
+| ⏸ 36 | Root: HISTORY/CATALOG/ID_MIGRATION 3종 갱신 (이미 modified 상태) | ⏸ sweep 완료 후 |
+| ⏸ 37 | Analyzer: Direction B 결과 보고서 (`direction_b_hn_supcon_sweep.md`) | ⏸ 5/19~5/20 |
+| ⏸ 38 | Analyzer: Direction C-GT 결과 보고서 (`direction_c_gt_sweep.md`) | ⏸ 5/19~5/20 (병렬) |
+| ⏸ 39 | (사용자 결정 5/20) 학술 Agent Phase 6 confirm — sweep 결과 receive + B/C-GT outcome 학술 frame 정합 | ⏸ Analyzer 보고서 receive 후 |
+| ⏸ 40 | Planner: paper §V.5.x.M.4 + .M.6 + .M.7 narrative final integration | ⏸ 5/21 |
+| ⏸ 41 | Root: 학위 논문 chapter draft + 학회 paper §3.5 Extended Abstract (5/22 마감) | ⏸ 5/21~5/22 |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §10. 영향 범위
+
+- planning/DECISIONS.md (본 entry — 통합 보고)
+- 후속 turn 의 paste-ready Root 통합 핸드오프 prompt (사용자 직접 제공)
+- Working tree modified 4 files (commit 대기, push 사용자 관리)
+
+### §11. 근거
+
+- 사용자 직접 input (Module:Filter + Module:Selector 핸드오프 receive + 통합 요청)
+- git log fb92775 (mixed commit) + ec4c2a9 (Module:Selector ownership marker)
+- src/modules/filters/EXPERIMENT_PLAN_filters.md RSL-C-GT section (lines 23 + 27 + 74)
+- src/modules/selectors/EXPERIMENT_PLAN_selectors.md §단계 9
+- planning/DECISIONS.md 2026-05-14 학술 Agent Phase 5 Response §6.4 (일정 정합)
+- planning/filter/filter_proposal_by_scholar_agent_phase5_2026-05-14.md Q1+Q2+Q3+Q5
+
+### §12. 사용자 후속 actions
+
+1. ✅ **Module:Filter + Module:Selector 핸드오프 receive** (5/14~5/15)
+2. 🚀 **Planner: 통합 DECISIONS prepend + Root 통합 핸드오프 prompt 작성** (본 turn)
+3. 🚀 **사용자 → Root 핸드오프** (5/17 smoke + 학습 launch)
+4. ⏸ **사용자 → Analyzer 핸드오프** (sweep 완료 후, 5/19~5/20)
+5. ⏸ **사용자 → 학술 Agent Phase 6 confirm** (Analyzer 보고서 receive 후, 5/20)
+6. ⏸ **사용자 → Planner narrative final integration** (5/21)
+7. ⏸ **사용자 → Root 학위 논문 + 학회 paper draft** (5/21~5/22 마감)
+
+---
+
+## 2026-05-14 (Module:Selector Direction B HN-SupCon Ownership 완료 + Git Push 규칙 명문화 + Root/Analyzer/Planner Chain Trigger)
+
+> **사용자 직전 input (5/14)**: (1) Module:Selector 핸드오프 receive — Direction B HN-SupCon implementation 완료 (Commits fb92775 mixed + ec4c2a9 ownership marker). (2) "git push는 지금처럼 내가 관리하고 각자가 commit 만 잘 하도록 해 줘" — git push 사용자 관리 원칙 명문화 요청.
+
+### §1. Git Push 규칙 정식 명문화 (모든 세션 공통)
+
+| 항목 | 규칙 |
+|---|---|
+| `git add` | ✅ 각 세션 자율 (필요 file 만 specific add, `-A` / `.` 회피) |
+| `git commit` | ✅ 각 세션 자율 (작업 완료 시 정합 commit message + Co-Authored-By trailer) |
+| **`git push`** | ❌ **사용자 명시적 요청 시만** — 어떤 세션도 자동 push 금지 (Root CLAUDE.md 의 git 규칙 정합) |
+
+→ **사용자 직접 input**: "git push는 지금처럼 내가 관리하고 각자가 commit 만 잘 하도록 해 줘".
+
+본 규칙 의 학술적 정당성:
+- **사용자 review 기회 보장** — push 전 사용자 가 commit content 확인 가능
+- **Atomic rollback** — push 전 local commit 은 amend / reset 으로 수정 가능
+- **CI / hook trigger 제어** — push 시점 사용자 결정
+
+**모든 향후 핸드오프 prompt 의 git operations section 에 본 규칙 명시** — Root + Module + Analyzer 모두.
+
+### §2. Module:Selector Direction B HN-SupCon Ownership 산출물
+
+#### 2.1 산출물 표 (fb92775 mixed commit 안의 selector 측 + ec4c2a9 ownership marker)
+
+| File | Lines | Origin | 비고 |
+|---|---:|---|---|
+| `src/modules/selectors/hn_supcon_selector.py` | **194 (신규)** | fb92775 (selector 측) | `HNSupConSelector(EnsembleSelector)` — anchor encoder backbone fine-tuned HN-SupCon ckpt 교체. α blending + top_k + GAT projector 유지 |
+| `src/modules/selectors/__init__.py` | +2 | fb92775 | `HNSupConSelector` import + registry |
+| `src/modules/selectors/tests/test_hn_supcon.py` | **177 (신규)** | fb92775 | **8/8 smoke pass** (margin mask form + multi-pos + ablation grid + NT-Xent + truncation + Ensemble inheritance + registry + hyperparam defaults) |
+| `src/modules/selectors/EXPERIMENT_PLAN_selectors.md` | +83 | fb92775 | **§단계 9 신설** (Direction B HN-SupCon entry) |
+| `src/train_hn_supcon.py` | (신규) | fb92775 | Static hard negative pre-computation (margin mask) + NT-Xent multi-positive 학습 loop. Hyperparams = 학술 Agent §4.3 원문 정합 (τ=0.07, N=8, margin=0.1, lr=5e-5, batch=16, 1ep) |
+| `configs/experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm.yaml` | (신규, .gitignore 정책 미commit) | working dir | anchor pipeline 의 nlq_encoder + seed_selector swap. Filter/Extractor/SQL Gen anchor 정합 |
+| `(ownership marker)` | — | **ec4c2a9** | `docs(selectors): Direction B HN-SupCon — Module:Selector ownership marker` (Module:Filter 의 mixed commit 안 selector 측 산출물 ownership claim) |
+
+→ **Anchor framework 정합 confirm**: HNSupConSelector 가 EnsembleSelector 상속 + α blending + top_k + GAT projector 유지 = anchor framework 의 isolated effect 원칙 정합 (selector 의 encoder backbone 만 fine-tuned 교체).
+
+#### 2.2 학술 Agent §4.3 원문 spec 정합 검증
+
+| Hyperparameter | 학술 Agent §4.3 원문 | train_hn_supcon.py 정합? |
+|---|---|:---:|
+| Temperature τ | 0.07 | ✅ |
+| Negative count N_i | 8 (3~8 ablation, 8 최적) | ✅ |
+| Margin | 0.1 ({0, 0.1, 0.2} ablation, 0.1 최적) | ✅ |
+| Learning rate | 5×10⁻⁵ | ✅ |
+| Batch size | 16 | ✅ |
+| Epoch | 1 | ✅ |
+| Hard negative mining | Static (pre-computed embeddings + margin mask) | ✅ |
+| Loss formulation | NT-Xent + multi-positive | ✅ |
+
+→ **8/8 hyperparameter 학술 Agent 원문 정합** + smoke 8/8 PASSED.
+
+### §3. 학술 Frame: "Filter-Invariant 경계 확정 실험" (학술 Agent Phase 5 §0)
+
+직전 entry §1 정합 + Module:Selector 핸드오프 정합:
+
+> Direction B (HN-SupCon, **discriminate** philosophy, P↑ R stable) 의 학술 frame:
+> - **EX 개선 시** (positive outcome) → F1-EX coupling mechanism evidence
+> - **EX null 시** (null outcome, 학술 Agent Phase 5 §5.1 예상) → **Filter-Invariant 의 추가 boundary evidence** ("EX 는 precision 개선에도 invariant" — paper §V.5.x.M.4 EX-axis Filter-Invariant 의 결정적 확장 evidence)
+> - **F1 null 시** (fallback) → backbone 교체 (Qwen3-0.6B-Embedding) 학술 Agent §6.3 fallback chain
+
+### §4. Direction B 학습 결과 시나리오 분기 (학술 Agent Phase 5 §5.1 + §6.3)
+
+| Scenario | F1 outcome | EX outcome | 학술적 가치 | 후속 action |
+|---|---|---|---|---|
+| **(α) F1 ↑ EX ↑** | +0.02 이상 | +0.005 이상 | F1-EX coupling mechanism evidence (가장 positive) | paper §V.5.x.M 의 main contribution candidate 강화 |
+| **(β) F1 ↑ EX null** | +0.02 이상 | sub-noise (±0.003) | **Filter-Invariant 의 EX-axis robustness 추가 evidence (Direction B 가 precision 개선 했음에도 EX invariant)** ⭐ 학술 Agent §5.1 예상 | paper §V.5.x.M.4 + §V.5.x.M.7 (학술 frame "경계 확정") narrative 확정 |
+| (γ) F1 null EX null | sub-noise | sub-noise | Filter-Invariant 의 mechanism-agnostic limit 의 추가 evidence (학습-기반 mitigation 도 한계) | paper §V.5.x.M.6 (Mechanism-Agnostic Limit) 확장 |
+| **(δ) F1 ↓** | -0.02 이하 | (any) | **Fallback trigger** | 학술 Agent §6.3 fallback: backbone 교체 (현 sentence-transformers → Qwen3-0.6B-Embedding) 후 재시도 |
+
+→ **시나리오 (β) 가 학술 Agent Phase 5 §5.1 의 예상 outcome** — Filter-Invariant 의 EX-axis robustness 의 결정적 확장 evidence (paper §V.5.x.M.4 narrative 강화).
+
+### §5. Root 학습 + Sweep Chain Trigger Spec (5/15~5/18)
+
+#### 5.1 5/15~5/16 Smoke Test (학술 Agent Q5 protocol)
+
+```bash
+python src/train_hn_supcon.py \
+  --max-queries 700 \
+  --epoch-fraction 0.1 \
+  --train-json /SSL_NAS/peoples/khj/thesis/train/train.json \
+  --train-tables /SSL_NAS/peoples/khj/thesis/train/train_tables.json \
+  --output-dir outputs/checkpoints/hn_supcon_smoke
+```
+
+**Pass 조건**: loss curve + val SLR Δ ≥ +1.0%p
+**Fail 시**: lr 5e-5 → 1e-4 로 조정 후 재실행
+
+#### 5.2 5/17 Full 학습 (~1h, GPU 0, Low risk)
+
+```bash
+python src/train_hn_supcon.py \
+  --train-json /SSL_NAS/peoples/khj/thesis/train/train.json \
+  --train-tables /SSL_NAS/peoples/khj/thesis/train/train_tables.json \
+  --output-dir outputs/checkpoints/hn_supcon
+```
+
+→ default args = 학술 Agent §4.3 원문 (τ=0.07, N=8, margin=0.1, lr=5e-5, batch=16, 1 epoch).
+
+#### 5.3 5/17~5/18 Sweep (BIRD-dev 1534 × GLM 4.7)
+
+```bash
+python src/main.py --config experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm
+```
+
+→ anchor pipeline 의 nlq_encoder + seed_selector swap, Filter/Extractor/SQL Gen anchor 정합. ETA = ~수 시간 (anchor sweep 의 ~2~3h).
+
+#### 5.4 EXPERIMENT_HISTORY/CATALOG/ID_MIGRATION 갱신 (Root 책임)
+
+- HISTORY: "Direction B HN-SupCon 배포 Sweep" entry (smoke + full + sweep)
+- CATALOG: b06_01_hn_supcon_glm 의 정량 (F1/EX/SLR + cost)
+- ID_MIGRATION: b06 prefix 신규 series (Direction B chain)
+
+### §6. Analyzer 결과 보고서 Spec (5/19~5/20)
+
+**산출물**: `notebooks/analysis_results/direction_b_hn_supcon_results.md`
+
+**핵심 section spec**:
+- §0 TL;DR — 4 시나리오 분기 의 어느 outcome 인지 명시 (α / β / γ / δ)
+- §1 4-way 비교 매트릭스 (anchor c0 vs Direction A vs Direction C vs Direction B) — R / P / F1 / EX 4-decimal
+- §2 SLR (Schema Linking Recall) + per-DB precision-invariance 정량 (학술 frame "Filter-Invariant 경계 확정")
+- §3 EX precision-invariance 정량 — Direction B 의 P 개선 (P↑) ↔ EX 변화 sub-noise 의 정량 정합 (학술 Agent §5.1 예상 의 verify or refute)
+- §4 paper §V.5.x.M.4 (EX-axis Filter-Invariant) + §V.5.x.M.6 (Mechanism-Agnostic Limit) + §V.5.x.M.7 (Filter-Invariant 경계 확정) narrative 보강 candidate
+- §5 Fallback trigger 평가 (시나리오 δ 시 backbone 교체 권고)
+- §6 후속 Planner / Root 핸드오프
+
+### §7. Planner Narrative Integration Plan (5/21~5/22)
+
+학위 본 심사 마감 (5/22) 직전 chapter draft + 학회 paper §3.5 draft 작성 시 본 Direction B 결과 통합:
+
+#### 7.1 paper §V.5 narrative 통합 (학술 frame "Filter-Invariant 경계 확정 실험")
+
+| Direction | Restore philosophy | Expected outcome (학술 Agent Phase 5) | paper §V.5.x.M.x 위치 |
+|---|---|---|---|
+| Direction A (RSL Backward) | R↑ P↓ (restore) | F1 -0.28 + EX -0.0033 (실측) | §V.5.x.M.5 (Full Schema boundary) + §V.5.x.M.6 (Mechanism-Agnostic Limit, caveat 2) |
+| Direction C (GRAST-FD original) | R↑ P↓ (restore, algorithmic) | F1 -0.2873 + EX -0.0026 (실측) | §V.5.x.M.6 (Mechanism-Agnostic Limit, caveat 3) |
+| Direction C-GT (Graph Transformer) | R↑ P↓ (restore, query-aware) | **TBD (5/20)** — positive 시 F1-EX decoupling mechanism / null 시 mechanism-agnostic limit 의 추가 evidence | §V.5.x.M.7 (Filter-Invariant 경계 확정 실험) |
+| **Direction B (HN-SupCon)** | **P↑ R stable (discriminate)** | **TBD (5/20)** — 시나리오 (β) 예상 (F1 ↑ EX null) → **EX-axis Filter-Invariant 의 결정적 확장 evidence** | §V.5.x.M.4 (EX-axis robustness) + §V.5.x.M.7 (학술 frame 통합) |
+
+#### 7.2 학회 paper §3.5 axis #7 (Three-Caveat Mechanism Spectrum) 확장 candidate
+
+학습 결과 후 footnote 갱신:
+- 시나리오 (β) 시 → "Direction B 의 precision 개선 도 EX-axis Filter-Invariant 유지 — Three-Caveat Spectrum 의 EX-axis robustness 의 추가 axis-orthogonal evidence (restore mechanism + discriminate mechanism 양쪽 모두 EX-axis 유지)"
+
+#### 7.3 학위 논문 chapter draft 의 narrative final
+
+5/22 마감 의 학위 논문 §V.5 의 narrative final integration plan:
+- §V.5.x.M.1~.M.6 = 직전 final (Direction A + C original 의 정량 base 확보)
+- §V.5.x.M.7 = Direction B + C-GT 의 학술 frame "Filter-Invariant 경계 확정 실험" final (positive / null 양쪽 학술적 가치)
+- §V Limitations = thrombosis_prediction 각주 (학술 Agent 4.4c) + Direction A Full Schema Input Boundary (§V.5.x.M.5) + Direction A-v2 post-paper (학술 Agent 4.5c)
+
+### §8. Chain Status 갱신 (5/14 저녁, Module:Selector 핸드오프 receive 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-27 | 직전 chains (Option α' §3 + 학술 Agent Phase 5 통합 + paper §V.5.x.M.5/.M.6/.M.7 신규) | ✅ 완료 |
+| **28** | **Module:Filter Direction C-GT implementation (Option β, fb92775 16/16 smoke)** | ✅ **완료 (5/14 15:25)** |
+| **29** | **Module:Selector Direction B HN-SupCon implementation (fb92775 + ec4c2a9 ownership marker, 8/8 smoke)** | ✅ **완료 (5/14 15:27)** |
+| **30** | **Planner: DECISIONS prepend (Module:Selector ownership + git push 규칙 명문화) + Root/Analyzer 핸드오프 prompts 작성** | 🚀 **즉시 (본 entry + 다음 turn)** |
+| ⏸ 31 | Root: Direction B smoke test (5/15~5/16) | ⏸ 사용자 launch |
+| ⏸ 32 | Root: Direction B full 학습 (5/17, ~1h GPU 0) | ⏸ smoke pass 후 |
+| ⏸ 33 | Root: Direction B sweep (5/17~5/18) + HISTORY/CATALOG/ID_MIGRATION 갱신 | ⏸ 학습 완료 후 |
+| ⏸ 34 | Root: Direction C-GT 학습 + sweep (병렬 또는 직렬, GPU 0+1 정합) | ⏸ Module:Filter Direction C-GT chain 후속 |
+| ⏸ 35 | Analyzer: Direction B 결과 보고서 (5/19~5/20) | ⏸ Root sweep 완료 후 |
+| ⏸ 36 | Analyzer: Direction C-GT 결과 보고서 (5/19~5/20) | ⏸ Root sweep 완료 후 |
+| ⏸ 37 | Planner: paper §V.5 narrative integration + 학회 paper §3.5 footnote 갱신 (5/21~5/22) | ⏸ Analyzer 보고서 receive 후 |
+| ⏸ 38 | Root: 학위 논문 chapter draft + 학회 paper §3.5 Extended Abstract (5/21~5/22 마감) | ⏸ Planner narrative final 후 |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §9. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Module:Selector ownership 완료 + git push 규칙 명문화)
+- Working tree modified files (다음 commit 대기, push 는 사용자 관리):
+  - EXPERIMENT_CATALOG.md / HISTORY.md / ID_MIGRATION.md (Direction A + C 결과 entries)
+  - planning/DECISIONS.md (본 turn 의 prepend)
+- 후속 핸드오프: Root (학습 + sweep) + Analyzer (결과 보고서)
+
+### §10. 근거
+
+- 사용자 직접 input (Module:Selector 핸드오프 receive + git push 규칙 명문화)
+- git log fb92775 + ec4c2a9 (Module:Selector ownership 정합 확인)
+- src/modules/selectors/EXPERIMENT_PLAN_selectors.md §단계 9 (Direction B 신설)
+- planning/DECISIONS.md 2026-05-14 §4 (학술 Agent Phase 5 §4 Direction B HN-SupCon spec)
+- planning/filter/filter_proposal_by_scholar_agent_phase5_2026-05-14.md §3.1~§3.5 + §6.3 (학술 Agent 원문 spec + fallback)
+
+### §11. 사용자 후속 actions
+
+1. ✅ **Module:Selector 핸드오프 receive** (5/14)
+2. 🚀 **Planner: DECISIONS prepend + Root/Analyzer 핸드오프 prompts 작성** (본 turn)
+3. 🚀 **사용자 → Root 핸드오프** (5/15~5/16 smoke test launch)
+4. ⏸ **사용자 → Analyzer 핸드오프** (Root sweep 완료 후, 5/19~5/20)
+5. ⏸ **사용자 → Planner narrative integration** (Analyzer 보고서 receive 후, 5/21~5/22)
+6. ⏸ **사용자 → Root 학위 논문 + 학회 paper draft** (5/21~5/22)
+
+---
+
+## 2026-05-14 (학술 Agent Phase 5 Response 통합 — 학술 Frame "Filter-Invariant 경계 확정 실험" 재정의 + Direction B/C-GT Architecture Spec 확정 + thrombosis 각주 처리 + §V.5.x.M.6 학술 Agent ✅ + Direction A-v2 Post-paper 확정 + 5/15~5/22 일정 최적 순서)
+
+> **사용자 직전 input (5/14)**: 학술 Agent Phase 5 response receive (`planning/filter/filter_proposal_by_scholar_agent_phase5_2026-05-14.md`). Q1~Q5 + Q4.4-revised + Q4.5 모두 정합 + 학술 frame 재정의 + 5 architecture/hyperparameter spec 확정.
+
+### §1. 학술 Agent §0 — 학술 Frame 재정의 (Critical)
+
+학술 Agent 의 상위 맥락 판단:
+
+> "Direction A/C 양쪽 모두 F1이 -0.28 붕괴했지만 EX는 sub-noise (±0.003)였습니다. 이것은 실험 실패가 아니라 **Filter-Invariant 발견의 핵심 positive evidence**입니다. 이 해석 위에서 Direction B/C-GT의 추가 launch 학술적 정당성과 아키텍처 spec을 다음과 같이 평가합니다."
+
+→ **학술 Agent 의 학술적 framing**: Direction A + C 의 net negative 가 paper main contribution (Filter Dominance) 의 결정적 evidence 확정. Direction B/C-GT launch 의 학술 frame 도 동일 — "EX 개선" 아닌 **"Filter-Invariant 경계 확정 실험"**.
+
+**학술 Agent Q4(c) 종합 권고 인용**:
+
+> "두 chain 모두 학술적 정당성은 있으나 EX 개선 기대치는 낮습니다. 따라서 이 launch의 학술적 프레임을 'EX 개선'이 아닌 '**Filter-Invariant 경계 확정 실험**'으로 재정의하는 것을 권장합니다.
+> - Direction B null result → EX는 precision 개선에도 invariant
+> - Direction C-GT positive → F1-EX decoupling의 mechanism 분리
+> 이 서술이 논문 §V.5 narrative를 강화합니다."
+
+→ **두 학습 chain 의 expected outcome 의 학술적 학술 frame 재정의 정식 채택**.
+
+### §2. Direction C Graph Transformer Architecture Spec (학술 Agent Q1)
+
+#### 2.1 Encoder Architecture (원문 §3.3~§3.5 + §5.5 grid search)
+
+| 항목 | 원문 수치 | 비고 |
+|---|---|---|
+| 레이어 수 | **3~4층** (BIRD 최적 3층) | 0~4 grid, 3층 stabilize |
+| Hidden dim | **2048** (ROC-AUC) / **1024** (PR-AUC) | {256, 512, 1024, 2048} grid |
+| Attention heads | **미명시** | 원문 수치 없음, Relation-aware transformer [34] 인용만 |
+| 엣지 타입 R | `{foreign_key, column→FK, column→PK}` | directed + reverse (bidirectional) |
+| Positional Encoding | **Relation-specific attention coefficient** ψ^(ℓ)(i,j) | 표준 RPE 아님 |
+| belongs_to edges | **별도 채널 없음** | column→PK/FK 방향성 cover, table membership = node feature |
+
+#### 2.2 Query Encoder Fusion — **Two-Step Decoupled** (a/b/c 모두 아님)
+
+- **Step 1 (LLM-Reranker)**: Qwen3-Reranker-0.6B LoRA, `question + column description` concat → query-conditioned embedding $h^0$
+- **Step 2 (Graph Transformer)**: $h^0$ **frozen** input + graph structural reasoning만
+- **GT 내부 query cross-attention 없음** — query 신호는 Step 1 에서 pre-computed 소비
+
+#### 2.3 Training Loss
+
+| Step | Loss | 학습 hyperparameter |
+|---|---|---|
+| Step 1 (LLM-Reranker) | group-wise InfoNCE, 7 negatives + in-batch | lr 2×10⁻⁴, 2 epochs, batch 32 |
+| Step 2 (Graph Transformer) | margin-based contrastive (gold SQL ranked above irrelevant) | lr 5×10⁻⁵, **40 epochs**, batch 32 |
+
+#### 2.4 Training Data + GPU 시간
+
+- BIRD-Train (Spider 도 실험), no pretrain corpus
+- **GPU 시간**: Step 1 2~4h + Step 2 1~3h = **3~7h** 단일 GPU
+
+### §3. Direction C Integration 위치 — **Option β 권고** (학술 Agent Q2)
+
+| Option | 학술 Agent 평가 | 결정 |
+|---|---|:---:|
+| Option α (Module:Selector 교체) | ❌ 부적합 — GT 는 column reranker (Selector 교체 아님) + anchor F1=0.8667 흔들림 + Filter-Invariant 3-caveat 스펙트럼 재구성 필요 | 폐기 |
+| **Option β (Module:Filter GRASTFDFilter Step 2 add-on)** | ✅ **권고** — 현 GRASTFDFilter 의 Steiner terminal selection 전 GT reranking step 자연스럽 삽입 | **채택** |
+
+#### 3.1 Step 1 Embedding 조달 (학술 Agent Q2 중요 주의사항)
+
+| Option | 학술 Agent 평가 | 5/22 일정 |
+|---|---|:---:|
+| **(권장) 현 anchor LLM column scorer 출력 재활용** | ✅ Step 1 추가 학습 불필요 | **채택** |
+| 원안 충실: Qwen3-Reranker-0.6B BIRD-Train fine-tune | ✅ 더 강한 initialization 단 2h 추가 | post-paper |
+
+→ **5/22 일정 기준 전자 (현 anchor LLM column scorer 출력 $h^0$ 재활용) 채택**. Step 1 학습 생략 = GPU 시간 ~1~3h (Step 2 only).
+
+### §4. Direction B HN-SupCon Spec (학술 Agent Q3)
+
+#### 4.1 Hard Negative Mining — Margin Mask (cosine similarity + threshold)
+
+공식:
+
+$$m_{ij} = 1[s(q_i, n_{ij}) > s(q_i, p_i) - 0.1]$$
+
+→ positive 대비 cosine similarity 0.1 이내 non-gold column 만 hard negative + 나머지 학습 제외. **Static mining** (pre-computed embeddings).
+
+#### 4.2 Loss Formulation — NT-Xent (InfoNCE with Masking)
+
+Multi-positive (각 gold column 별도 anchor):
+
+$$L = \log \frac{\exp(s(q_i, p_i)/\tau)}{\exp(s(q_i, p_i)/\tau) + \sum_j m_{ij} \cdot \exp(s(q_i, n_{ij})/\tau)}$$
+
+#### 4.3 Hyperparameters
+
+| 파라미터 | 원문 수치 |
+|---|---|
+| Temperature τ | **0.07** |
+| Negative count N_i | **8** (3~8 ablation, 8 최적) |
+| Margin | **0.1** ({0, 0.1, 0.2} ablation, 0.1 최적) |
+
+#### 4.4 Training
+
+- Backbone: **Qwen3-0.6B-Embedding**
+- **1 epoch**, AdamW, lr 5×10⁻⁵, batch 16 (BIRD)
+- **GPU 시간**: ~30분~1시간 (단일 GPU)
+
+#### 4.5 본 도메인 Transfer (학술 Agent 주의사항)
+
+| Option | 평가 | 5/22 일정 |
+|---|---|:---:|
+| (권장) 현 anchor embedding model 위에 동일 HN-SupCon 목적함수 적용 | ✅ 구현 속도 우세 | **채택** (primary) |
+| Qwen3-0.6B-Embedding 으로 backbone 교체 | ✅ 원문 재현 충실 | fallback |
+
+→ **5/22 일정 기준 현 anchor embedding model fine-tune 채택**. Fallback = Qwen3-0.6B (학술 Agent §5 fallback plan 정합).
+
+### §5. Direction A + C Net Negative 의 학술적 해석 (학술 Agent Q4 + Q4.4-revised)
+
+#### 5.1 Direction B 의 동일 한계 가능성 (Q4(a))
+
+- Direction B (HN-SupCon) 는 A/C 와 **근본적으로 다른 방향**: A/C 는 "restore" (R↑, P↓), B 는 "**discriminate**" (P↑, R stable)
+- B 가 성공하면 F1 개선 가능
+- **단 EX 는 Filter-Invariant → B 도 EX 개선 가능성 낮음** (anchor 이미 충분, 더 좋은 schema 도 EX 추가 개선 어려움)
+- **Null result 자체가 학술적 가치** — Filter-Invariant 경계 조건 추가 evidence
+
+#### 5.2 Direction C-GT 의 한계 mitigation 가능성 (Q4(b))
+
+- GT query-aware encoding 이 Steiner 의 query-무관 selection 한계 mitigation **유일 candidate**
+- 단 근본적 R-P 긴장 해소 사전 보증 X — P/R ratio 9.07× 개선 보증 안 됨
+- → 학술 Agent 의 expected outcome 의 학술 frame = "Filter-Invariant 경계 확정"
+
+#### 5.3 Q4.4-revised 평가 (학술 Agent 정량 응답 검증)
+
+| Sub-question | 학술 Agent 평가 |
+|---|---|
+| (4.4a) R-P trade-off dominant + Step 2 partial inconsistency sub-noise | ✅ **정합** — dominant mechanism 이 architecture-specific (Full Schema) 아닌 R-P trade-off 자체 = Filter Dominance mechanism 독립성 강화 |
+| (4.4b) §V.5.x.M.6 신규 sub-section "Mechanism-Agnostic R-P Limit" | ✅ **권고** — A (P/R 6.35×) + C (P/R 9.07×) 동등 F1 -0.28 + EX ±0.003 = decisive mechanism-agnostic evidence. 독립 sub-section 위치 타당 |
+| (4.4c) thrombosis_prediction outlier 처리 | ✅ **각주 처리 권장** — 단일 DB 이상치 별도 axis → main contribution 서술 분산. 각주: "thrombosis_prediction exhibits -3.99%p EX degradation under Direction C, possibly due to its high FK coverage (0.80) causing particularly aggressive Steiner insertion" |
+
+#### 5.4 Q4.5 — Direction A-v2 (PCST Subgraph Input)
+
+| Sub-question | 학술 Agent 평가 |
+|---|---|
+| (4.5a) launch 필요? | ❌ **불필요** — Direction C F1≈A F1 sub-noise로 Full Schema dominant factor 아님 이미 실증. A-v2 = ablation study 수준 |
+| (4.5b) 학술적 추가 가치 | 있음 단 현재 evidence 충분 |
+| (4.5c) 일정 | **Post-paper (학위 논문 §V appendix) 확정** — 5/22 이전 launch 불필요 |
+
+→ **Direction A-v2 = post-paper backlog 정식 확정**.
+
+### §6. Risk Mitigation + Smoke Test Protocol + Fallback Plan (학술 Agent Q5)
+
+#### 6.1 Risk 평가
+
+| Chain | Risk | 주요 위험 | 예상 학습 시간 |
+|---|:---:|---|---|
+| Direction B (HN-SupCon) | **Low** | EX invariance null EX result (학술 유의미 단 EX 개선 없음) | **~1h** (1 epoch, 0.6B) |
+| Direction C-GT Step 1 (skipped, 권장) | (skip) | embedding quality 불확실 | (생략) |
+| Direction C-GT Step 2 | **High** | 40 epoch — GAT 7-trial null 재현 가능성 + NaN/divergence | **~1~3h** (lightweight GT) |
+
+→ **Total GPU 시간 (5/15~5/20)**: B ~1h + C-GT Step 2 ~1~3h = **~2~4h** (학습 자체). Sweep + analysis 별도.
+
+#### 6.2 Smoke Test Protocol
+
+| Chain | Smoke Test | Pass 조건 | Fail 시 |
+|---|---|---|---|
+| Direction B | 10% data (700 queries), 0.1 epoch | loss curve + val SLR Δ ≥ +1.0%p | lr 조정 (5e-5 → 1e-4) |
+| Direction C-GT | 5 epochs (12.5%) | train margin loss < 0.3 + val PR-AUC Δ ≥ +0.01 | plateau 시 early stop + fallback |
+
+#### 6.3 Fallback Plan
+
+| Scenario | Fallback |
+|---|---|
+| Direction B smoke fail | backbone 교체 (Qwen3-0.6B → 현 anchor embedding fine-tune) 후 재시도 (0.6B 빠름, 재시도 비용 낮음) |
+| Direction C-GT Step 2 divergence | Step 2 없이 Step 1 (LLM-Reranker fine-tune) 단독 결과 보고 (Caveat 3 variant 학술 위치) |
+| 둘 중 하나만 성공 | ✅ **논문 narrative 완결** — B null + C-GT 결과 = Filter-Invariant 경계 두 축 |
+
+#### 6.4 5/15~5/22 일정 최적 순서 (학술 Agent 권고)
+
+```
+5/15: 학술 Agent Phase 5 response receive ✅ (5/14 완료)
+5/16: Module:Filter (Direction C-GT) + Module:Selector (Direction B) implementation 병렬
+       Smoke test 두 chain
+5/17: Direction B 학습 launch (~1h, Low risk, 빠른 결과) — GPU 0
+       Direction B sweep (~30분~1h)
+       Direction C-GT Step 2 학습 launch (~1~3h, High risk) — GPU 1 (병렬)
+       또는 GPU 1 only 시 → B → B sweep → C-GT 순차
+5/18: Direction C-GT sweep
+5/19~5/20: Analyzer 두 결과 보고서 병렬
+5/21~5/22: Root 학위 논문 chapter draft (Direction A + C original + C-GT + B 통합) + 학회 paper §3.5 draft
+5/22: 학위 본 심사 마감
+```
+
+→ **B 의 Low risk + 1h 빠른 완료 가 일정 buffer 확보**.
+
+### §7. paper §V Narrative 갱신 항목 (Step 2~4)
+
+#### 7.1 §V.5.x.M.5 narrative 갱신 (thrombosis 각주 처리)
+
+직전 §V.5.x.M.5 의 thrombosis_prediction outlier footnote → **별도 axis 대신 각주 narrative** (학술 Agent 4.4c 권고):
+> "thrombosis_prediction exhibits -3.99%p EX degradation under Direction C, possibly due to its high FK coverage (0.80) causing particularly aggressive Steiner insertion."
+
+#### 7.2 §V.5.x.M.6 narrative 학술 Agent ✅ confirm 명시
+
+직전 §V.5.x.M.6 (Mechanism-Agnostic Limit) narrative 의 도입 부분에 학술 Agent 의 ✅ confirm quote 추가 — 독립 sub-section 의 학술적 정당성 강화.
+
+#### 7.3 §V.5 narrative 학술 frame 재정의 (Direction B/C-GT 의 expected outcome)
+
+직전 paper §V Limitations 의 Direction B/C-GT 후속 chain narrative 의 학술 frame:
+
+> Direction B/C-GT 의 학술 frame = "**Filter-Invariant 경계 확정 실험**" (학술 Agent Phase 5 §0 + Q4(c) 권고)
+>
+> - **Direction B (HN-SupCon)**: EX 개선 시 - F1-EX coupling mechanism evidence. **Null result 시** - EX 는 precision 개선에도 invariant (Filter-Invariant 의 추가 boundary evidence).
+> - **Direction C-GT (Graph Transformer)**: F1 개선 시 - query-aware encoding 의 R-P trade-off mitigation evidence (Mechanism-Agnostic Limit 의 boundary). **Null result 시** - GT 도 Filter-Invariant 안 inherit (mechanism-agnostic limit 의 추가 evidence).
+>
+> → 두 chain 모두 학술적 가치 (positive / null 양쪽) — paper main contribution (Filter Dominance + Three-Caveat Spectrum + Mechanism-Agnostic Limit) 의 학술적 보강.
+
+#### 7.4 §V.5.x.M.6 narrative 의 학술 Agent quote 통합
+
+학술 Agent (4.4b) 의 정확한 quote:
+
+> "Direction A (LLM-based restore, P/R ratio 6.35×) 와 Direction C (algorithm-based Steiner, P/R ratio 9.07×)가 동등한 F1 붕괴(-0.28)와 EX 안정성(±0.003)을 보이는 것은 결정적인 mechanism-agnostic 증거입니다. 두 mechanism이 독립적으로 동일 결과에 수렴했다는 것이 핵심이며 이는 '**R-aggressive restore 자체의 fundamental P-cost**'로 귀결됩니다."
+
+### §8. Module 핸드오프 Prompts (Step 5)
+
+다음 turn 의 사용자 paste-ready form 으로 작성 — Module:Filter (C-GT) + Module:Selector (B) + Root (학습 launch 일정 plan).
+
+### §9. Chain Status 갱신 (5/14 저녁, 학술 Agent Phase 5 response receive 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-25 | 직전 chains (Option α' §3 minimum contribution 완료 + paper §V.5.x.M.5/.M.6 신규 + 학술 Agent Phase 5 cover note Q4.4 정량 보강) | ✅ 완료 |
+| **26** | **학술 Agent Phase 5 response receive** (`filter_proposal_by_scholar_agent_phase5_2026-05-14.md`) | ✅ **완료 (5/14)** |
+| **27** | **Planner: DECISIONS prepend + paper §V.5.x.M.5 thrombosis 각주 + §V.5.x.M.6 학술 Agent quote 통합 + §V.5 학술 frame 재정의 + 3 핸드오프 prompts 작성** | 🚀 **즉시 (본 entry + Step 2~5)** |
+| ⏸ 28 | Module:Filter Direction C-GT implementation (Option β, Step 2 add-on, Step 1 embedding 재활용) | ⏸ 5/16 |
+| ⏸ 29 | Module:Selector Direction B HN-SupCon implementation (현 anchor embedding fine-tune) | ⏸ 5/16 (병렬) |
+| ⏸ 30 | Root 두 학습 chain smoke test → launch (Direction B 먼저 Low risk) | ⏸ 5/17 |
+| ⏸ 31 | Root 두 sweep launch | ⏸ 5/18 |
+| ⏸ 32 | Analyzer 두 결과 보고서 | ⏸ 5/19~5/20 |
+| ⏸ 33 | Root 학위 논문 chapter draft + 학회 paper §3.5 draft (5/22 마감) | ⏸ 5/21~5/22 |
+| ⏸ 34 | (post-paper) Direction A-v2 PCST subgraph input variants | ⏸ post-paper backlog (학술 Agent 4.5c 확정) |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §10. 영향 범위
+
+- planning/DECISIONS.md (본 entry — 학술 Agent Phase 5 response 통합)
+- planning/paper_research_direction.md:
+  - §V.5.x.M.5 narrative thrombosis 각주 처리 갱신
+  - §V.5.x.M.6 narrative 학술 Agent quote 통합
+  - §V.5 narrative 의 Direction B/C-GT 학술 frame 재정의 ("Filter-Invariant 경계 확정 실험")
+- 후속 핸드오프 prompts (Module:Filter + Module:Selector + Root)
+
+### §11. 근거
+
+- 사용자 직접 input (학술 Agent Phase 5 response receive)
+- `planning/filter/filter_proposal_by_scholar_agent_phase5_2026-05-14.md` §0~§5 (학술 Agent 응답 본문)
+- 직전 entries: 2026-05-14 Option α' §3 + Three-Caveat Final Formulation + Direction A + C 배포 결과
+
+### §12. 사용자 후속 actions
+
+1. ✅ **학술 Agent Phase 5 response receive** (5/14)
+2. 🚀 **Planner: DECISIONS prepend + paper narrative 갱신 + Module 핸드오프 prompts 작성** (본 turn)
+3. 🚀 **사용자 → Module:Filter + Module:Selector + Root 핸드오프** (5/16 launch)
+4. ⏸ **학습 chain + sweep + analyzer + chapter draft** (5/17~5/22)
+
+---
+
+## 2026-05-14 (Option α' §3 Minimum Contribution 첫 단계 완료 — B1' 4-way EX 비교 정량 base 확보 + §V.5.x.M.5 final + §V.5.x.M.2 narrative 학술적 weight 재평가 + Mechanism-Agnostic Limit §V.5.x.M.6 신규 + Three-Caveat → Four-Boundary 확장)
+
+> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md` 작성 완료. 5 핵심 발견 + 6 planner 작업 trigger.
+
+### §1. Analyzer 5 핵심 발견 요약
+
+| # | 발견 | 정량 | 학술적 함의 |
+|---|---|---|---|
+| 1 | **B1' Full Schema EX vs Direction A EX direct 비교** | B1' 0.5587 ↔ A 0.5169 = **-0.0418** | 사용자 hypothesis (b) "≈" **부정** (sub-noise 0.005 초과) |
+| 2 | **Schema noise tolerance partial confirm** | within framework (6%~25%) ✅ sub-noise, **to Full Schema boundary 4%p gap** ⚠️ | paper §V.5.x.M.2 narrative 의 학술적 weight 재평가 — within framework valid, Full Schema generalization 미흡 |
+| 3 | **Direction A backward Step 2 schema input cost** | per query +31.6% vs B1' Full (76% of total schema-input cost) | 학술적 implementation 차원 boundary, defensive disclosure |
+| 4 | **Direction A vs Direction C sub-noise F1 차이** | ΔF1(C−A) = -0.0041 sub-noise | mechanism-agnostic limit (LLM-based / algorithmic 무관, R-aggressive restore 의 fundamental P-cost 가 dominant factor) |
+| 5 | **thrombosis_prediction outlier** | A EX 0.1166 vs B1' EX 0.5153 = **-0.3988%p** ⚠️ | schema linking DB-level applicability 한계 (catastrophic failure case) |
+
+### §2. paper §V.5.x.M.5 narrative final (정량 evidence 추가, Analyzer §6.1 + §6.2 인용)
+
+직전 §V.5.x.M.5 (Direction A Full Schema Input Boundary) 의 narrative 의 **정량 base 확보 + final form**:
+
+#### 2.1 정량 evidence 본문 (Analyzer §6.1)
+
+```
+§V.5.x.M.5 narrative final — Direction A 의 Full Schema Input Boundary 정량 evidence:
+
+  1. Schema Reduction Ratio (mean |final_n| / Full Schema 75.56 cols):
+     - B1' Full Schema (Maamari paradigm): 100%
+     - anchor c0 (XiYan): 4.64 cols = 6.14%
+     - Direction A (RSL Backward): 19.21 cols = 25.42%
+     - Direction C (GRAST-FD): 18.87 cols = 24.98%
+
+  2. Direction A backward Step 2 schema input cost:
+     - per query: Full Schema input 76.0% of total schema-input cost
+     - per query schema-input total ≈ 99.41 cols-equivalent (B1' Full + 31.6%)
+
+  3. 4-way EX matrix:
+     - B1' Full: 0.5587 (Maamari baseline)
+     - anchor c0: 0.5202 (-0.0385 vs B1')
+     - Direction A: 0.5169 (-0.0418 vs B1')
+     - Direction C: 0.5176 (-0.0411 vs B1')
+     - 3 schema-linking cells pairwise |ΔEX| ≤ 0.0033 sub-noise
+
+  학술적 함의:
+    - "schema noise tolerance" mechanism 이 schema linking framework (6%~25%
+      reduction) 내부에서 robust — Filter-Invariant 의 dominant mechanism 정합
+    - 단 Full Schema baseline 까지 generalization 미흡 — 4%p cost gap 존재
+    - Direction A 의 backward Step 2 Full Schema input 이 schema linking motivation (a)
+      LLM cost reduction 의 partial inconsistency — Cao 2024 paradigm 의 본 도메인
+      transfer 시 implementation boundary
+    - Direction C (algorithm-only) 의 동일 결과 정합 → schema linking motivation (a)
+      정합 여부 와 무관 mechanism-agnostic F1/EX 결과 — fundamental factor evidence
+```
+
+#### 2.2 thrombosis_prediction outlier footnote (Analyzer §6.2)
+
+```
+§V.5.x.M.5 footnote — Schema Linking DB-level Applicability 한계:
+
+  Per-DB EX matrix 의 결정적 outlier — thrombosis_prediction:
+    B1' Full EX 0.5153 ↔ Direction A EX 0.1166 = -0.3988%p ⚠️ catastrophic failure
+
+  본 outlier 의 학술적 의의:
+    - schema linking pipeline 의 catastrophic failure case (단일 DB)
+    - paper §3.5 Filter Dominance 결론의 DB-level boundary 정량
+    - schema linking 의 학술적 contribution 의 DB-level generalization 한계 evidence
+
+  대조 — schema linking 효과 DB (Direction A 가 B1' 보다 lift):
+    - financial: +0.0566 ⭐
+    - toxicology: +0.0483
+
+  → schema linking 의 DB-level effect 가 양극화 (catastrophic failure vs positive
+    lift), unified evaluation 보다 DB-level stratified evaluation 의 학술적 정확성
+    우위.
+```
+
+### §3. paper §V.5.x.M.2 narrative 학술적 Weight 재평가 (Analyzer §3.4 인용)
+
+직전 §V.5.x.M.2 narrative ("GLM 4.7 의 schema noise tolerance") 의 boundary 명시 + final form:
+
+```
+§V.5.x.M.2 narrative refinement — "schema noise tolerance" mechanism 의 boundary 명시:
+
+  Within schema linking framework (anchor c0 ↔ Direction A ↔ Direction C):
+    schema reduction ratio 6.14% → 25.42% 변동에도 EX 변화 sub-noise (|ΔEX| ≤ 0.0033).
+    mechanism (LLM-based / algorithmic) 무관 — Filter-Invariant 의 dominant mechanism
+    confirm.
+
+  Boundary to Full Schema baseline (Maamari paradigm):
+    Schema linking cell 모두 B1' Full Schema baseline EX (0.5587) 보다 -0.04%p lower.
+    "schema noise tolerance" 가 schema linking framework 내부 robustness, Full Schema
+    baseline 으로의 absorption 아님.
+
+  Schema reduction marginal cost asymmetry:
+    - 6% (c0) → 25% (A/C): EX 변동 sub-noise (-0.003)
+    - 25% (A/C) → 100% (B1'): EX +0.04
+    → schema linking 의 first 6% reduction 이 EX cost dominant, 그 후 25% 까지 EX
+      거의 invariant. partial reduction (25%) 의 EX cost 가 Full Schema 의 +0.04
+      marginal.
+
+  학술적 함의:
+    GLM 4.7 의 schema noise tolerance 가 schema linking framework 의 robustness
+    mechanism이지만, Maamari 2024 paradigm (Full Schema baseline) 과의 generalization
+    측면에서는 4%p cost gap 존재. 본 cost gap 이 schema linking 의 학술적
+    contribution 의 boundary 정량.
+```
+
+### §4. paper §V.5.x.M.6 신규 — Mechanism-Agnostic Limit (Analyzer §5.3 인용)
+
+**직전 §V.5.x.M.4 (Three-Caveat Mechanism Spectrum + Filter-Invariant Boundary) 의 보완 narrative**:
+
+| §V.5.x.M.x | 측면 | Mechanism-agnostic 의 의미 |
+|---|---|---|
+| §V.5.x.M.4 (직전) | **EX-axis robustness** | LLM-based (A) ↔ algorithmic Steiner (C) 양쪽 EX in-band 유지 — GLM 4.7 schema noise tolerance |
+| **§V.5.x.M.6 (신규)** | **F1-axis R-P trade-off fundamental limit** | LLM-based (A) ↔ algorithmic Steiner (C) 양쪽 F1 net negative 동일 magnitude — R-aggressive restore 의 fundamental P-cost |
+
+```
+§V.5.x.M.6 — Mechanism-Agnostic Limit (R-aggressive Restore 의 Fundamental P-cost)
+
+직전 §V.5.x.M.4 (Three-Caveat Mechanism Spectrum + Filter-Invariant Boundary) 의 보완
+narrative — F1-axis 의 mechanism-agnostic limit:
+
+  Direction A vs Direction C 의 F1/EX sub-noise 차이 (ΔF1 -0.0041, ΔEX +0.0007) 는:
+    - 두 mechanism (LLM-based restore vs algorithmic Steiner restore) 가 schema linking
+      framework 의 R-aggressive restore 의 fundamental P-cost 를 inherit
+    - mean |final_n| 4× 폭증 (anchor 4.64 → A 19.21 / C 18.87) 의 결과 P drop -0.4345
+      ≈ -0.4346 동일 magnitude
+    - schema-input cost 4× 차이 (A 99.41 cols-equivalent vs C 24.41) 가 F1 측 영향
+      sub-noise → Step 2 Full Schema input partial inconsistency 가 F1 측 dominant
+      factor 아님
+
+  R-aggressive restore 의 fundamental P-cost (mechanism-agnostic):
+    - mechanism choice (LLM / algorithmic) 외 factor 가 dominant:
+      (a) schema reduction ratio 의 asymmetric marginal cost
+      (b) 25% reduction band 의 query-irrelevant column 추가 의 P-side dominant noise
+      (c) Phase 2 의 bimodal distribution (52% perfect + 38% zero recovery) 의 production
+          P-cost
+    - 본 limit 이 paper §V.5.x.M.5 의 "Direction A backward Step 2 partial inconsistency
+      가 F1 측 dominant factor 아님" 결론 의 학술적 base
+
+  Mechanism-Agnostic Limit 의 evidence chain:
+    - §V.5.x.M.4 (EX-axis): LLM ↔ algorithmic 양쪽 EX in-band → schema noise tolerance
+      mechanism-agnostic
+    - §V.5.x.M.6 (F1-axis): LLM ↔ algorithmic 양쪽 F1 net negative 동일 magnitude →
+      R-P trade-off fundamental limit mechanism-agnostic
+    - → Filter Dominance 의 EX-axis robustness + F1-axis fundamental limit 양쪽 mechanism-
+      agnostic = **schema linking framework 의 본질적 dual nature** 의 정량 evidence
+
+  Post-paper extension candidate:
+    Direction A 의 Step 2 input 을 PCST subgraph (~83 cols) 또는 1-hop FK neighbor (~15
+    cols) 로 변경 — backward path 자체 효과 vs Full Schema input 의 inheritance 의 분리
+    evidence. 기대 결과:
+      - Variant 1 (PCST subgraph): F1 similar (Direction C 와 정합, mechanism-agnostic limit)
+      - Variant 3 (1-hop FK neighbors): F1 possibly higher (focused restore)
+```
+
+### §5. Three-Caveat → Four-Boundary 확장 (paper §3.5 axis #7 + §V.5.x.M.5 통합)
+
+직전 paper §3.5 axis #7 의 Three-Caveat Mechanism Spectrum + 본 §V.5.x.M.5 의 Direction A Full Schema Input Boundary 가 **4번째 boundary** 로 확장 가능:
+
+| Boundary | Method | Mechanism axis | F1/EX 정량 | Source |
+|---|---|---|---|---|
+| Caveat 1 | C3 AdaptiveMultiAgent | Filter 구조 (architectural pathology) | F1 -0.0622 outlier / EX -0.0019 in band | filter_sweep_glm_9cell.md §5.3 |
+| Caveat 2 | Direction A (RSL Backward) | Restore mechanism (LLM-based) | F1 -0.2832 outlier / EX -0.0033 in band | §5.3bis |
+| Caveat 3 | Direction C (GRAST-FD) | Restore mechanism (algorithmic Steiner) | F1 -0.2873 outlier / EX -0.0026 in band | §5.3ter |
+| **🆕 Boundary 4** | **Direction A backward Step 2 Full Schema input** | **Schema linking framework boundary** (Maamari paradigm 과의 4%p EX gap) | EX 0.5169 vs B1' Full 0.5587 = **-0.0418** (4-way matrix) | **§V.5.x.M.5 (5/14 신규)** |
+
+→ 학회 paper §3.5 footnote final form 갱신 candidate — 직전 Three-Caveat 의 paper §3.5 footnote 의 4번째 항목 추가 (단 학회 paper 의 main contribution focus 측면 reframe risk 검토 필요).
+
+### §6. 학술 Agent Phase 5 cover note Q4.4 정량 응답 (Analyzer §4.3 인용)
+
+학술 Agent Phase 5 cover note 의 Q4.4 sub-question:
+> "Direction A 의 net negative mechanism 중 backward Step 2 의 Full Schema input partial inconsistency 가 contributing factor 인지"
+
+본 Analyzer §4.3 의 정량 응답:
+
+```
+Q4.4 정량 응답 — Direction A backward Step 2 Full Schema Input partial inconsistency
+의 contributing factor 평가:
+
+  결론: dominant factor 아님 (Direction C algorithm-only 와 동등 F1 결과 정합)
+
+  근거:
+    - Direction A (Step 2 Full Schema input, +31.6% schema-input cost vs B1') F1 = 0.5835
+    - Direction C (Step 2 algorithm-only, motivation 정합) F1 = 0.5794 (Δ -0.0041 sub-noise)
+    - → 두 mechanism 의 schema-input cost 4× 차이가 F1 측 영향 sub-noise
+
+  Direction A net negative 의 dominant factor:
+    1. R-P trade-off (R-aggressive restore) — 4× schema 폭증 → P drop dominant (-0.4345)
+    2. Backward Step 2 Full Schema input — partial inconsistency 단 F1 측 영향 sub-noise
+
+  → paper §V.5.x.M.5 narrative refinement:
+    - partial inconsistency 는 F1 측 measurable 영향 없음 (Direction C 정합)
+    - Direction A 의 boundary 는 학술적 implementation 차원 (Cao 2024 paradigm 의 transfer
+      시 Step 2 schema input choice 의 motivation 정합 측면)
+    - Full Schema input 의 학술적 implication = paper reviewer 가 지적 가능한 implementation
+      boundary, defensive disclosure (학술적 honesty)
+
+  학술 Agent Phase 5 의 Q4.4 응답 의 학술적 정합:
+    - 사용자 motivation (Direction A 의 Full Schema input boundary) 의 학술적 가치 =
+      implementation 차원 boundary 명시 + defensive disclosure (학습 chain 결과 무관
+      minimum contribution)
+    - 단 F1 net negative 의 dominant factor 는 R-P trade-off 의 fundamental limit
+      (Direction C 와 mechanism-agnostic 동일) — 학습 chain 의 학술적 expected outcome
+      도 본 limit inherit 가능성 substantial (시나리오 (b))
+```
+
+### §7. (선택) Post-Paper Extension Candidate (Analyzer §4.4 + §8 인용)
+
+본 분석 의 post-paper extension candidate 6 :
+
+| Candidate | 작업 | Expected outcome | Priority |
+|---|---|---|---|
+| Direction A Step 2 input Variant 1 (PCST subgraph) | ~수 시간 (config 변경 + sweep) | F1 similar (mechanism-agnostic limit confirm) | medium (defensive disclosure 강화) |
+| Direction A Step 2 input Variant 3 (1-hop FK neighbor) | ~수 시간 | F1 possibly higher (focused restore) | high (학술적 가치) |
+| Direction A Step 2 input Variant 2 (S_fwd col-only) | ~수 시간 | F1 lower (recall floor) | low (negative evidence) |
+| thrombosis_prediction case study | ~수 시간 (Analyzer) | DB-level failure mechanism (query-level evidence) | medium |
+| B1' Full per-DB error mode | ~수 시간 (Analyzer) | failure case overlap (Full Schema vs schema linking) | low |
+| 다른 DB inferred FK extension (학술 Agent) | ~수 일 (학술 Agent + Analyzer + Root) | DB-level applicability 확장 | low (현 11 DBs 의 declared FK dominant) |
+
+→ **post-paper backlog 으로 정식 보존**. 학위 본 심사 후 학술 Agent re-evaluation 시점 재검토.
+
+### §8. paper_research_direction.md 갱신 항목 (Step 2~4)
+
+#### 8.1 §V.5.x.M outline 표 갱신
+
+직전 §V.5.x.M.5 row 후에 **§V.5.x.M.6 row 신규 추가** (Mechanism-Agnostic Limit).
+
+#### 8.2 §V.5.x.M.5 narrative 본문 갱신
+
+직전 §V.5.x.M.5 narrative (pending Analyzer 4-way 비교) → **final form** (정량 evidence 추가 + thrombosis_prediction outlier footnote + Q4.4 정량 응답 integration).
+
+#### 8.3 §V.5.x.M.2 narrative 학술적 weight 재평가
+
+직전 §V.5.x.M.2 narrative ("GLM 4.7 의 schema noise tolerance") → **boundary 명시 final form** (within framework valid, Full Schema generalization partial).
+
+#### 8.4 §V.5.x.M.6 narrative 본문 신규
+
+직전 §V.5.x.M.5 narrative 후에 **§V.5.x.M.6 (Mechanism-Agnostic Limit) narrative 신규 추가**.
+
+#### 8.5 §3.5 axis #7 narrative 의 Four-Boundary 확장 검토
+
+직전 Three-Caveat Mechanism Spectrum → **Four-Boundary 확장 검토** (단 학회 paper main contribution focus 의 reframe risk 검토 필요).
+
+### §9. Chain Status 갱신 (5/14 저녁, Option α' §3 minimum contribution 첫 단계 완료 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-23 | 직전 chains (Option α' 채택 + Phase 5 cover note 작성 + paper §V.5.x.M.5 신규) | ✅ 완료 |
+| **24** | **Analyzer: B1' Full Schema baseline 4-way EX 비교 + schema reduction ratio 정량** | ✅ **완료 (5/14, `direction_a_full_schema_baseline_comparison.md`)** |
+| **25** | **Planner: §V.5.x.M.5 final + §V.5.x.M.2 reframe + §V.5.x.M.6 신규 + Q4.4 정량 보강** | 🚀 **즉시 (본 entry + Step 2~6)** |
+| ⏸ 26 | 사용자 → 학술 Agent Phase 5 cover note 전달 (Q1/Q4/Q4.4 정량 보강 완료) | ⏸ 5/15 |
+| ⏸ 27 | 사용자 → 학술 Agent receive (architecture spec + Q4.4 응답) | ⏸ 5/15~5/16 |
+| ⏸ 28 | Module:Selector + Module:Filter implementation | ⏸ 5/16~5/17 |
+| ⏸ 29 | Root 두 학습 chain launch | ⏸ 5/17~5/19 |
+| ⏸ 30 | Root 두 sweep launch | ⏸ 5/19~5/20 |
+| ⏸ 31 | Analyzer 두 결과 보고서 | ⏸ 5/20~5/21 |
+| ⏸ 32 | Root 학위 논문 chapter draft (Direction A + C original + C-Transformer + B 통합) | ⏸ 5/21~5/22 |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §10. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Option α' §3 minimum contribution 첫 단계 완료)
+- planning/paper_research_direction.md:
+  - §V.5.x.M outline 표에 §V.5.x.M.6 row 신규
+  - §V.5.x.M.5 narrative 본문 final (정량 evidence + thrombosis outlier)
+  - §V.5.x.M.2 narrative refinement (within framework valid, Full Schema boundary 명시)
+  - §V.5.x.M.6 narrative 본문 신규 (Mechanism-Agnostic Limit)
+- planning/filter/filter_proposal_phase5_cover_note_for_scholar_agent_2026-05-14.md (Q4.4 정량 응답 통합)
+- 후속:
+  - 사용자 → 학술 Agent Phase 5 cover note 전달 (5/15)
+  - 학습 chain launch (5/16~5/22)
+
+### §11. 근거
+
+- 사용자 직접 input (Analyzer 보고서 receive + 6 작업 spec)
+- notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md §0~§8
+- 직전 entries: 2026-05-14 Option α' 채택 + Direction C 배포 결과 + Three-Caveat Final Formulation
+
+### §12. 사용자 후속 actions
+
+1. ✅ **Analyzer B1' 4-way EX 비교 receive** (5/14)
+2. 🚀 **Planner: DECISIONS prepend + paper §V.5.x.M.5/.M.2/.M.6 갱신 + Phase 5 cover note Q4.4 정량 보강** (본 turn)
+3. 🚀 **사용자 → 학술 Agent Phase 5 cover note 전달** (5/15, Q1+Q4+Q4.4+Q4.5 보강 완료 form)
+4. ⏸ **사용자 → 학술 Agent receive** (5/15~5/16)
+5. ⏸ **사용자 → Module:Selector + Module:Filter + Root 핸드오프** (5/16~)
+
+---
+
+## 2026-05-14 (Option (α') 채택 — Direction A Full Schema Input Boundary 명시 + Analyzer B1' Baseline 비교 Trigger + Direction B/C-Transformer 학습 Chain 진행 — 본 심사 전 Minimum Guaranteed Contribution 확보)
+
+> **사용자 직전 input (5/14)**: Planner 의 비판적 검토 + 권장 option (α') 채택. 직전 결정 (Direction B + C-Transformer 학습 launch) + 추가 3 작업 (paper §V Limitations 갱신 + 학술 Agent Phase 5 cover note 보강 + Analyzer B1' Full Schema baseline 비교).
+
+### §1. 사용자 motivation 의 학술적 강점 (Planner 비판적 검토 결과)
+
+| 항목 | 평가 |
+|---|---|
+| Direction A 의 backward Step 2 Full Schema input inconsistency | ✅ **80% 정확** (Step 2 의 Full Schema input 은 fact, paper §V Limitations boundary) |
+| "schema linking 자체 의미 없음" 강도 | ⚠️ **overstatement** — 최종 SQL gen 은 partial reduction (mean \|final_n\| 19.21 / Full Schema ~50~200 = 10~40%) |
+| Direction B + C-Transformer launch 의 학술적 motivation | ✅ **schema linking 의 정식 mitigation** (Selector + Schema encoder 의 학습-기반 보강, LLM input 변경 없음) |
+| 자동 positive 결과 보장 | ❌ **시나리오 (b) "두 chain 모두 net negative" 가장 가능성 높음** (선행 패턴 정합: Direction A+C net negative + GAT 7-trial null + V4 null) |
+
+### §2. Option (α') 의 3 추가 작업 (본 심사 전 Minimum Guaranteed Contribution 확보)
+
+#### 2.1 작업 1 — paper §V Limitations 갱신 (Direction A Full Schema Input Boundary 명시)
+
+**즉시 trigger (Planner 책임)**:
+- paper_research_direction.md 의 §V Limitations 신규 sub-section "**§V.5.x.M.5 — Direction A 의 Full Schema Input Boundary (학술적 Implementation 차원 Inconsistency)**" 추가
+- Direction A 의 Step 2 backward LLM 호출 의 Full Schema input 의 schema linking motivation partial inconsistency 의 정량 명시 (Cao 2024 RSL-SQL 원안 vs 본 도메인 implementation)
+- 학회 paper §V Limitations footnote (학술 reviewer 가 지적 가능한 항목 의 defensive disclosure)
+
+#### 2.2 작업 2 — 학술 Agent Phase 5 Cover Note Q1/Q4 보강
+
+**즉시 trigger (Planner 책임)**:
+- 직전 작성한 `planning/filter/filter_proposal_phase5_cover_note_for_scholar_agent_2026-05-14.md` 의 **Q1 (Direction C Graph Transformer architecture spec)** 의 sub-question 추가 — "Hoang 2025 GRAST-SQL 의 본 도메인 transfer 시 schema linking motivation 정합 (LLM input cost reduction) 의 학술 Agent 평가 + Direction A 의 Full Schema input 의 boundary 대비 Direction C Graph Transformer 의 학술적 정당성"
+- **Q4 (Direction A + C net negative 해석)** 의 sub-question 추가 — "Direction A 의 net negative 의 mechanism 중 backward Step 2 의 Full Schema input partial inconsistency 가 contributing factor 인지 + B1' Full Schema baseline 과의 직접 비교 의 학술 Agent 권고"
+
+#### 2.3 작업 3 — Analyzer B1' Full Schema Baseline 비교 Trigger
+
+**즉시 trigger (Planner → Analyzer 핸드오프)**:
+- 작업 spec: Direction A EX 0.5169 + Direction C EX 0.5176 + anchor c0 EX 0.5202 + **B1' Full Schema baseline EX 0.5587 의 4-way 직접 비교** + schema reduction ratio 의 정량 정합 + paper §V.5.x.M.2 의 "schema noise tolerance" narrative 의 학술적 weight 재평가
+- 산출물 후보: `notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md`
+- ETA: ~수 시간 (기존 data 의 추가 정량 만, LLM 호출 없음)
+
+#### 2.4 학습 Chain 진행 (직전 결정 그대로)
+
+직전 5/14 entry (사용자 결정 Direction B + C-Transformer launch) 의 chain plan 변경 없음:
+- 5/15: 학술 Agent Phase 5 receive
+- 5/16~5/17: Module:Selector + Module:Filter implementation
+- 5/17~5/19: Root 두 학습 chain launch (병렬)
+- 5/19~5/20: Root 두 sweep launch
+- 5/20~5/21: Analyzer 두 결과 보고서
+- 5/21~5/22: Root 학위 논문 chapter draft
+
+### §3. Minimum Guaranteed Contribution (학습 결과 무관, 본 심사 전 보장)
+
+| Contribution | 산출물 | Trigger |
+|---|---|---|
+| **paper §V Limitations 갱신** (Direction A Full Schema input boundary) | paper_research_direction.md §V.5.x.M.5 | 즉시 (본 entry) |
+| **paper §V.5.x.M.2 narrative 의 학술적 weight 재평가** | Analyzer 보고서 의 4-way EX 비교 base | Analyzer 핸드오프 후 |
+| **학술 Agent Phase 5 의 Q1/Q4 응답** (학술적 정당성 평가) | 학술 Agent receive 후 paper §V.5.x.M.x narrative final | 5/15 |
+
+→ **본 3 산출물 이 학습 chain 결과 무관 보장**. 학습 chain 의 추가 evidence 는 upside (positive lift) or null effect evidence (fundamental limitation evidence).
+
+### §4. paper_research_direction.md 갱신 항목 (즉시 Trigger)
+
+#### 4.1 §V Limitations 신규 sub-section 추가
+
+§V.5.x.M outline 표 + narrative 본문 에 **§V.5.x.M.5 "Direction A 의 Full Schema Input Boundary"** 추가:
+
+```
+§V.5.x.M.5 — Direction A 의 Full Schema Input Boundary (학술적 Implementation 차원 Inconsistency)
+
+Cao 2024 RSL-SQL 의 본 도메인 (BIRD) transfer 시 implementation 차원 inconsistency:
+
+  Direction A 의 pipeline (per query):
+    Step 1: XiYan forward (PCST subgraph 입력, 가지치기)
+    Step 2: Preliminary SQL on FULL DB SCHEMA (LLM 입력 - schema linking 우회)
+    Step 3: S_restore = L_bwd - S_fwd
+    Step 4: S_struct FK/PK
+    Output: S_fwd ∪ S_restore ∪ S_struct → 최종 SQL Generator
+
+  Schema reduction ratio 정량:
+    - anchor (XiYan only): mean |final_n| 4.75 col → Full Schema 의 2.5~5%
+    - Direction A: backward Step 2 가 Full Schema input + 최종 SQL gen 은 mean |final_n|
+      19.21 col 입력 → Full Schema 의 10~40% (partial reduction)
+    - Direction C: Step 2 가 algorithm-only (LLM 미사용) — schema linking motivation
+      정합. 단 최종 SQL gen input mean |final_n| 18.87 col 동일 partial reduction.
+
+  Schema Linking Motivation 의 partial inconsistency:
+    Schema linking 의 학술적 motivation = (a) LLM input cost reduction + (b) LLM
+    reasoning 단순화. Direction A 의 backward Step 2 의 Full Schema input 이 (a)
+    motivation 일부 위배 — 한 query 당 LLM input cost 가 anchor 의 PCST subgraph
+    input 보다 큼 (Full Schema input cost ≈ Maamari 2024 B1' Full Schema baseline 과
+    유사 magnitude).
+
+  본 boundary 의 학술적 함의:
+    - Direction A 의 net negative (-0.2832) 가 R-P trade-off (6.35× ratio) 외에 본
+      partial inconsistency 의 contributing factor 가능성
+    - paper §V.5.x.M.2 의 "GLM 4.7 의 schema noise tolerance" narrative 가 사실상
+      Direction A 의 EX 가 B1' Full Schema baseline 의 EX 와 sub-noise 차이 의 결과
+      가능성 — Analyzer 의 추가 분석 필요 (B1' EX 0.5587 vs Direction A EX 0.5169 의
+      직접 비교 + schema reduction ratio 의 정량 정합)
+    - Direction C (algorithm-only Steiner) 의 동일 결과 (F1 sub-noise vs A) 가
+      "schema linking motivation 정합 + 동일 결과" → mechanism-agnostic 의 추가
+      evidence
+
+  Post-paper extension candidate:
+    Direction A 의 Step 2 의 schema input 을 PCST subgraph 또는 S_fwd 의 col-only
+    schema 로 변경 (preliminary SQL 의 input cost reduction) → schema linking motivation
+    정합 의 Direction A variant 의 정량 측정
+```
+
+#### 4.2 §V.5.x.M.2 narrative 의 학술적 weight 재평가 명시
+
+직전 §V.5.x.M.2 의 "GLM 4.7 의 schema noise tolerance" mechanism narrative 의 학술적 weight 재평가 trigger:
+- Analyzer 의 B1' Full Schema baseline EX 비교 후 narrative 정정 candidate
+- "schema noise tolerance" 가 Filter Dominance 의 dominant mechanism 인지, 또는 Direction A 의 EX 가 사실상 Full Schema baseline 의 결과 인지 의 학술적 boundary
+
+### §5. Analyzer 핸드오프 Prompt (본 심사 전 Minimum Contribution 확보)
+
+```
+먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (2026-05-14 Option α'
+채택) + planning/paper_research_direction.md §V.5.x.M.5 (Direction A Full Schema Input
+Boundary) 정독.
+
+작업: Direction A + Direction C 의 EX 결과의 학술적 weight 재평가 — Maamari 2024 B1'
+Full Schema baseline 과의 직접 비교 + schema reduction ratio 정량 정합.
+
+목표:
+(1) 4-way EX 비교 매트릭스 (BIRD-Dev n=1534):
+    - anchor c0 (MSTKruskal+XiYan+SQL): EX = 0.5202 (직전 baseline)
+    - Direction A (a05_23 RSL Backward): EX = 0.5169 (ΔEX vs c0 = -0.0033)
+    - Direction C (a05_25 GRAST-FD): EX = 0.5176 (ΔEX vs c0 = -0.0026)
+    - **🆕 B1' Full Schema baseline**: EX 가 어느 정도인지 직접 측정 — 직전 보고서
+      (filter_sweep_glm_9cell.md v2 §5.4 area 또는 B 시리즈 baseline) 의 EX 0.5587 의
+      정확한 cell 식별 + 본 sweep 들 과 동일 anchor framework 정합 시 EX 정확 수치
+
+(2) Schema reduction ratio 정량 매트릭스:
+    - Full Schema baseline: 각 DB 의 column 수 (BIRD-Dev 11 DBs 의 total ~수백 col)
+    - anchor (XiYan only): mean |final_n| 4.75 col
+    - Direction A: mean |final_n| 19.21 col + backward Step 2 의 Full Schema input
+    - Direction C: mean |final_n| 18.87 col
+    - 각 cell 의 schema reduction ratio (final_n / Full Schema) + Direction A 의
+      backward Step 2 의 schema input cost 의 정량 정합
+
+(3) paper §V.5.x.M.2 narrative 의 학술적 weight 재평가:
+    - "GLM 4.7 의 schema noise tolerance" mechanism narrative 가:
+      (a) Filter Dominance 의 dominant mechanism — Direction A EX 가 B1' Full Schema EX
+          보다 현저 lower 시 (예: -0.04+ negative) → narrative 정합 confirm
+      (b) Direction A 의 backward Step 2 가 Full Schema input 이라 EX 가 B1' Full
+          Schema baseline 의 결과 — Direction A EX ≈ B1' EX 시 → narrative 약화
+          ("schema noise tolerance" 가 사실상 "Full Schema baseline 의 정합 결과")
+
+(4) Direction A 의 net negative (-0.2832 F1) 의 mechanism 정량 분석:
+    - R-P trade-off 6.35× (직전 분석) 외에 backward Step 2 Full Schema input partial
+      inconsistency 의 contributing factor 정량 — 가능 시 분리 측정 (예: backward 만
+      비활성 시 F1 변화 vs Full Backward 적용 시 F1 변화 의 정합)
+
+(5) Direction C (algorithm-only Steiner) 의 동일 결과 (F1 sub-noise vs A) 의 학술적
+    함의 정량 정합:
+    - "schema linking motivation 정합 + 동일 결과" = mechanism-agnostic 의 추가 evidence
+    - 또는 두 chain 모두 R-P trade-off 의 fundamental limit (mechanism 외 factor) evidence
+
+산출물:
+  (a) notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md
+      §1 4-way EX 비교 매트릭스
+      §2 schema reduction ratio 정량 매트릭스
+      §3 paper §V.5.x.M.2 narrative 의 학술적 weight 재평가 결과
+      §4 Direction A net negative mechanism 정량 분석
+      §5 Direction C vs Direction A mechanism-agnostic 의 추가 evidence
+      §6 paper §V.5.x.M.5 (Direction A Full Schema Input Boundary) narrative 의 정량 base
+
+  (b) (선택) src/analysis/direction_a_schema_baseline_compare.py
+      - 재사용 가능한 script (B1' EX 비교 + schema reduction ratio)
+
+데이터 source:
+  - outputs/experiments/abl/a05_filter_agentic/a05_23_rsl_backward_baseline/ (Direction A)
+  - outputs/experiments/abl/a05_filter_agentic/a05_25_grast_with_inferred_fk_glm/ (Direction C)
+  - outputs/experiments/s04_ablation/pipeline/filter_sweep/c0_xiyan_glm_sql/ (anchor c0)
+  - B1' Full Schema baseline 위치 — filter_sweep_glm_9cell.md v2 §5.4 area 또는
+    s04_stagewise_qcond_gat_basic_glm 등 GLM era baseline 의 (cell 정확 식별 Analyzer
+    책임)
+
+의도:
+  - paper §V Limitations §V.5.x.M.5 narrative 의 정량 base (본 심사 전 minimum
+    contribution)
+  - paper §V.5.x.M.2 narrative 의 학술적 weight 재평가
+  - 사용자 motivation (Direction A 의 Full Schema input 의 학술적 boundary) 의 정량
+    confirm
+
+ETA: ~수 시간 (기존 data 의 추가 정량 만, LLM 호출 없음)
+
+근거:
+  - planning/DECISIONS.md 2026-05-14 (Option α' 채택) §2.3 + §3
+  - planning/paper_research_direction.md §V.5.x.M.5 (Direction A Full Schema Input
+    Boundary, 본 entry 의 §4.1)
+  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md (Direction A 의 EX 0.5169)
+  - notebooks/analysis_results/direction_c_grast_fd_sweep.md (Direction C 의 EX 0.5176)
+  - notebooks/analysis_results/filter_sweep_glm_9cell.md (anchor c0 EX 0.5202 + B1'
+    baseline 위치 식별)
+```
+
+### §6. Chain Status 갱신 (5/14 저녁, Option α' 채택 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-22 | 직전 chains (Direction B/C-Transformer launch 결정 + Phase 5 cover note 작성) | ✅ 완료 |
+| **23** | **Planner: DECISIONS prepend + paper §V.5.x.M.5 신규 + 학술 Agent Phase 5 cover note 보강** | 🚀 **즉시 (본 entry)** |
+| **24** | **Analyzer: B1' Full Schema baseline 4-way EX 비교 + schema reduction ratio 정량** | 🚀 **즉시 trigger (본 entry §5 prompt)** |
+| 25 | 사용자 → 학술 Agent Phase 5 cover note 전달 (Q1/Q4 보강) | 🚀 5/14 저녁 ~ 5/15 |
+| ⏸ 26 | 사용자 → 학술 Agent receive | ⏸ 5/15 |
+| ⏸ 27 | Module:Selector + Module:Filter implementation | ⏸ 5/16~5/17 |
+| ⏸ 28 | Root 두 학습 chain launch + sweep + analyzer 보고서 + chapter draft | ⏸ 5/17~5/22 |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §7. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Option α' 채택)
+- planning/paper_research_direction.md (§V.5.x.M.5 신규 sub-section + outline 표 갱신)
+- planning/filter/filter_proposal_phase5_cover_note_for_scholar_agent_2026-05-14.md (Q1/Q4 보강)
+- 후속:
+  - Analyzer 4-way EX 비교 보고서 (본 entry §5 핸드오프)
+  - 사용자 → 학술 Agent Phase 5 cover note 전달
+
+### §8. 근거
+
+- 사용자 직접 input ("권장 옵션으로 진행하자")
+- Planner 비판적 검토 결과 (사용자 주장 80% 정확 + 학습 결과 무관 minimum contribution 보장)
+- 직전 entries: 2026-05-14 사용자 결정 (Direction B + C-Transformer launch) + Three-Caveat Final Formulation
+
+### §9. 사용자 후속 actions
+
+1. ✅ **사용자 결정** (Option α' 채택)
+2. 🚀 **Planner: DECISIONS prepend + paper §V.5.x.M.5 신규 + 학술 Agent Phase 5 cover note 보강** (본 turn)
+3. 🚀 **사용자 → Analyzer 세션 핸드오프** (본 entry §5 prompt 그대로)
+4. 🚀 **사용자 → 학술 Agent Phase 5 cover note 전달** (Q1/Q4 보강 후)
+5. ⏸ **사용자 → Module:Selector / Module:Filter / Root 핸드오프** (학술 Agent receive 후)
+
+---
+
+## 2026-05-14 (사용자 결정 — Direction C Graph Transformer + Direction B HN-SupCon 두 학습 본 심사 전 Launch + 학술 Agent Phase 5 Cover Note Trigger)
+
+> **사용자 직전 input (5/14)**: "본심사 전에 Direction C 와 Direction B 의 학습도 다 끝내서 어쨌든 성능을 확인하고 싶어." 직전 권장 (α) 현 상태 유지 → **(β) + Direction B 동시 launch** 결정. **Graph Transformer + HN-SupCon 두 학습 모두 5/22 학위 본 심사 마감 전 완료**.
+
+### §1. 직전 결정 reverse 사항
+
+| 직전 결정 | 사용자 갱신 결정 |
+|---|---|
+| **Direction C Graph Transformer 미학습 = post-paper backlog** (직전 4 layer 이유: anchor framework + 학술 Agent scope + 일정 + paper focus) | **Direction C Graph Transformer 본 심사 전 학습 launch** ✅ |
+| **Direction B HN-SupCon post-Direction C** (학습 cost vs expected lift ROI 평가 post-paper, DECISIONS 2026-05-14 Direction C 결과 §2.4) | **Direction B HN-SupCon 본 심사 전 학습 launch (Direction C 와 병렬)** ✅ |
+
+→ 직전 4 layer 이유 (특히 일정 + paper main contribution focus) 의 trade-off 사용자 수용. **두 chain 모두 본 심사 전 정량 성능 확인 우선**.
+
+### §2. 두 학습 Chain Plan
+
+#### 2.1 Direction C Graph Transformer Chain (Hoang 2025 GRAST-SQL 의 정식 transfer)
+
+| Phase | 책임 | 작업 |
+|---|---|---|
+| Phase 1 (5/15) | 학술 Agent (사용자 bridge) + Planner | Hoang 2025 의 정확한 architecture spec receive (FD-aware Graph Transformer encoder layers + attention heads + positional encoding + query encoder fusion + training loss + hyperparameter) |
+| Phase 2 (5/16~5/17) | Module:Selector (또는 Filter) | GraphTransformer encoder 신규 구현 + 학습 loop 통합 + smoke test |
+| Phase 3 (5/17~5/19) | Root | 학습 launch (BIRD-Train, GPU 시간 추정 24~48h) + checkpoint |
+| Phase 4 (5/19~5/20) | Root | Direction C-Transformer sweep launch (a05_26_grast_with_transformer_glm config 신규) |
+| Phase 5 (5/20~5/21) | Analyzer | Direction C-Transformer 결과 보고서 (vs Direction C algorithmic + vs anchor) |
+| Phase 6 (5/21~5/22) | Root (paper) | 학위 논문 §V.5.x.M.4 narrative 갱신 + chapter draft 통합 |
+
+**구현 위치 결정 필요 (Module:Selector vs Module:Filter)**:
+- Option α: Module:Selector 신규 `GraphTransformerSelector` — Selector encoder 의 정식 변경 (anchor framework 영향, paper narrative reframe 필요)
+- Option β: Module:Filter 의 GRASTFDFilter 의 Step 2 FD graph encoding 부분에 Transformer encoder 추가 — Filter 내부 add-on (anchor framework 정합)
+- → 학술 Agent Phase 5 cover note 의 질문 항목
+
+#### 2.2 Direction B HN-SupCon Chain (Piao 2025 LitE-SQL Hard Negative Supervised Contrastive)
+
+| Phase | 책임 | 작업 |
+|---|---|---|
+| Phase 1 (5/15) | 학술 Agent (사용자 bridge) + Planner | Piao 2025 의 정확한 spec receive (hard negative mining 알고리즘 + supervised contrastive loss formulation + temperature + hyperparameter) |
+| Phase 2 (5/16~5/17) | Module:Selector | HN-SupCon loss 의 selector training loop 통합 + hard negative dataset construction (BIRD-Train) + smoke test |
+| Phase 3 (5/17~5/19) | Root | 학습 launch (BIRD-Train, GPU 시간 추정 24~48h) + checkpoint |
+| Phase 4 (5/19~5/20) | Root | Direction B sweep launch (b06_hn_supcon config 신규, 또는 anchor 의 selector 만 HN-SupCon checkpoint 로 교체) |
+| Phase 5 (5/20~5/21) | Analyzer | Direction B 결과 보고서 (anchor 의 EnsembleSelector vs HN-SupCon) |
+| Phase 6 (5/21~5/22) | Root (paper) | 학위 논문 §V.5.x.M (또는 별도 section) narrative 추가 + chapter draft 통합 |
+
+### §3. 일정 정합 (5/14 저녁 ~ 5/22 본 심사, 8 일)
+
+| Date | Event |
+|---|---|
+| 5/14 저녁 | ✅ Planner DECISIONS prepend (본 entry) + 학술 Agent Phase 5 cover note 작성 |
+| 5/15 | 학술 Agent Phase 5 receive (architecture + hyperparameter spec) — 사용자 → 학술 Agent → 사용자 receive |
+| 5/16~5/17 | Module:Selector + Module:Filter 두 chain 의 implementation + smoke test (병렬) |
+| 5/17~5/19 | Root 두 학습 chain launch (GPU 0=C Transformer, GPU 1=B HN-SupCon, 병렬) |
+| 5/19~5/20 | Root 두 sweep launch (학습 완료 후) |
+| 5/20~5/21 | Analyzer 두 결과 보고서 (병렬) |
+| 5/21~5/22 | Root 학위 논문 chapter draft (Direction A + C original + C-Transformer + B 모두 통합) + 학회 paper §3.5 draft |
+| **5/22** | **학위 본 심사 마감** |
+
+→ **타이트하지만 가능** (GPU 0+1 병렬, 학습 cost 추정 24~48h × 2 chain). Risk = 학습 failure mode (NaN / saturation) 시 일정 압박.
+
+### §4. Risk + 사용자 결정 사항
+
+#### 4.1 Implementation Risk
+
+- Direction C Graph Transformer 의 architecture 정확도: 학술 Agent 의 spec 없이 진행 시 implementation 차원 mismatch — **학술 Agent Phase 5 prerequisite**
+- Direction B HN-SupCon 의 hard negative mining: BIRD-Train 의 hard negative pair construction 추가 cost (사전 dataset preprocessing 필요)
+
+#### 4.2 학습 Risk
+
+- 학습 saturation (Direction A의 GAT pathology 7-trial mitigation null effect 와 유사 가능성)
+- NaN / divergence (v2 #2 Sum aggregation 의 학습 dynamics 실패 사례 reference)
+- → Smoke test (1 epoch) → ckpt 안정성 확인 후 full launch 권장
+
+#### 4.3 Paper Narrative Risk
+
+- Direction C Graph Transformer 가 anchor framework 영향 → paper §3.5 narrative 의 Filter Dominance 7-axis 의 "Selector axis 영향" 측면 reframe 가능성
+- 단 paper main contribution = **Filter Dominance 의 mechanism-agnostic dual evidence (caveat 2+3)** 는 그대로 유지 — Direction C-Transformer 는 "Direction C 의 강화 variant" 로 별도 cell 위치 (axis #9 의 sub-variant)
+- Direction B HN-SupCon = Selector fine-tune → paper §3.5 axis #3 (GAT mitigation null) 의 정합 측정 — null effect 또는 mitigation success 의 양면 evidence
+
+#### 4.4 일정 Risk
+
+- 학습 chain 의 failure 시 reattempt 시간 부족
+- 학위 논문 chapter draft 시간 단축 (5/21~5/22 의 2 일만 — 직전 5/15~5/22 의 8 일 plan 의 25%)
+- → **fallback plan**: 학습 failure 시 Direction C-Transformer 또는 Direction B 의 한 chain 만 우선 + 다른 chain 은 post-paper backlog 으로 다시 환원
+
+### §5. 학술 Agent Phase 5 Cover Note Trigger (즉시)
+
+#### 5.1 Cover Note 의 핵심 질문 항목
+
+1. **Direction C Graph Transformer 의 정확한 architecture spec** (Hoang 2025 GRAST-SQL):
+   - FD-aware Graph Transformer encoder 의 layer 수 / attention head / hidden dim
+   - FD graph 의 positional encoding (FK edge type 별 distinct embedding?)
+   - Query encoder fusion (concat / cross-attention / co-attention?)
+   - Training loss (BCE for selector? Or contrastive? Or both?)
+   - Training data source (BIRD-Train? 또는 추가 pretrain corpus?)
+   - 예상 GPU 시간 + 학습 hyperparameter (lr, batch, epoch)
+
+2. **Direction C Graph Transformer 의 통합 위치 (Option α vs β)**:
+   - α Module:Selector 신규 GraphTransformerSelector (anchor framework 영향)
+   - β Module:Filter 의 GRASTFDFilter 의 Step 2 add-on (anchor framework 정합)
+   - → 학술 Agent 의 권고?
+
+3. **Direction B HN-SupCon 의 정확한 spec** (Piao 2025 LitE-SQL):
+   - Hard negative mining 알고리즘 (top-K nearest non-gold? 또는 random sample?)
+   - Supervised contrastive loss formulation (NT-Xent variant? Temperature?)
+   - Hard negative pair construction (per-query 의 (anchor, positive, hard negative) triplet)
+   - Training data source + GPU 시간 + hyperparameter
+
+4. **Direction A + C 양쪽 net negative 결과 의 학술 Agent 해석**:
+   - 학술 Agent Phase 1 의 threshold (Direction A 또는 C lift > 5%p) 미달 — Direction B launch 의 학술적 정당성?
+   - 또는 Direction B 도 R-aggressive 한계 (Direction A + C 의 38% zero recovery 영역 의 fundamental 한계) 가능성?
+
+5. **Risk mitigation 권고**:
+   - 학습 failure mode 의 일반적 patterns
+   - Smoke test 권장 protocol (1 epoch + saturation check)
+   - Fallback plan 의 학술 Agent 권고
+
+#### 5.2 Cover Note File 위치
+
+`planning/filter/filter_proposal_phase5_cover_note_for_scholar_agent_2026-05-14.md` 신규 작성 (Planner 책임).
+
+### §6. paper_research_direction.md 갱신 항목
+
+#### 6.1 §V.5.x.M.4 narrative 의 post-paper extension 부분 갱신
+
+직전 "post-paper extension candidate" → "**본 심사 전 launch chain (5/15~5/22)**":
+- Hoang 2025 의 Graph Transformer 정식 fine-tune → Direction C 의 강화 variant
+- HN-SupCon (Piao 2025) → Direction B chain
+
+#### 6.2 §8 Future Works 갱신
+
+직전 Direction B post-paper backlog → 본 심사 전 launch.
+
+#### 6.3 §3.5 9-axis Filter Dominance evidence matrix 확장 candidate
+
+학습 결과 후 가능한 axis:
+- #10 (candidate): Direction C-Transformer (query-aware GRAST-SQL 정식 transfer)
+- #11 (candidate): Direction B (HN-SupCon, selector fine-tune)
+→ 5/20 결과 후 paper §3.5 narrative 의 main contribution candidate 의 재검토
+
+### §7. Chain Status 갱신 (5/14 저녁 — 두 학습 chain launch 결정 후)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-21 | 직전 chains (Three-Caveat Final Formulation 포함) | ✅ 완료 |
+| **22** | **사용자 결정: Direction C Graph Transformer + Direction B HN-SupCon 본 심사 전 launch** | ✅ **결정 (5/14 저녁)** |
+| **23** | **Planner: 학술 Agent Phase 5 cover note 작성 (architecture + hyperparameter 질문 5 항목)** | 🚀 **즉시 (본 entry §5)** |
+| ⏸ 24 | 사용자 → 학술 Agent Phase 5 → 사용자 receive (architecture + hyperparameter spec) | ⏸ 5/15 (Cover Note 전달 + receive) |
+| ⏸ 25 | Module:Selector or Module:Filter: Graph Transformer implementation + Module:Selector: HN-SupCon implementation | ⏸ 5/16~5/17 (학술 Agent receive 후) |
+| ⏸ 26 | Root: 두 학습 chain launch (GPU 0+1 병렬) | ⏸ 5/17~5/19 |
+| ⏸ 27 | Root: 두 sweep launch (학습 완료 후) | ⏸ 5/19~5/20 |
+| ⏸ 28 | Analyzer: 두 결과 보고서 | ⏸ 5/20~5/21 |
+| ⏸ 29 | Root: 학위 논문 chapter draft (Direction A + C original + C-Transformer + B 통합) | ⏸ 5/21~5/22 |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+
+### §8. 영향 범위
+
+- planning/DECISIONS.md (본 entry — 사용자 결정 + chain plan)
+- planning/filter/filter_proposal_phase5_cover_note_for_scholar_agent_2026-05-14.md (신규 cover note 작성)
+- planning/paper_research_direction.md (§V.5.x.M.4 post-paper extension → 본 심사 전 launch + §8 Future Works Direction B 갱신)
+- 후속: Module:Selector + Module:Filter implementation + Root 학습 + sweep + Analyzer 보고서 + paper chapter draft
+
+### §9. 근거
+
+- 사용자 직접 input ("본심사 전에 Direction C 와 Direction B 의 학습도 다 끝내서 어쨌든 성능을 확인하고 싶어")
+- 직전 entries: 2026-05-14 Three-Caveat Final Formulation §6 (Graph Transformer 미적용 boundary) + 2026-05-14 Direction C 배포 결과 §2.4 (Direction B post-paper)
+- Hoang 2025 GRAST-SQL (Direction C origin) + Piao 2025 LitE-SQL (Direction B origin) + 학술 Agent Phase 1+3 reviews
+
+### §10. 사용자 후속 actions
+
+1. ✅ **사용자 결정** (Direction C Transformer + Direction B 본 심사 전 launch)
+2. 🚀 **Planner: DECISIONS prepend + 학술 Agent Phase 5 cover note 작성** (본 turn)
+3. 🚀 **사용자 → 학술 Agent Phase 5 cover note 전달** (5/15)
+4. ⏸ **사용자 → 학술 Agent receive** (5/15 저녁 or 5/16 아침)
+5. ⏸ **사용자 → Module:Selector / Module:Filter / Root 핸드오프** (5/16~)
+
+---
+
+## 2026-05-14 (Filter Dominance 7번째 축 Final Formulation — Three-Caveat Mechanism Spectrum 명문화 + Filter-Invariant Boundary 정식 + paper §3.5 Main Contribution Candidate 확정)
+
+> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/filter_sweep_glm_9cell.md` §5.3ter Caveat 3 (GRAST-FD, Direction C) 정식 명문화 완료. **Three-caveat 통합 (1 architectural + 2 LLM-based + 3 algorithmic)** 의 mechanism-agnostic dual evidence 확정 — GLM 4.7 backbone 의 schema noise tolerance + in-context column selection capability 가 EX-axis Filter-Invariant 의 **dominant mechanism** 임을 강력 입증.
+
+### §1. Three-Caveat Mechanism Spectrum (filter_sweep_glm_9cell.md §5.3ter.3 정식 인용)
+
+| Caveat | Method | Mechanism | Filter-Invariant Boundary Axis |
+|---|---|---|---|
+| **Caveat 1** | C3 AdaptiveMultiAgent | **Architectural pathology** (multi-agent vote bias, union → intersection) | **Filter 구조** 측 outlier |
+| **Caveat 2** | Direction A (RSL Backward) | **R-aggressive LLM-based restore** | **Restore mechanism (LLM)** 측 outlier |
+| **🆕 Caveat 3** | Direction C (GRAST-FD) | **R-aggressive algorithmic Steiner restore** | **Restore mechanism (algorithmic)** 측 outlier |
+
+→ **Three caveat 가 서로 다른 axis 의 outlier**:
+- Caveat 1: filter 구조 (architectural pathology) — vLLM Qwen3-Coder + GLM 4.7 backbone-invariant + evidence-invariant
+- Caveat 2-3: restore mechanism (R-aggressive) — LLM vs algorithmic mechanism-agnostic
+
+### §2. Filter Dominance 7번째 축 Final Formulation (paper §3.5 main contribution candidate)
+
+**Filter Dominance 7번째 축 = Filter-Invariant (F1 + EX 양쪽 sub-noise spread)**:
+
+| Cluster | F1 Spread | EX Spread | 분류 |
+|---|---:|---:|---|
+| **Anchor cluster (7 LLM filter C3 제외, in-band reference)** | **0.0072** | **0.0085** | Filter-Invariant ★ |
+| **Caveat 1 (C3 vote pathology)** | -0.0622 | -0.0019 | Filter 구조 outlier |
+| **Caveat 2 (Direction A LLM restore)** | **-0.2832** | **-0.0033** ⭐ | Restore mechanism outlier (LLM) |
+| **🆕 Caveat 3 (Direction C algorithmic Steiner)** | **-0.2873** | **-0.0026** ⭐ | Restore mechanism outlier (algorithmic) |
+
+→ **Mechanism-Agnostic Filter-Invariant 확정**: Caveat 2 ↔ Caveat 3 의 dual evidence (LLM-based + algorithmic, mechanism 종류 무관) 가 GLM 4.7 backbone 의 schema noise tolerance + in-context column selection capability = EX-axis Filter-Invariant 의 **dominant mechanism** 임을 강력 입증.
+
+→ **paper §3.5 main contribution candidate**: "Filter Dominance 의 EX-axis robustness 가 (a) filter 종류 변경 (caveat 1 의 architectural outlier 제외 시 9-cell sub-noise) + (b) production-level schema noise (caveat 2+3 의 4× 폭증) 양쪽 모두에 invariant — GLM 4.7 backbone 의 in-context column selection capability 가 dominant mechanism."
+
+### §3. Per-difficulty 일관 패턴 (Caveat 2 ↔ Caveat 3 정합 검증, filter_sweep_glm_9cell.md §5.3ter.2)
+
+| Difficulty | n | Direction A ΔF1 / ΔEX | Direction C ΔF1 / ΔEX | \|Δ(A,C)\| max |
+|---|---:|---:|---:|---:|
+| simple | 925 | -0.3238 / -0.0076 | **-0.3294 / -0.0065** | 0.0056 |
+| moderate | 464 | -0.2343 / +0.0086 | **-0.2370 / +0.0065** | 0.0027 |
+| challenging | 145 | -0.2036 / -0.0138 | **-0.2042 / -0.0069** | 0.0069 |
+
+→ **모든 difficulty 에서 max \|Δ(A,C)\| = 0.0069 sub-noise** = mechanism-agnostic 의 **query complexity-invariant** 추가 evidence.
+
+### §4. Production Deployment Recommendation (paper §V.5.x.M.3 + filter_sweep_glm_9cell.md §5.3ter.4 정합)
+
+| Metric | Direction A (caveat 2) | Direction C (caveat 3) | Δ |
+|---|---:|---:|---:|
+| LLM calls (per-q) | 3.0 | **2.0** | **-33%** ⭐ |
+| Token in (total, BIRD-Dev 1534q) | 14.29M | **7.37M** | **-48%** ⭐ |
+| Filter time mean | 4.03s | **1.90s** | **-53%** ⭐ |
+| Wall (full sweep) | 2h47m (parallel) | **1h50m (single)** | -28.9% |
+| F1 vs anchor | -0.2832 | -0.2873 | sub-noise |
+| EX vs c0 | -0.0033 | -0.0026 | sub-noise |
+
+→ **Production Deployment Recommendation**: **Direction C (GRAST-FD)** 가 LLM call cost-sensitive 환경 (예: large-scale serving) 의 **deployment candidate**. 동일 production 결과 (F1 sub-noise + EX sub-noise) + cost 우세. 학위 논문 §V.5.x.M.3 main narrative.
+
+### §5. paper §3.5 Footnote 정식 확정 (filter_sweep_glm_9cell.md §5.3ter.5 인용)
+
+paper §3.5 의 main narrative 의 footnote 영역 final form (학회 한국지능정보시스템학회 2026 춘계, Extended Abstract cover + 3p):
+
+```
+Filter Dominance 의 Filter-Invariant 결론에는 3 가지 caveat 존재 (mechanism axis 별
+outlier):
+
+  Caveat 1 (architectural pathology, multi-agent vote bias):
+    C3 AdaptiveMultiAgent 의 union → intersection bias → R -0.0972 손실. Filter 구조
+    측 axis 의 outlier. backbone- + prompt-invariant 한 architectural pathology —
+    multi-agent voting 의 conservative-bias 강화 mechanism.
+
+  Caveat 2 (R-aggressive LLM-based restore, Direction A):
+    RSL Backward 의 LLM call backward column restore → mean |final_nodes| 4.0× 폭증
+    → P-side dominant noise. F1 spread -0.2832 (large outlier) but EX -0.0033 (in band).
+    GLM 4.7 의 schema noise tolerance 로 EX-axis 유지.
+
+  Caveat 3 (R-aggressive algorithmic Steiner restore, Direction C):
+    GRAST-FD 의 FD graph Steiner-tree restore (LLM 미사용, algorithmic 만) → mean
+    |final_nodes| 3.97× 폭증 → P-side dominant noise. F1 spread -0.2873 (large
+    outlier) but EX -0.0026 (in band). Caveat 2 와 동일 패턴 — restore mechanism
+    종류 (LLM vs algorithmic) 와 무관.
+
+본 three-caveat dual evidence (caveat 2 + caveat 3 의 mechanism-agnostic 정합) 가
+Filter Dominance 의 EX-axis robustness 의 dominant mechanism = GLM 4.7 backbone 의
+schema noise tolerance + in-context column selection capability 임을 강력 입증.
+
+Production deployment 측면: Direction C (algorithmic Steiner) 가 LLM call -33%
+(3.0 → 2.0 per-q) 으로 cost-effective deployment candidate — schema linking F1
+net negative 임에도 production EX 유지 + 비용 효율 우위.
+
+Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challenging
+에서 |Δ(A,C)| ≤ 0.0069 sub-noise) 가 mechanism-agnostic 의 query complexity-invariant
+추가 evidence.
+```
+
+### §6. paper_research_direction.md 갱신 항목 (Step 2~4)
+
+#### 6.1 §3.5 axis #7 narrative final formulation
+
+직전 §3.5 axis #7 narrative 의 (f) caveat 1 + (g) caveat 2 + (h) caveat 3 통합 → **Three-Caveat Mechanism Spectrum 의 정식 formulation** (architectural / LLM-based restore / algorithmic restore 3 axis 별 outlier). paper §3.5 main contribution candidate.
+
+#### 6.2 §V.5.x.M.4 신규 sub-section (Three-Caveat Spectrum + Filter-Invariant Boundary)
+
+직전 §V.5.x.M.1/.M.2/.M.3 (dual R-P + mechanism-agnostic EX + production deployment) 다음에 **신규 §V.5.x.M.4 "Three-Caveat Mechanism Spectrum + Filter-Invariant Boundary 의 final formulation"** 추가:
+- Caveat 1+2+3 의 mechanism axis spectrum (architectural / LLM / algorithmic)
+- Filter-Invariant boundary 의 정량 정의 (F1 spread 0.0072 sub-noise vs caveat 2+3 의 -0.28 outlier; EX spread 0.0085 sub-noise vs caveat 2+3 의 -0.003 in-band)
+- mechanism-agnostic dual evidence (Caveat 2 ↔ Caveat 3) 의 query complexity-invariant 추가 evidence
+- Production Deployment Recommendation (Direction C 비용 효율 우세) 의 학위 논문 §V.5.x.M.3 정식 연계
+
+#### 6.3 §V.5.x.M.3 본문 갱신 — Production Deployment Recommendation final
+
+직전 §V.5.x.M.3 narrative 의 "Direction C 의 비용 효율 우세 (-33% LLM, -48% token, -53% filter time)" 부분에 **Production scale impact 추가 quantification + Three-caveat 통합 dual evidence 연계** 보강:
+- Schema linking F1 net negative 임에도 production EX 유지 + cost 우세
+- Three-caveat dual evidence (mechanism-agnostic) 가 Direction C deployment 의 학술적 정당성
+
+### §7. Filter Sweep v2 의 Filter Dominance Evidence Matrix Final (filter_sweep_glm_9cell.md §5.4 의 표)
+
+| Axis (Filter Dominance evidence) | v1 결론 | v2 결론 + Three-caveat 통합 (5/14) |
+|---|---|---|
+| 1. F1 +0.6401 lift dominant | + (확립) | + (재확립 +0.6401 v2) |
+| 2. P-surge +0.7327 mechanism | + (확립) | + (재확립 +0.7327 v2) |
+| 3. GAT mitigation null (10-trial) | + (확립) | + (변경 없음) |
+| 4. backbone-invariant | + (Qwen → GLM era) | + (재확립 + evidence-invariant 추가) |
+| 5. PCST/extractor robust | + (확립) | + (변경 없음) |
+| 6. Filter-axis F1 robustness | + (확립 단 Modest 0.0116) | → upgrade: Filter-Invariant (sub-noise 0.0072) |
+| **7. Filter-Invariant (F1 + EX 양쪽)** | — | **+ 강력 확정 ⭐ (Three-caveat mechanism spectrum, paper §3.5 main contribution candidate)** |
+| 8. SGBE Negative Evidence (Selector-Filter co-design) | — | + (직전 5/13 confirm) |
+| 9. Direction A + C dual variant (RSL backward + GRAST-FD) | — | + (5/14 confirm, F1 sub-noise + EX sub-noise + Direction C 비용 효율 우세) |
+
+→ **9-axis Filter Dominance 의 main contribution candidate = 7번째 축 (Filter-Invariant) + Three-caveat mechanism spectrum**. 9번째 축 (Direction A + C dual variant) 의 evidence base.
+
+### §8. Chain Status 갱신 (5/14)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-18 | 직전 chains (Direction A + C 배포 + paper §V.5.x.M sub-sections) | ✅ 완료 |
+| **19** | **Planner DECISIONS prepend + paper §V.5.x.M sub-sections final + axis #7 caveat 3 + axis #9 dual variant** | ✅ **완료 (5/14, 직전 entry)** |
+| **20** | **Analyzer filter_sweep_glm_9cell.md §5.3ter caveat 3 정식 명문화** | ✅ **완료 (5/14, Three-caveat mechanism spectrum)** |
+| **21** | **Planner Three-caveat final formulation + paper §3.5 footnote 정식 + §V.5.x.M.4 신규 sub-section + §V.5.x.M.3 production deployment 보강** | 🚀 **즉시 (본 entry + Step 2~4)** |
+| ⏸ 22 | 학술 Agent Phase 5 cover note (Direction A + C 결과 + Three-caveat 통합 + Direction B post-paper) | ⏸ 사용자 결정 |
+| ⏸ 23 | 학위 논문 §V.5.x.M chapter draft (5/15~5/22) | ⏸ base 완료 (본 entry 후 chapter draft writable) |
+| 14 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+| ⏸ 24 | (post-paper) Module:Filter `inferred_fk` schema patch | ⏸ post-paper backlog |
+| ⏸ 25 | (post-paper) GRASTFDFilter `restored_edges` logging 추가 | ⏸ post-paper analyzer prerequisite |
+| ⏸ 26 | (post-paper) Direction B (HN-SupCon) — ROI 평가 | ⏸ post-paper |
+| ⏸ 27 | (post-paper) 다른 DB inferred FK extension | ⏸ post-paper |
+
+### §9. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Three-caveat final formulation)
+- planning/paper_research_direction.md:
+  - §3.5 axis #7 narrative final formulation (Three-Caveat Mechanism Spectrum)
+  - §V.5.x.M outline 표에 §V.5.x.M.4 row 추가
+  - §V.5.x.M.4 narrative 본문 신규 (Three-Caveat Spectrum + Filter-Invariant Boundary final)
+  - §V.5.x.M.3 본문 갱신 (Production Deployment Recommendation final)
+- 후속: 학위 논문 §V.5.x.M chapter draft 작성 (5/15~5/22) 의 base 완료
+
+### §10. 근거
+
+- 사용자 직접 input (Analyzer §5.3ter 완료 보고 + 5 작업 spec)
+- notebooks/analysis_results/filter_sweep_glm_9cell.md §5.3bis (caveat 2) + §5.3ter (caveat 3, 신규) + §5.4 9-axis evidence matrix
+- notebooks/analysis_results/direction_a_rsl_backward_sweep.md §4.1 + §6.2 (caveat 2 base)
+- notebooks/analysis_results/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR (caveat 3 base)
+- 직전 entries: 2026-05-14 Direction C 배포 결과 + 2026-05-14 Direction A 배포 결과 (Three-caveat mechanism spectrum base)
+
+### §11. 사용자 후속 actions
+
+1. ✅ **Analyzer §5.3ter caveat 3 정식 명문화** (5/14 receive)
+2. 🚀 **Planner: DECISIONS prepend + paper §V.5.x.M.4 신규 sub-section + §V.5.x.M.3 보강 + §3.5 axis #7 final formulation** (본 turn)
+3. ⏸ **학위 논문 §V.5.x.M chapter draft (5/15~5/22)** — Three-caveat final formulation base 완료
+4. ⏸ **학술 Agent Phase 5 cover note prep** — Direction A + C 결과 + Three-caveat 통합 + Direction B post-paper 결정
+
+---
+
+## 2026-05-14 (Direction C 배포 Sweep 결과 — F1 Sub-noise vs A (Δ=-0.0041) + 비용 효율 우세 (-33% LLM) + Mechanism-Agnostic Filter-Invariant 확정 + Three-Caveat 통합 + B-1/B-2 Post-Paper)
+
+> **사용자 직전 input (5/14)**: Direction C 배포 sweep 종료 (5/14 04:33:26, wall 1h50m single cell) + Analyzer 신규 보고서 `notebooks/analysis_results/direction_c_grast_fd_sweep.md` 작성 완료. **핵심 결과**: Direction C 가 Direction A 와 F1 sub-noise (Δ=-0.0041) + 비용 효율 우세 (-33% LLM, -48% token, -53% filter time) — Filter Dominance 7번째 축 dual evidence (mechanism-agnostic, caveat 2 + caveat 3 통합) 확정.
+
+### §1. 핵심 정량 결과
+
+| Cell | R | P | F1 | EX | LLM calls | filter_time_mean | Token in |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **anchor MSTPCSTUnion+XiYan** | 0.8772 | 0.8564 | **0.8667** | 0.0000 ⚠️ sql_gen off | 1534 | 1.96s | 6.4M |
+| **c0 MSTKruskal+XiYan+SQL** | 0.8706 | 0.8596 | 0.8650 | **0.5202** | 3068 (2/q) | 2.39s | 7.4M |
+| **a05_23 (Direction A)** | 0.9456 | 0.4219 | **0.5835** | **0.5169** | 4602 (3/q) | 4.03s | 14.29M |
+| **a05_25 (Direction C)** | 0.9251 | 0.4218 | **0.5794** | **0.5176** | **3068 (2/q)** | **1.90s** | **7.37M** |
+| **Δ (C − A)** | -0.0205 | -0.0001 | **-0.0041** ⭐ | **+0.0007** ⭐ | **-1534 (-33%)** | **-2.13s (-53%)** | **-6.92M (-48%)** |
+
+→ **Direction C 의 production-stack 결과 = Direction A 와 F1 sub-noise + EX sub-noise + 비용 효율 우세** (mechanism-agnostic 동일 trade-off, Steiner-tree algorithmic vs LLM backward restore mechanism 무관).
+
+### §2. 6 결정 사항
+
+#### 2.1 Direction C: F1 Sub-noise vs Direction A (Δ=-0.0041) + 비용 효율 우세 (-33% LLM call)
+
+- **F1 sub-noise**: |Δ| = 0.0041 (Filter-Invariant band 0.0072 안)
+- **EX sub-noise**: Δ = +0.0007 (anchor c0 대비 Direction A -0.0033 vs Direction C -0.0026)
+- **R-P trade-off 동일 패턴**: P loss / R gain ratio = 6.35× (A) → **9.07×** (C, 43% 높음 — algorithmic Steiner 가 LLM backward 보다 selective 못함)
+- **mean |final_nodes|**: anchor 4.75 / A 19.21 (4.0×) / C 18.87 (3.97×) → 두 mechanism 의 schema 폭증 거의 동일
+
+#### 2.2 Filter Dominance 7번째 축 Dual Evidence — Three-Caveat 통합 (mechanism-agnostic)
+
+| Caveat | Method | F1 spread | EX spread | Mechanism |
+|---|---|---:|---:|---|
+| **Caveat 1** (기존) | C3 AdaptiveMultiAgent (vote pathology) | -0.0622 outlier | -0.0019 in band | architectural (multi-agent vote bias) |
+| **Caveat 2** (기존) | Direction A (RSL Backward, **LLM-based** restore) | -0.2832 outlier | -0.0033 in band | R-aggressive (LLM column restore) |
+| **🆕 Caveat 3** (신규) | **Direction C (GRAST-FD, algorithmic Steiner restore)** | **-0.2873 outlier** | **-0.0026 in band** ⭐ | **R-aggressive (algorithmic Steiner restore)** |
+
+→ **mechanism-agnostic Filter-Invariant 확정** — LLM-based (A) + algorithmic Steiner (C) 양쪽에서 F1 outlier + EX in-band 의 dual evidence. GLM 4.7 backbone 의 schema noise tolerance + in-context column selection capability 가 Filter Dominance 의 EX-axis robustness 의 **dominant mechanism** 임을 강력 입증.
+
+#### 2.3 Direction A + C 모두 F1 Net Negative (Δ -0.28 vs anchor) + EX Maintained (sub-noise)
+
+| Direction | ΔF1 vs anchor MSTPCSTUnion | ΔEX vs c0 |
+|---|---:|---:|
+| Direction A (a05_23) | -0.2832 | -0.0033 |
+| **Direction C (a05_25)** | **-0.2873** | **-0.0026** |
+
+→ 두 direction 의 F1 production negative, EX 유지 패턴 동일. Phase 2 의 bimodal distribution (52% perfect + 38% zero recovery) 의 38% zero 영역이 **mechanism-agnostic production P drop dominant** — restore mechanism 차이 (LLM vs algorithmic) 가 38% zero 영역 의 query-irrelevant column 추가 양상에서는 동일.
+
+#### 2.4 Direction B (HN-SupCon) Post-Paper 로 미루기 — ROI 평가 후 결정
+
+학술 Agent Phase 1 의 후속 chain — Direction A 또는 Direction C 결과 lift > 5%p 시 B-1/B-2 launch 권고. 실측:
+- Direction A lift = -0.2832 (negative)
+- Direction C lift = -0.2873 (negative)
+- 둘 다 학술 Agent threshold 미달 → **B-1/B-2 priority 상향 안 함**
+
+**B-1/B-2 priority**: **post-paper backlog**. 학습 cost (HN-SupCon fine-tune, GPU 시간 수십 h) vs expected lift (Phase 1 outlier query 의 selective improvement) 의 ROI 평가 후 결정.
+
+#### 2.5 Anchor MSTPCSTUnion EX=0.0 Root Cause: sql_generator 비활성 의도된 미측정, EX 비교는 c0 0.5202 사용 (정정)
+
+직전 Direction A 배포 결과 entry (5/14) 의 §2.5 와 동일 — anchor MSTPCSTUnion 의 EX=0.0 은 측정 실패가 아니라 **의도된 미측정** (sql_generator 비활성, schema linking F1 측정 전용 anchor).
+
+- **F1 anchor**: MSTPCSTUnion+XiYan F1=0.8667 (sql_gen off) 또는 c0 MSTKruskal+XiYan+SQL F1=0.8650 (sql_gen on) — 두 anchor F1 차이 0.0017 (sub-noise, extractor variant 영향 미미)
+- **EX anchor**: c0 MSTKruskal+XiYan+SQL EX=0.5202 (정식 EX reference)
+- Direction A + C 의 ΔEX 계산은 c0 0.5202 base 사용
+
+#### 2.6 다른 DB Inferred FK Extension Priority Post-Paper — Current 11 DBs Declared FK Dominant, Extension ROI 제한적
+
+본 Direction C sweep 의 inferred FK actual application:
+- 4 inferred FK (debit_card 3 + card_games 1) + 36 declared FK
+- Steiner restore actual 동작: **199 queries (13.0%)** — full sweep 1534 중
+- Target DB (card_games + debit_card_specializing) 의 Steiner restore: **69 queries (27.1% of 255 target)** — 다른 DB 의 10.2% 의 **2.7× 높음**
+- 단 production F1 lift 로 transfer 미흡: card_games -0.0018 (sub-noise), debit_card -0.0165 (marginal-negative), thrombosis +0.0022 (유일 marginal positive, declared FK 만 사용)
+
+→ **다른 DB inferred FK extension priority**: **post-paper backlog**. Current 11 DBs 의 declared FK 가 이미 dominant (Steiner restore 의 90% 가 declared FK 만 사용). 학술 Agent re-evaluation 권고 — Direction C 의 over-restoration 한계 (Steiner-tree 가 topological 회복 ≠ query-level semantic 회복) 의 본 도메인 발견.
+
+### §3. paper_research_direction.md 갱신 항목 (Step 2~4)
+
+#### 3.1 §3.5 axis #9 narrative 확장 (직전 Direction A 결과 → Dual variant 통합)
+
+직전 axis #9 narrative = Direction A 배포 결과 (5/14 prepend) → **Direction A + C 의 dual variant evidence + Three-caveat 통합 + Production deployment candidate (Direction C 비용 효율 우세)**.
+
+#### 3.2 §3.5 axis #7 (Filter-Invariant) caveat 3 추가 (caveat 2 의 보완 evidence)
+
+직전 caveat 2 (RSL Backward) + 신규 **caveat 3 (GRAST-FD)** — mechanism-agnostic Filter-Invariant 확정. paper §3.5 main contribution candidate.
+
+#### 3.3 §V.5.x.M.1/.M.2/.M.3 sub-section 갱신 (Dual-Direction narrative final)
+
+- **§V.5.x.M.1 — R-P Trade-off Dual-Direction Evidence**: Direction A (LLM, +200% LLM cost) + Direction C (algorithmic Steiner, -33% LLM vs A) 의 production-stack 결과 모두 F1 net negative + EX maintained. Phase 2 bimodal 38% zero 영역의 mechanism-agnostic production P drop dominant.
+- **§V.5.x.M.2 — EX-Friendly Property + Mechanism-Agnostic Evidence**: LLM (A) + algorithmic (C) 양쪽에서 동일 패턴 발현 — GLM 4.7 의 in-context column selection capability 가 schema noise (4× 폭증) 의 mechanism 무관 흡수. Filter Dominance 7번째 축 dual evidence.
+- **§V.5.x.M.3 — Production Deployment + Inferred FK Caveat**: Direction C 의 production deployment 우위 (-33% LLM, -48% token, -53% filter time). 단 inferred FK (GPT-4.1-mini, 4 entries) 가 actual production F1 lift transfer 미흡 — Steiner-tree restore 의 query-relevant column 선별 한계 (schema graph 의 topological 회복 ≠ query-level semantic 회복).
+
+### §4. Analyzer 핸드오프 prompt (filter_sweep_glm_9cell.md §5.3ter 신규 — Caveat 3 정식 명문화)
+
+```
+먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (2026-05-14 Direction C
+배포 결과 + Three-caveat 통합) + notebooks/analysis_results/direction_c_grast_fd_sweep.md
+§6 정독.
+
+작업: notebooks/analysis_results/filter_sweep_glm_9cell.md §5.3bis 의 후속 §5.3ter
+신규 추가 — Caveat 3 (GRAST-FD, Direction C) 정식 명문화.
+
+신규 §5.3ter 내용 spec:
+
+  §5.3ter Caveat 3 — GRAST-FD (Direction C, algorithmic Steiner restore):
+    F1 spread -0.2873 outlier (anchor F1=0.8667 → a05_25 F1=0.5794) but EX -0.0026
+    in-band (anchor c0 EX=0.5202 → a05_25 EX=0.5176). Algorithmic Steiner restore
+    가 LLM call 미사용 임에도 Direction A (caveat 2, LLM-based restore, ΔF1=-0.2832)
+    와 동일 R-P trade-off 패턴 (mean |final_nodes| 3.97× 폭증, P loss/R gain ratio
+    9.07×) 발현.
+
+  Three-caveat 통합 의의:
+    - Caveat 1 (multi-agent vote, C3): architectural pathology
+    - Caveat 2 (Direction A, LLM-based restore): R-aggressive LLM
+    - Caveat 3 (Direction C, algorithmic Steiner): R-aggressive algorithmic
+    → **mechanism-agnostic Filter-Invariant** — GLM 4.7 backbone 의 schema noise
+      tolerance 가 LLM (A) + algorithmic (C) 양쪽에서 EX-axis robustness 유지의
+      dominant mechanism 임을 강력 입증.
+
+  Production deployment 측면:
+    Direction C 의 비용 효율 우세 (-33% LLM call, -48% token, -53% filter time) +
+    EX maintained → schema linking F1 net negative 임에도 production candidate.
+
+정량 인용:
+  - Direction A a05_23: ΔF1=-0.2832 / ΔEX=-0.0033 / P loss-R gain 6.35×
+  - Direction C a05_25: ΔF1=-0.2873 / ΔEX=-0.0026 / P loss-R gain 9.07×
+  - mean |final_nodes|: anchor 4.75 / A 19.21 (4.0×) / C 18.87 (3.97×)
+  - Per-difficulty (Direction C): simple ΔF1 -0.3294/ΔEX -0.0065, moderate -0.2370/+0.0065,
+    challenging -0.2042/-0.0069 → Direction A 의 per-difficulty 패턴과 거의 동일
+
+근거:
+  - planning/DECISIONS.md 2026-05-14 (Direction C 배포 결과) §1+§2.2
+  - notebooks/analysis_results/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR
+  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md (caveat 2 base)
+```
+
+### §5. Production Deployment Candidate — Direction C (paper §V.5.x.M.3 핵심)
+
+| 측면 | Direction A (RSL Backward) | Direction C (GRAST-FD) |
+|---|---:|---:|
+| LLM calls per query | 3 (XiYan + backward + SQL gen) | **2 (XiYan + SQL gen, Steiner algorithmic)** |
+| Total LLM calls (1534 BIRD-Dev) | 4602 | **3068 (-33%)** |
+| Token in (total) | 14.29M | **7.37M (-48%)** |
+| Filter time mean | 4.03s | **1.90s (-53%)** |
+| F1 vs anchor | -0.2832 | -0.2873 (-0.0041 sub-noise) |
+| EX vs c0 | -0.0033 | -0.0026 (+0.0007 sub-noise) |
+| Production user-facing impact | F1 negative + EX OK | **F1 negative + EX OK** + **cost 우세** |
+
+→ **Direction C 가 production deployment candidate** (LLM call cost-sensitive 환경). 학위 논문 §V.5.x.M.3 의 main narrative.
+
+**Production scale impact 추정** (post-paper extension):
+- BIRD-Test 1500+ queries scale: Direction C 가 Direction A 대비 ~1.5K queries × $0.001/query × 0.33 reduction ≈ $0.5 saving (per dataset evaluation)
+- 본 도메인 외 transfer (다른 schema linking benchmark) 의 cost reduction ratio 유지 가정 시 ROI 우세
+- 단 ΔF1 negative ≥ -0.28 의 schema linking metric 한계는 두 direction 공유 — paper §V.5.x.M 의 F1-EX dichotomy explicit 인정 narrative
+
+### §6. (선택) Module:Filter inferred_fk Schema Patch 권고 (Post-Paper Priority 낮음)
+
+현재 `GRASTFDFilter.__init__` 의 `inferred_fk: Optional[List[str]]` flat list ingestion — config 의 4 entries 가 모든 1534 query 에 받음 (db_id 별 schema match 시만 자동 적용, multi-DB FK union safe).
+
+**Post-paper patch 권고**: `inferred_fk` 인자를 `Union[List[str], Dict[str, List[str]]]` 로 patch — config readability 개선 + 학술 Agent post-paper 의 11 DBs 전체 extension 시 prerequisite.
+
+**현 sweep 영향**: ZERO — 본 sweep 의 4 inferred FK 가 flat list 로 적용됨, GRASTFDFilter 내부 `_build_fd_graph` (lines 232-245) 가 db_id 별 schema match 시만 자동 적용. **직접적 production 영향 미미하므로 priority 낮음**.
+
+**Trigger**: post-paper 의 다른 DB inferred FK extension 검토 시 (학술 Agent re-evaluation 권고) — 11 DBs 전체 inferred FK Dict 가 readable yaml 의 prerequisite.
+
+### §7. Chain Status 갱신 (5/14, Direction C sweep 완료)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-16 | 직전 chains (Direction A 결과 + Direction C inferred_fk + GRASTFDFilter 구현) | ✅ 완료 |
+| **17** | **Root Direction C sweep launch (a05_25_grast_with_inferred_fk_glm)** | ✅ **완료 (5/14 04:33, wall 1h50m single cell)** |
+| **18** | **Analyzer Direction C 결과 보고서** | ✅ **완료 (5/14, notebooks/.../direction_c_grast_fd_sweep.md)** — **Direction A 와 F1 sub-noise + 비용 효율 우세 + dual evidence** |
+| 14 | Analyzer filter_sweep_glm_9cell.md §5.4 caveat 2 보강 (직전 Direction A entry §7 핸드오프) | 🚀 진행 중 |
+| 15 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+| **19** | **Planner DECISIONS prepend + paper §V.5.x.M sub-sections final + axis #7 caveat 3 + axis #9 dual variant narrative** | 🚀 **즉시 (본 entry + Step 2~4)** |
+| **20** | **Analyzer filter_sweep_glm_9cell.md §5.3ter caveat 3 정식 명문화** | 🚀 **즉시 trigger (본 entry §4)** |
+| ⏸ 21 | (선택, post-paper) Module:Filter `inferred_fk` schema `Union[List, Dict]` patch | ⏸ post-paper backlog |
+| ⏸ 22 | (선택, post-paper) GRASTFDFilter `restored_edges` (edge type 별 declared/inferred) logging 추가 | ⏸ post-paper analyzer 추가 분석 prerequisite |
+| ⏸ 23 | (선택, post-paper) Direction B (HN-SupCon) launch — ROI 평가 후 결정 | ⏸ post-paper |
+| ⏸ 24 | (선택, post-paper) 다른 DB inferred FK extension — 학술 Agent re-evaluation | ⏸ post-paper |
+| ⏸ 25 | 학위 논문 §V.5.x.M sub-sections final integration | 🚀 **본 entry Step 2~4 로 final** (Direction A + C 양쪽 결과 통합) |
+
+### §8. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Direction A + C dual-direction narrative final)
+- planning/paper_research_direction.md (§3.5 axis #9 dual variant narrative + axis #7 caveat 3 + §V.5.x.M.1/.M.2/.M.3 sub-sections final)
+- planning/filter/grast_fd_filter_documentation_2026-05-14.md §11 chain status 갱신 + §9 Direction C 결과 정량 main update
+- 후속:
+  - Analyzer `filter_sweep_glm_9cell.md` §5.3ter caveat 3 정식 명문화 (본 entry §4)
+  - (post-paper backlog) Module:Filter `inferred_fk` schema patch + GRASTFDFilter `restored_edges` logging + Direction B + 11 DBs extension
+
+### §9. 근거
+
+- 사용자 직접 input (Direction C 배포 결과 + 5 작업 spec)
+- notebooks/analysis_results/direction_c_grast_fd_sweep.md §0~§9 (Direction C 결과 본문)
+- EXPERIMENT_HISTORY.md "Direction C 배포 Sweep" entry (3213~3289)
+- 직전 entries: Direction A 배포 결과 (5/14, caveat 2 base) + Direction C inferred_fk 핸드오프 (5/14) + 학술 Agent Phase 3 GO (5/13)
+
+### §10. 사용자 후속 actions
+
+1. ✅ **Direction C 배포 sweep + Analyzer 보고서 receive** (사용자 진행 완료)
+2. 🚀 **Planner: DECISIONS prepend + paper §V.5.x.M sub-sections final + axis #7 caveat 3 + axis #9 dual variant + grast_fd documentation §11 갱신** (본 turn)
+3. 🚀 **Analyzer 핸드오프** — filter_sweep_glm_9cell.md §5.3ter caveat 3 정식 명문화 (본 entry §4 prompt)
+4. ⏸ **학술 Agent Phase 5 cover note prep** — Direction A + C 양쪽 결과 + Three-caveat 통합 + Direction B post-paper 결정 base
+5. ⏸ **학위 논문 §V.5.x.M chapter draft** — 5/15~5/22 작성 (Direction A + C 결과 + Three-caveat 통합 narrative final)
+
+---
+
+## 2026-05-14 (Direction C `inferred_fk` Analyzer 핸드오프 정식 launch — debit_card_specializing + card_games 의 GPT-4.1-mini 기반 missing FK 예측, GRASTFDFilter prerequisite)
+
+> **사용자 직전 input (5/14)**: Direction C 의 `GRASTFDFilter` (commit `e90d91a`) 이미 구현 완료 — Module:Filter chain 13 완료 confirm. 본 entry 는 **GRASTFDFilter sweep launch 전 prerequisite** 인 inferred_fk 보완 (debit_card_specializing 0.20 + card_games 0.5714 FK coverage 의 두 outlier DB) 의 Analyzer 정식 launch + Analyzer 핸드오프 prompt final 정리.
+
+### §1. 학술 Agent Phase 3 의 inferred_fk 보완 prerequisite (재인용)
+
+학술 Agent Phase 3 review (`filter_proposal_by_scholar_agent_phase2_2026-05-13.md` §2 C-1 FK coverage 분석):
+
+> "inferred_fk_count = 0 (전 DB): spec 에서 선택 항목으로 분류된 GPT-4.1-mini FK 예측이 실행되지 않았습니다. 현재 7 개 DB 의 coverage 가 1.0 미만이므로, Direction C 본격 구현 시 debit_card_specializing(0.20), card_games(0.5714) 등 low-coverage DB 에 대한 FK 예측이 필요합니다. 지금 단계에서 feasibility 는 확보됐지만, **Direction C 실제 구현 전 이 두 DB 에 한해 inferred_fk 를 보완해야 합니다.**"
+
+### §2. GRASTFDFilter 의 inferred_fk Ingestion Schema (Module:Filter commit `e90d91a` 확인)
+
+```python
+# src/modules/filters/grast_fd_filter.py
+inferred_fk: Optional[List[str]] = None,  # ["src.col->dst.col", ...] 형식
+
+# Step 2 FD Graph 구성 에서:
+for fk_key in list(declared_fks) + list(self.inferred_fk):
+    parsed = self._parse_fk_key(fk_key)  # "table.col->table.col" 형식 파싱
+    if parsed is None: continue
+    src, dst = parsed
+    if not (G.has_node(src) and G.has_node(dst)): continue
+    kind = "fk_inferred" if fk_key in self.inferred_fk else "fk_declared"
+    G.add_edge(src, dst, kind=kind)
+```
+
+→ **inferred_fk yaml schema**: `List[str]` of `"src_tbl.src_col->dst_tbl.dst_col"` (declared FK 동일 형식, kind="fk_inferred" 로 graph edge 표시). Analyzer 의 산출 yaml 이 GRASTFDFilter config 의 `params.inferred_fk` 인자로 직접 ingestible.
+
+### §3. Analyzer 핸드오프 spec (final, 사용자가 그대로 붙여넣을 form)
+
+본 entry §6 의 final 핸드오프 prompt 참조. 보강 detail:
+- **LLM provider**: `openai` (env var `OPENAI_API_KEY`)
+- **LLM client**: `src/llm_client/api_handler.py` `APIClient` 재사용 (token usage tracking 포함)
+- **기존 OpenAI 사용 사례 reference**: `src/analysis/generate_triplet_relations.py`
+- **dev_tables.json path**: `/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_tables.json` (local SSD, NAS 미사용)
+- **inferred_fk yaml schema 정합**: GRASTFDFilter 의 `["src.col->dst.col", ...]` (declared FK 와 동일 형식)
+- **Smoke mode**: 1~2 DB 의 dry-run 으로 prompt + 출력 형식 verify 후 본 launch
+- **Cost 예상**: 두 DB 의 schema metadata 크기 작음 (~수 KB) → GPT-4.1-mini input 1 회 호출당 ~5K tokens × 2 DBs ≈ ~$0.01~0.03 total cost
+
+### §4. Confidence Scoring Protocol (Analyzer 자율 design)
+
+학술 Agent Phase 3 의 권고 — 각 후보 FK 의 confidence + 정합성 검증:
+
+| Confidence Source | 검증 방식 |
+|---|---|
+| LLM 자체 confidence | Few-shot prompt 의 "confidence: high/medium/low" 응답 또는 logprob (선택, GPT-4.1-mini 가 logprob 지원 시) |
+| Column type 일치 | dev_tables.json 의 column_types 비교 (예: int ↔ int, varchar(N) ↔ varchar(M) compatible) |
+| Naming convention | suffix 패턴 (e.g., `_id`, `_code`) + 의미적 유사도 (sentence-transformer 또는 LLM verify) |
+| Schema graph plausibility | 두 table 의 PK + FK declared coverage 와의 정합 |
+
+→ **Filtering threshold**: Analyzer 결정 자율. 보고서에 각 후보 FK 의 confidence 분포 + retained set 의 정합성 narrative 명시.
+
+### §5. 학위 논문 §V.5.x.M.3 inferred_fk Caveat Narrative (현 시점 draft, Direction C 결과 후 final)
+
+학위 논문 §V.5.x.M.3 의 후속 paragraph candidate:
+
+```
+Direction C 의 inferred_fk 보완 (학술 Agent Phase 3 권고):
+  - 두 outlier DB (debit_card_specializing fk_coverage 0.20, card_games 0.5714) 의
+    GPT-4.1-mini 기반 missing FK 예측
+  - schema-dependent prior knowledge 의 LLM-based augmentation 의 정량 evidence
+  - declared FK + inferred FK 의 hybrid graph 가 Direction C 의 Steiner tree
+    completeness 의 prerequisite
+
+본 inferred_fk 의 학위 논문 §V Limitations 의 boundary:
+  - LLM-based FK 예측의 reproducibility (GPT-4.1-mini 의 stochastic output)
+  - schema designer 의 metadata sparse 한 DB 에 한정 (formula_1/student_club/superhero
+    같은 1.0 declared 의 DB 는 보완 불필요)
+  - inferred FK 의 confidence threshold 의 sensitivity (Direction C 결과 후 정량 분석)
+```
+
+### §6. Analyzer 핸드오프 prompt (사용자에게 final form 으로 제공)
+
+```
+먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (2026-05-14
+Direction C inferred_fk Analyzer 핸드오프 정식 launch) + planning/filter/filter_proposal_data_spec_2026-05-13.md
+§C-1 정독.
+
+작업: debit_card_specializing + card_games 의 GPT-4.1-mini 기반 missing FK 예측
+(학술 Agent Phase 3 권고, GRASTFDFilter (commit e90d91a) 의 inferred_fk 인자 prerequisite).
+
+목표:
+(1) 두 DB 의 dev_tables.json 의 declared FK + 모든 column metadata + (선택) PK 정보를
+    GPT-4.1-mini API 호출 input 으로 구성
+(2) 모델 출력 에서 "src_tbl.src_col -> dst_tbl.dst_col" 형식의 inferred FK 추출
+    (정규식 또는 sqlglot)
+(3) 각 후보 FK 의 confidence + 정합성 검증:
+    (a) LLM 자체 confidence (few-shot prompt 의 high/medium/low)
+    (b) column type 일치 (dev_tables.json 의 column_types 비교)
+    (c) Naming convention (suffix 패턴 + 의미적 유사도)
+    (d) Schema graph plausibility (declared FK coverage 와의 정합)
+(4) yaml-ingestible snippet 으로 출력 (GRASTFDFilter config 의 params.inferred_fk 인자
+    형식 정합):
+    inferred_fk:
+      debit_card_specializing:
+        - "transactions.AccountID->customers.CustomerID"
+        - ...
+      card_games:
+        - ...
+(5) 보고서 작성
+
+LLM 호출 spec:
+  - Provider: openai (env var OPENAI_API_KEY)
+  - Model: gpt-4.1-mini (OpenAI 공식 model id 확인 권장)
+  - Client: src/llm_client/api_handler.py 의 APIClient 재사용 (token usage tracking
+    포함, 본 chain 의 LLM cost 정량)
+  - 기존 reference: src/analysis/generate_triplet_relations.py 의 OpenAI 호출 패턴
+  - Temperature: 0.0 (deterministic, reproducibility)
+  - Smoke mode: 1 DB (debit_card_specializing, declared FK 가 더 sparse 한 DB 부터)
+    의 dry-run 으로 prompt + 출력 형식 verify 후 본 launch
+  - Cost 예상: 두 DB 합 ~5K tokens × 2 ≈ ~$0.01~0.03 total
+
+dev_tables.json path: /home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_tables.json
+  (local SSD, NAS 미사용. 두 DB 의 entry 만 추출)
+
+inferred_fk yaml ingestion schema (GRASTFDFilter commit e90d91a 정합):
+  - List[str] of "src_tbl.src_col->dst_tbl.dst_col"
+  - declared FK 와 동일 형식 (GRASTFDFilter 내부에서 kind="fk_inferred" 로 graph edge
+    표시)
+
+산출물:
+  (a) notebooks/analysis_results/direction_c_inferred_fk.md
+      - §1 두 DB 의 declared FK 현황 (dev_tables.json 직접 인용)
+      - §2 GPT-4.1-mini prompt + 출력 raw
+      - §3 inferred FK 후보 list + per-candidate confidence (LLM + type + naming +
+        graph plausibility)
+      - §4 정합성 검증 결과 (retained set + filtered-out set)
+      - §5 최종 inferred_fk yaml snippet (GRASTFDFilter ingestion form)
+      - §6 학위 논문 §V.5.x.M.3 inferred_fk caveat narrative (현 시점 draft, Direction
+        C 결과 후 final)
+
+  (b) outputs/analysis/direction_c_inferred_fk.yaml
+      - Root 가 GRASTFDFilter config 의 params.inferred_fk 인자로 직접 ingest 가능한
+        형식 (per-DB key, list of "src.col->dst.col")
+
+  (c) (선택) src/analysis/direction_c_infer_fk.py
+      - 재사용 가능한 script (학술 Agent post-paper 의 11 DBs 전체 확장 시 trigger 가능)
+
+의도:
+  - GRASTFDFilter sweep launch 의 prerequisite
+  - Direction C 의 학술 Agent Phase 3 권고 정합 (debit_card + card_games 타겟)
+  - 학위 논문 §V.5.x.M.3 inferred_fk caveat narrative 의 정량 evidence
+
+근거:
+  - planning/DECISIONS.md 2026-05-14 (Direction C inferred_fk Analyzer 핸드오프 launch) §§1~5
+  - planning/filter/filter_proposal_by_scholar_agent_phase2_2026-05-13.md §2 C-1 FK coverage
+    분석 (학술 Agent Phase 3 의 inferred_fk_count = 0 caveat)
+  - planning/filter/filter_proposal_data_spec_2026-05-13.md §C-1 의 inferred_fk_count 필드
+    정의
+  - src/modules/filters/grast_fd_filter.py (commit e90d91a) inferred_fk 인자 schema
+```
+
+### §7. Module:Filter 이미 구현 confirm (chain status 갱신)
+
+**GRASTFDFilter** (`src/modules/filters/grast_fd_filter.py`) — 직전 commit `e90d91a` (2026-05-14):
+- `inferred_fk: List[str]` 인자 (default `None` → empty list)
+- Step 2 FD Graph 구성 에서 declared FK + inferred FK union, edge kind 별 표시 (`fk_declared` / `fk_inferred`)
+- 직전 chain 13 (Module:Filter Direction C 구현 trigger) ✅ 완료
+
+→ **Direction C sweep launch 전 prerequisite** = Analyzer 의 inferred_fk 보완 (본 entry).
+
+### §8. Chain Status 갱신 (5/14, GRASTFDFilter 구현 완료 + inferred_fk launch)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-12 | 직전 chains (Direction A 결과 + paper §V.5.x.M sub-sections) | ✅ 완료 |
+| **13** | **Module:Filter Direction C `GRASTFDFilter` 구현** | ✅ **완료 (commit e90d91a)** |
+| 14 | Analyzer filter_sweep_glm_9cell.md §5.4 caveat 2 보강 | 🚀 진행 중 (직전 핸드오프) |
+| 15 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+| **16** | **Analyzer Direction C inferred_fk 보완 (debit_card + card_games, GPT-4.1-mini)** | 🚀 **즉시 launch (본 entry §6 prompt)** |
+| ⏸ 17 | Root Direction C sweep launch (`GRASTFDFilter` config + sweep) | ⏸ Analyzer inferred_fk yaml 완료 의존 |
+| ⏸ 18 | Analyzer Direction C 결과 보고서 (A vs A+C 또는 anchor vs A+C ΔF1) | ⏸ Root sweep 완료 의존 |
+| ⏸ 19 | 학술 Agent Phase 5 (Direction C 결과 review + B trigger 결정) | ⏸ Direction C 결과 의존 |
+| ⏸ 20 | 학위 논문 §V.5.x.M sub-sections final integration | ⏸ Direction C 결과 후 final |
+
+### §9. 영향 범위
+
+- planning/DECISIONS.md (본 entry — Analyzer 핸드오프 정식 launch)
+- 후속:
+  - Analyzer: `notebooks/analysis_results/direction_c_inferred_fk.md` + `outputs/analysis/direction_c_inferred_fk.yaml` + (선택) `src/analysis/direction_c_infer_fk.py`
+  - Root: Direction C sweep config 의 `params.inferred_fk` 인자에 yaml 의 두 DB list 통합 + 다른 9 DBs 는 declared FK only
+
+### §10. 근거
+
+- 사용자 직접 input (Analyzer 핸드오프 prompt spec)
+- 학술 Agent Phase 3 review §2 C-1 분석 (inferred_fk_count = 0 caveat + debit_card + card_games 타겟 권고)
+- `src/modules/filters/grast_fd_filter.py` (commit e90d91a, inferred_fk 인자 schema 정합 검증)
+- `src/llm_client/api_handler.py` (OpenAI provider 의 API client 재사용)
+- `src/analysis/generate_triplet_relations.py` (기존 OpenAI 사용 사례 reference)
+
+### §11. 사용자 후속 actions
+
+1. ✅ **GRASTFDFilter 구현 confirm** (commit e90d91a 사용자 receive)
+2. 🚀 **Planner: DECISIONS prepend + Analyzer 핸드오프 prompt final 정리** (본 turn)
+3. 🚀 **사용자 → Analyzer 세션 핸드오프** (본 entry §6 prompt 그대로 붙여넣기)
+4. ⏸ **Analyzer inferred_fk yaml 완료 후 사용자 → Root 핸드오프 prep** — Direction C sweep config + launch
+
+---
+
+## 2026-05-14 (Direction A 배포 Sweep 결과 — F1 Net Negative -0.2832 + EX Maintained -0.0033 + Direction C 타겟 Launch Trigger 발효 + Guard 불필요 + B-1/B-2 Post-C)
+
+> **사용자 직전 input (5/14)**: Direction A 배포 sweep 종료 (5/13 23:51:20, wall 2h47m parallel) + Analyzer 신규 보고서 `notebooks/analysis_results/direction_a_rsl_backward_sweep.md` 작성 완료. 핵심 결과: **ΔF1 = -0.2832** (학술 Agent threshold +0.02 의 강한 negative) + **EX maintained -0.0033** (sub-noise).
+
+### §1. 핵심 정량 결과
+
+| Metric | anchor (MSTPCSTUnion+XiYan) | c0 (MSTKruskal+XiYan+SQL) | a05_23 (RSL baseline) | a05_24 (RSL +guard) | Δ a23 vs anchor |
+|---|---:|---:|---:|---:|---:|
+| R | 0.8772 | 0.8706 | **0.9456** | 0.9395 | **+0.0684** |
+| P | 0.8564 | 0.8596 | **0.4219** | 0.4202 | **-0.4345** |
+| F1 | **0.8667** | 0.8650 | **0.5835** | 0.5807 | **-0.2832** ⚠️ |
+| EX | 0.0000 ⚠️ sql_gen off | **0.5202** | **0.5169** | 0.5150 | **-0.0033** ⭐ (vs c0) |
+| mean \|final_n\| | 4.75 | — | **19.21** | — | +14.46 (4×) |
+
+→ **R-P trade-off ratio = -0.4345 / +0.0684 = -6.4× P loss per R gain** — R 회복의 dramatic disadvantage.
+
+### §2. 5 결정 사항
+
+#### 2.1 Direction A 정식 배포 보류 (production F1 net negative -0.2832)
+
+학술 Agent Phase 3 의 trigger:
+- ΔF1 ≥ +0.02 → Direction A 정식 배포
+- ΔF1 < +0.02 → Direction C 타겟 launch trigger
+
+**실측 ΔF1 = -0.2832 → Direction A 정식 배포 보류 확정**. 11 DBs 모두 net negative (best case california_schools -0.0142, worst european_football_2 -0.7019). RSL backward 의 production-stack net effect 의 negative evidence 정량.
+
+#### 2.2 Direction C 타겟 Launch Trigger 발효 ✅
+
+학술 Agent ΔF1<+0.02 조건 충족 + Phase 2 prerequisite 정합:
+- **C-1 feasibility ✅**: mean(fk_coverage_rate) = 0.7312 (threshold 0.50 의 1.46×)
+- **C-2 mid-priority** ⚠️: mean(is_join_complete) = 0.8624 (gray zone 0.80~0.95)
+
+→ **Direction C 의 GRAST-SQL FD (Hoang 2025) Steiner-tree based selective restoration 구현 launch**. Schema graph 의 structural constraint 가 backward noise 의 column 단위 filter mechanism.
+
+**구현 책임**: Module:Filter (`grast_fd_filter.py` 신규) → Root (config + sweep launch). 본 entry §6 의 module:Filter 핸드오프 spec 참조.
+
+#### 2.3 Guard 불필요 Narrative 확정 (a05_24 ΔF1 -0.0027 sub-noise, toxicology 역효과 -0.0219)
+
+학술 Agent Phase 1 의 toxicology outlier candidate (precision 0.5770) 의 selective guard 효과:
+- **Global Δ -0.0027 sub-noise** (Filter-Invariant band 안)
+- **toxicology 자체에서 guard 역효과 -0.0219** (a05_23 baseline F1=0.6945 → a05_24 +guard F1=0.6726)
+- → DB-level prior knowledge 의 generalization 약함
+
+→ **Direction A 는 unified baseline 형태가 정식** (risky_dbs guard mechanism 추가 implementation 불필요).
+
+→ **학위 논문 §V.5.x.M.3 narrative 정식**: "schema-level guard 가 prior knowledge 의 transferability 약함 — DB-specific tuning 의 generalization 어려움. Direction A 는 unified baseline 형태로 사용. Backward path 의 noise 제어를 위한 다음 단계 = Direction C 의 Steiner-tree based selective restoration."
+
+#### 2.4 B-1/B-2 (HN-SupCon) Post-Direction C 로 미루기
+
+학술 Agent Phase 1 의 후속 chain — Direction A lift > 5%p 시 B-1/B-2 launch 권고. 실측 Direction A lift = -0.2832 (negative) → B-1/B-2 trigger 조건 미충족.
+
+**B-1/B-2 priority**: **post-Direction C**. Direction C 의 F1 net effect 측정 후:
+- (a) Direction C 성공 시 (ΔF1 > +0.02) → B-1/B-2 unnecessary, post-paper backlog
+- (b) Direction C 도 negative 시 → B-1/B-2 launch trigger
+
+#### 2.5 Anchor MSTPCSTUnion 의 EX=0 Root Cause: sql_generator 비활성 (의도된 미측정)
+
+| 진단 항목 | 결과 |
+|---|---|
+| anchor `predictions.jsonl` 의 `generated_sql` | **NULL** (전체 1534 query) |
+| `ex_score` 필드 | 0 (default, SQL 미생성으로 EX 계산 불가) |
+| sql_generator 활성? | **비활성** (의도된 schema linking F1-only anchor) |
+
+→ **anchor MSTPCSTUnion 의 EX=0.0000 은 측정 실패가 아니라 의도된 미측정** (sql_generator 비활성, schema linking F1 측정 전용 anchor).
+
+→ **정확 EX 비교**: a05_23 EX 0.5169 vs **c0_xiyan_glm_sql EX 0.5202** (MSTKruskal+XiYan+SQL anchor, Filter Sweep v2 의 C0) → **ΔEX = -0.0033 sub-noise**.
+
+→ **F1 ↔ EX dichotomy**: F1 -0.2832 (heavy loss) vs EX -0.0033 (maintained) — paper §V.5.x.M.2 의 핵심 narrative.
+
+### §3. F1-EX Dichotomy (paper §V.5.x.M.2 핵심)
+
+#### 3.1 Per-difficulty F1 vs EX (n=1534)
+
+| Difficulty | n | ΔF1 vs anchor | ΔEX vs c0 |
+|---|---:|---:|---:|
+| simple | 925 | -0.3238 | **-0.0076** |
+| moderate | 464 | -0.2343 | **+0.0086** ⭐ |
+| challenging | 145 | -0.2036 | -0.0138 |
+
+→ 모든 difficulty 에서 F1 net negative (-0.20~-0.32) but EX 변화 sub-noise (-0.014~+0.009). **Moderate query 에서는 EX marginal positive** — schema noise 가 SQL gen 에 도움 가능성 (more context).
+
+#### 3.2 EX flip analysis (a05_23 vs c0, n=1534)
+
+| 카테고리 | n | % |
+|---|---:|---:|
+| 둘 다 correct | 756 | 49.3% |
+| a05_23 only correct | 37 | 2.4% |
+| c0 only correct | 42 | 2.7% |
+| net (a05_23 - c0) | **-5** | **-0.33%p** ⭐ sub-noise |
+
+#### 3.3 Mechanism — GLM 4.7 SQL gen 의 schema noise tolerance
+
+- Schema linking F1 (precision-aggressive): 정확한 column subset 식별 → backward restore noise 직접 손해
+- Downstream EX (recall-permissive): 정답 SQL 실행 결과 일치만 목표 → schema 에 정답 col 포함되면 LLM 이 noise col 무시
+- → Filter Sweep v2 의 EX-F1 Invariance narrative (F1 spread 0.0072 + EX spread 0.0085 둘 다 sub-noise) 와 **유사 패턴 재발견**. **GLM 4.7 backbone 의 schema noise tolerance** = Filter Dominance 의 EX 측 robustness mechanism.
+
+### §4. Phase 2 ↔ Phase 3 정합성 검증
+
+| Metric | Phase 2 (verification) | Phase 3 (production sweep) | 정합? |
+|---|---|---|---|
+| mean(S_restore_precision) | 0.6434 (n=488 conditional) | n/a (production aggregate) | metric scale 다름 |
+| mean(recall_gained_by_restore) | 0.5709 (n=537 conditional) | n/a | metric scale 다름 |
+| Predicted R gain ≈ 0.5709 × (1 − r_fwd) ≈ 0.07 | — | **R gain 실측 +0.0684** | ✅ **정합** |
+| Phase 2 conditional noise 35.66% | — | **P drop 실측 -0.4345** ⚠️ | Production aggregate 의 P 손실이 conditional 대비 매우 큼 |
+| Bimodal 52% perfect + 38% zero | — | 38% × P loss > 52% × R gain → F1 net negative | ✅ **정합** |
+
+→ **Phase 2 metric 은 backward restore 의 conditional quality, Phase 3 F1 은 production aggregate**. 두 metric scale 다름 — paper §V.5.x 의 dual narrative.
+
+### §5. paper_research_direction.md 갱신 항목 (Step 2)
+
+#### 5.1 §3.5 axis #9 placeholder → 정량 main update
+
+- 직전 "Direction A 배포 chain 진행 중 + ΔF1 trigger 분기 예정" → **"Direction A 배포 결과: ΔF1=-0.2832 (net negative) + EX -0.0033 (maintained) + Direction C trigger 발효"**
+
+#### 5.2 §3.5 axis #7 (Filter-Invariant) caveat 2 추가
+
+- caveat 1 (기존): C3 AdaptiveMultiAgent (R -0.1017, multi-agent vote intersection bias) — backbone 무관 architectural pathology
+- **caveat 2 (신규)**: **RSL Backward (Direction A) — F1 spread -0.2832 outlier but EX spread -0.0033 in band** ⭐. "GLM 4.7 backbone 의 schema noise tolerance 가 EX 측 Filter-Invariant 의 mechanism" 의 보완 evidence.
+
+#### 5.3 §V.5.x.M sub-section 신규 (학위 논문 §V Chapter 본문)
+
+- **§V.5.x.M.1 — Direction A 의 R-P Trade-off** (Production-Stack 한계)
+- **§V.5.x.M.2 — EX-Friendly Property (F1-EX Dichotomy)**
+- **§V.5.x.M.3 — Guard 불필요 + Direction C 의 Steiner-tree 동기**
+
+### §6. Module:Filter 핸드오프 prompt (Direction C 구현)
+
+```
+먼저 src/modules/filters/CLAUDE.md + planning/DECISIONS.md 최상단 entry (Direction A
+배포 결과 + Direction C trigger 발효) + notebooks/analysis_results/direction_a_rsl_backward_sweep.md
+§6.3 + planning/filter/filter_proposal_data_spec_2026-05-13.md §C-1/C-2 정독.
+
+작업: src/modules/filters/grast_fd_filter.py 신규 클래스 GRASTFDFilter 구현 (Hoang 2025
+GRAST-SQL FD graph + Steiner tree based selective schema restoration).
+
+Spec:
+  - Step 1 (XiYan forward, anchor 정합): S_fwd = XiYanFilter.refine(query, subgraph,
+    db_id).final_nodes
+  - Step 2 (FD Graph 구성): metadata 의 fk_to_id keys + (선택) Phase 2 의 C-1
+    inferred_fk (debit_card_specializing + card_games 의 GPT-4.1-mini 보완 필요 시
+    Analyzer 후속) — schema 의 FK relations 위 graph 구성. Phase 2 측정값 mean
+    (fk_coverage_rate) = 0.7312 활용.
+  - Step 3 (Steiner Tree based Selective Restore): query 의 mentioned cols (preliminary
+    SQL 또는 GAT score top-K) 를 terminal nodes 로 한 Steiner tree 추출. FD graph
+    위 connectivity 확보 cols 만 restore 후보로 union.
+  - Step 4 (S_struct FK/PK hardcode, anchor 정합): RSLBackwardFilter 의 _extract_fk_pk_columns
+    재사용
+  - Output: final_nodes = S_fwd ∪ S_steiner_restore ∪ S_struct
+
+Anchor framework 준수 (DECISIONS 2026-05-13 anchor framework entry §1):
+  - Builder/Selector/Extractor/SQL Gen 모두 anchor 와 동일 — Filter 만 변경
+
+LLM calls per query: 1 (XiYan forward only) — Steiner tree 는 algorithm 만, LLM
+없음. RSLBackwardFilter 의 2 LLM calls (+200%) 와 대조.
+
+Direction C 의 핵심 가설:
+  - Phase 2 C-2 의 multi-table 13.76% join col 미회복 (financial 13.21%,
+    debit_card 10.59%, card_games 9.33%) — FK declaration 부족 → join col miss 의
+    Steiner tree 기반 회복 후보. 학술 Agent Phase 3 의 debit_card + card_games
+    타겟 권고 정합.
+
+Smoke test: src/modules/filters/tests/test_grast_fd.py — Steiner tree algorithm
+unit test + per-DB sub-graph 의 connectivity 회복 시나리오 + S_steiner_restore=∅
+시 forward 보존 (recall-safe) + FK metadata 부재 fallback.
+
+구현 detail (Module:Filter 자율):
+  - Steiner tree 알고리즘: networkx 의 approx (Mehlhorn 1988) 또는 kou (Kou 1981)
+  - Terminal node 식별: preliminary SQL (RSLBackward 와 공통) vs GAT score top-K
+    선호. Cost trade-off (LLM call 추가 vs algorithm-only).
+  - inferred_fk 보완: 학술 Agent Phase 3 권고 — debit_card_specializing + card_games
+    의 GPT-4.1-mini FK 예측. 본 chain 의 prerequisite — Analyzer 후속 위임 권고.
+
+Module:Filter 본 chain 의 책임: 클래스 + smoke test 까지. Config 작성 + sweep
+launch 는 Root 세션 분담.
+
+근거:
+  - planning/DECISIONS.md 2026-05-14 Direction A 배포 결과 entry §2.2 + §6
+  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md §6.3 Direction C trigger
+  - planning/filter/filter_proposal_by_scholar_agent_phase2_2026-05-13.md (학술 Agent Phase 3
+    Direction C feasibility 권고)
+  - planning/filter/filter_full_context_2026-05-12.md (Filter 모듈 종합 보고)
+  - planning/filter/rsl_backward_filter_documentation_2026-05-13.md (Direction A 의 RSLBackwardFilter
+    참조 implementation)
+```
+
+### §7. Analyzer 핸드오프 prompt (filter_sweep_glm_9cell.md §5.4 caveat 2 보강)
+
+```
+먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (Direction A 배포
+결과 + Filter Dominance 7번째 축 caveat 2 추가) + notebooks/analysis_results/direction_a_rsl_backward_sweep.md
+§6.2 정독.
+
+작업: notebooks/analysis_results/filter_sweep_glm_9cell.md §5.4 footnote 보강
+— caveat 1 (multi-agent vote pathology, C3 outlier 기존) 외에 caveat 2 신규 추가:
+"RSL Backward (Direction A): F1 spread -0.2832 outlier but EX spread -0.0033 in
+band ⭐ — GLM 4.7 backbone 의 schema noise tolerance 가 EX 측 Filter-Invariant
+의 mechanism 의 보완 evidence."
+
+정량 인용:
+  - Filter Sweep v2 9-cell: F1 spread 0.0072 (anchor cluster sub-noise), EX spread
+    0.0085 (anchor cluster sub-noise)
+  - Direction A a05_23: ΔF1 -0.2832 (outlier), ΔEX -0.0033 (in band)
+  - Per-difficulty: simple ΔF1 -0.3238 / ΔEX -0.0076, moderate ΔF1 -0.2343 /
+    ΔEX +0.0086, challenging ΔF1 -0.2036 / ΔEX -0.0138
+
+의의: Filter Dominance 의 EX 측 robustness 가 단순 filter 종류 변경 (filter sweep
+v2 의 in-band) 뿐 아니라 production noise (RSL의 schema 4× 폭증) 까지 absorb —
+GLM 4.7 의 schema noise tolerance 의 dual evidence.
+
+근거:
+  - planning/DECISIONS.md 2026-05-14 Direction A 배포 결과 entry §3 + §5.2
+  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md §4.1 + §6.2
+```
+
+### §8. Chain Status 갱신 (5/14)
+
+| # | Chain | Status |
+|---|---|---|
+| 1-11 | 직전 chains (verification + Phase 4 review + anchor framework 정정) | ✅ 완료 |
+| 12 | Module:Filter `RSLBackwardFilter` 구현 + smoke 15/15 | ✅ 완료 (commit 462798d) |
+| **13** | **Root Direction A sweep (a05_23 + a05_24)** | ✅ **완료 (5/13 23:51, wall 2h47m)** |
+| **14** | **Analyzer Direction A 결과 보고서** | ✅ **완료 (5/14, notebooks/.../direction_a_rsl_backward_sweep.md)** |
+| 15 | Analyzer n=488 해명 분석 | 🚀 진행 중 (병행) |
+| **16** | **Planner DECISIONS prepend + paper_research_direction.md §V.5.x.M sub-section + 7-axis caveat 2** | 🚀 **즉시 (본 entry + Step 2)** |
+| **17** | **Module:Filter Direction C `GRASTFDFilter` 구현 trigger** | 🚀 **즉시 (본 entry §6)** |
+| 18 | Analyzer filter_sweep_glm_9cell.md §5.4 caveat 2 보강 | 🚀 즉시 (본 entry §7) |
+| ⏸ 19 | Analyzer inferred_fk 보완 (debit_card + card_games, GPT-4.1-mini) | ⏸ Direction C 구현 시 prerequisite |
+| ⏸ 20 | Root Direction C sweep launch | ⏸ Module:Filter `GRASTFDFilter` 완료 의존 |
+| ⏸ 21 | Analyzer Direction C 결과 보고서 (A+C 결합 ΔF1) | ⏸ Root sweep 완료 의존 |
+| ⏸ 22 | 학술 Agent Phase 5 (Direction C 결과 review + B trigger 결정) | ⏸ Direction C 결과 의존 |
+| ⏸ 23 | 학위 논문 §V.5.x.M sub-sections final integration | ⏸ Direction C 결과 후 final |
+
+### §9. 영향 범위
+
+- planning/DECISIONS.md (본 entry)
+- planning/paper_research_direction.md (§3.5 axis #9 정량 main update + axis #7 caveat 2 신규 + §V.5.x.M sub-sections 신규)
+- planning/filter/rsl_backward_filter_documentation_2026-05-13.md §11 chain status 갱신 (Direction A sweep ✅ 완료, analyzer report ✅ 완료)
+- 후속:
+  - Module:Filter `grast_fd_filter.py` 구현 (본 entry §6)
+  - Analyzer filter_sweep_glm_9cell.md §5.4 caveat 2 보강 (본 entry §7)
+  - Analyzer inferred_fk 보완 (Direction C 구현 시 prerequisite)
+  - Root Direction C sweep launch (Module:Filter 완료 후)
+
+### §10. 근거
+
+- 사용자 직접 input (Direction A 배포 결과 + 4 작업 spec)
+- notebooks/analysis_results/direction_a_rsl_backward_sweep.md §0 TL;DR + §1.2 Δ matrix + §3.1 R-P tradeoff + §4.1 EX flip + §5.4 guard 불필요 + §6.3 Direction C trigger
+- EXPERIMENT_HISTORY.md "Direction A 배포 Sweep" entry (3213~3260 lines)
+- 직전 entries: 학술 Agent Phase 4 review (5/13) + recall_gained verification (5/13) + 학술 Agent Phase 3 Response (5/13) + anchor framework 정정 (5/13)
+
+### §11. 사용자 후속 actions
+
+1. ✅ **Direction A 배포 sweep + Analyzer 보고서 receive** (사용자 진행 완료)
+2. 🚀 **Planner: DECISIONS prepend + paper §V.5.x.M sub-sections + 7-axis caveat 2** (본 turn)
+3. 🚀 **Module:Filter 핸드오프** — `GRASTFDFilter` 구현 (본 entry §6 prompt)
+4. 🚀 **Analyzer 핸드오프** — filter_sweep_glm_9cell.md §5.4 caveat 2 보강 (본 entry §7 prompt)
+5. ⏸ **Module:Filter + Analyzer 완료 후 사용자 → Root 핸드오프 prep** — Direction C sweep launch
+6. ⏸ **학술 Agent Phase 5 cover note prep** — Direction C 결과 receive 후
+
+---
+
 ## 2026-05-13 (Anchor Framework 정확한 정의 정정 — Direction A config 의 Extractor 정정 + 향후 모든 ablation 의 reference base)
 
 > **사용자 직전 input (5/13)**: "지금 anchor 프레임워크는 Enriched Builder + QCond (concat) + MST+PCST + XiYan Filter 구조야 — 지금은 Filter 를 실험하는 거니까 나머지는 anchor 와 동일해야 해. Root 에게도 알려줬으니 너도 참고해." Direction A 의 a05_23 / a05_24 config 가 Extractor 를 단일 MSTKruskalExtractor 로 설정한 것은 anchor 와 incompatibility — Root 가 정정 후 재실험.
@@ -49,7 +2183,7 @@
 
 ### §4. RSLBackwardFilter Documentation 갱신 항목
 
-- `planning/rsl_backward_filter_documentation_2026-05-13.md`:
+- `planning/filter/rsl_backward_filter_documentation_2026-05-13.md`:
   - §1.1 "학술적 위치" — anchor framework 의 정확한 정의 명시
   - §4.1 / §4.2 — anchor stack 의 정확한 module 정정 (MSTPCSTUnionExtractor)
   - §4.3 anchor 표기 — Enriched + QCondGAT (concat) + MST+PCST + XiYan 의 통합 표기
@@ -81,7 +2215,7 @@
 ### §8. 영향 범위
 
 - planning/DECISIONS.md (본 entry — 향후 모든 ablation chain reference base)
-- planning/rsl_backward_filter_documentation_2026-05-13.md (§1.1 + §4 + §11 갱신)
+- planning/filter/rsl_backward_filter_documentation_2026-05-13.md (§1.1 + §4 + §11 갱신)
 - (Root 책임) configs/experiments/abl/a05_filter_agentic/a05_23_rsl_backward_baseline.yaml + a05_24_rsl_backward_with_guard.yaml (planner 는 갱신 X, Root 세션이 정정 진행 중)
 
 ### §9. 근거
@@ -399,7 +2533,7 @@ narrative "of the gold columns that forward misses, backward recovers 57%" 정�
     ≈ mean(Δrecall_union) = 0.0771 ✓ (within rounding tolerance)
 ```
 
-→ 신규 cover note 파일 `planning/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md` 작성 (본 entry §8 인용).
+→ 신규 cover note 파일 `planning/filter/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md` 작성 (본 entry §8 인용).
 
 ### §9. paper_research_direction.md 갱신 항목
 
@@ -422,7 +2556,7 @@ narrative "of the gold columns that forward misses, backward recovers 57%" 정�
 ### §10. 영향 범위
 
 - planning/DECISIONS.md (본 entry)
-- planning/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md (신규 파일, 본 entry §8 인용)
+- planning/filter/filter_proposal_phase4_cover_note_for_scholar_agent_2026-05-13.md (신규 파일, 본 entry §8 인용)
 - planning/paper_research_direction.md §3.5 evidence 표 + Part III Chapter Base sub-section (§9 항목)
 - 후속: Module:Filter 의 정량 측정 protocol (§7 spec 갱신 인용)
 
@@ -747,7 +2881,7 @@ LLM calls: 2 (XiYan 기존 + Preliminary SQL)
 - `outputs/analysis/filter_proposal/{A2,A3,C1,C2}*.{jsonl,csv,json}` (재계산 + 신규)
 - `src/analysis/filter_proposal_{a2_backward_recall,c1_fd_graph,c2_structural_miss}.py`
 - `src/analysis/tests/test_filter_proposal_phase{1,2}.py` (28 tests passed)
-- **🆕** `planning/filter_proposal_phase2_cover_note_for_scholar_agent_2026-05-13.md` (본 entry 후속, planner 작성)
+- **🆕** `planning/filter/filter_proposal_phase2_cover_note_for_scholar_agent_2026-05-13.md` (본 entry 후속, planner 작성)
 
 ### 근거
 
@@ -886,7 +3020,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 ### 영향 범위
 
 - planning/DECISIONS.md (본 entry)
-- planning/filter_proposal_scholar_agent_response_phase2_2026-05-13.md (신규 — 학술 Agent response 보존)
+- planning/filter/filter_proposal_scholar_agent_response_phase2_2026-05-13.md (신규 — 학술 Agent response 보존)
 - (Analyzer) `src/analysis/filter_proposal_a2_backward_recall.py` bug fix
 - (Analyzer) `src/analysis/filter_proposal_c1_fd_graph.py` + `filter_proposal_c2_structural_miss.py` 신규
 - (Module:Filter, post-Phase 2) `src/modules/filters/rsl_backward_filter.py` (Direction A 배포)
@@ -947,7 +3081,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 ### Spec 파일 정정 (학술 Agent 응답 반영)
 
-`planning/filter_proposal_data_spec_2026-05-13.md` 의 다음 update:
+`planning/filter/filter_proposal_data_spec_2026-05-13.md` 의 다음 update:
 
 1. **§2 A-1 의 포함 항목** 에 `is_executable_full = None` (token limit 초과 시 nullable) + `truncated: bool` 필드 추가
 2. **§3 B-1 의 정의** 에 학술 Agent 가 요구하는 summary statistics 항목 (hard negative ratio + cosine histogram TP/FN/TN + mask=1 ratio) 명시 — xlsx full dump 대신 md summary 의 inline 표 형식
@@ -982,7 +3116,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 ### 영향 범위
 
-- `planning/filter_proposal_data_spec_2026-05-13.md` (spec 정정 — A-1 truncated 필드 + B-1/B-2 summary 항목 + Decision Rules 정식)
+- `planning/filter/filter_proposal_data_spec_2026-05-13.md` (spec 정정 — A-1 truncated 필드 + B-1/B-2 summary 항목 + Decision Rules 정식)
 - `planning/DECISIONS.md` (본 entry)
 - 후속:
   - Phase 1 결과 후 사용자가 md summary + xlsx 변환 → 학술 Agent 전달
@@ -997,7 +3131,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 - (1) **Spec 파일 정정** (즉시, planner)
 - (2) **Analyzer 핸드오프** — A-1 script 작성 (planner 작성, 사용자 전달)
-- (3) **사용자 후속 작업** — 학술 Agent 응답 md 보관 (`planning/filter_proposal_scholar_agent_response_phase1_2026-05-13.md` 신규?), Phase 1 결과 후 md summary + xlsx 변환
+- (3) **사용자 후속 작업** — 학술 Agent 응답 md 보관 (`planning/filter/filter_proposal_scholar_agent_response_phase1_2026-05-13.md` 신규?), Phase 1 결과 후 md summary + xlsx 변환
 
 ---
 
@@ -1051,7 +3185,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 ### 영향 범위
 
-- `planning/filter_proposal_data_spec_2026-05-13.md` (수정 — workflow 명시 + xlsx 옵션 추가)
+- `planning/filter/filter_proposal_data_spec_2026-05-13.md` (수정 — workflow 명시 + xlsx 옵션 추가)
 - `planning/DECISIONS.md` (본 entry)
 - Phase 1 후속 — 사용자가 변환 scripts (`scripts/jsonl_to_xlsx.py`) 작성 또는 analyzer 가 xlsx 직접 출력
 
@@ -1080,7 +3214,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 ### 결정 — 신규 산출물
 
-`planning/filter_proposal_data_spec_2026-05-13.md` 신규 (학술 Agent 논의용, ~620 lines, 7 sections + 2 appendix):
+`planning/filter/filter_proposal_data_spec_2026-05-13.md` 신규 (학술 Agent 논의용, ~620 lines, 7 sections + 2 appendix):
 
 | § | 내용 |
 |---|---|
@@ -1151,7 +3285,7 @@ Toxicology DB 의 경우: DB-level precision guard 조건부 (학술 Agent 권�
 
 ### 영향 범위
 
-- planning/filter_proposal_data_spec_2026-05-13.md (신규)
+- planning/filter/filter_proposal_data_spec_2026-05-13.md (신규)
 - planning/DECISIONS.md (본 entry)
 - 후속 (Phase 1 결과 후): 학술 Agent discussion + Direction A 배포 결정
 
@@ -2325,7 +4459,7 @@ Caveats (footnote):
   - 학술 Agent v5_plan §4.4 Direction D + §5.3 Tier 1 권고
 
 - **영향 범위**:
-  - planning/oversmoothing_v5_plan.md §4.4 + §5.3 (정정 완료)
+  - planning/oversmoothing/oversmoothing_v5_plan.md §4.4 + §5.3 (정정 완료)
   - planning/DECISIONS.md (본 entry)
   - 후속 (Module: Builder + Module: Selector + Module: PLM Encoder 또는 별도 module: encoders): V5-D-2 학습 chain 작성 (root 위임 + analyzer 후속 측정)
 
@@ -2454,7 +4588,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - `src/analysis/sgbe_score_calibration_diagnostic.py`
 - `src/pipeline/schema_linking.py` (raw_*_scores 키 보강)
 - `src/modules/selectors/tests/test_raw_score_interface.py` (5/5 통과)
-- 학술 Agent `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` §"세 그룹의 score 분포"
+- 학술 Agent `planning/filter/filtering_suggestion_by_scholar_agent_2026-05-12.md` §"세 그룹의 score 분포"
 
 ### 추가 필요 분석
 
@@ -2589,7 +4723,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-12 (SGBE Filter 채택 — Score-Gated Batch Extractive Filter 구현 + 실험 chain)
 
-> **사용자 직전 input (2026-05-12)**: 학술 Agent 와 filter 논의 후 `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` 작성. 핸드오프 작성 + 세션별 역할 분담.
+> **사용자 직전 input (2026-05-12)**: 학술 Agent 와 filter 논의 후 `planning/filter/filtering_suggestion_by_scholar_agent_2026-05-12.md` 작성. 핸드오프 작성 + 세션별 역할 분담.
 
 - **SGBE 방법론 핵심**:
 
@@ -2658,7 +4792,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - SGBE 의 over-smoothing era 한계 (score collapse 시 무력) 가 Layer 2 reinterpretation 의 추가 evidence: "R@15 ceiling 의 원인이 PLM lower bound + domain bottleneck" 가설과 정합
 
 - **근거**:
-  - `planning/filtering_suggestion_by_scholar_agent_2026-05-12.md` 의 §1~§4 (학술 Agent 의 SGBE 설계 + θ 권장 + 예상 효과 + 한계)
+  - `planning/filter/filtering_suggestion_by_scholar_agent_2026-05-12.md` 의 §1~§4 (학술 Agent 의 SGBE 설계 + θ 권장 + 예상 효과 + 한계)
   - 사용자 직접 input (구현 + 실험 + 세션별 역할 분담 요청)
   - 학술 Agent 의 5 references: Yuan 2025 / Glass 2025 / Hoang 2025 / Talaei 2024 / Maamari 2024
 
@@ -2753,7 +4887,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 > **사용자 직전 input (2026-05-12)**: "root 가 filter sweep 하는 동안 학술 agent 랑 filter module 관련 이야기 — 우리가 진행한 실험에서 filter 와 관련된 모든 맥락을 포함하는 보고서를 마크다운으로 만들어 줘".
 
 - **결정 — 신규 산출물**:
-  [`planning/filter_full_context_2026-05-12.md`](filter_full_context_2026-05-12.md) — 학술 전문 Agent 논의용 Filter Module 종합 보고서 (9 sections + Appendix A/B/C, ~550 lines).
+  [`planning/filter/filter_full_context_2026-05-12.md`](filter_full_context_2026-05-12.md) — 학술 전문 Agent 논의용 Filter Module 종합 보고서 (9 sections + Appendix A/B/C, ~550 lines).
 
 - **구조 — 9 sections + 3 appendix**:
   - §1 Problem Statement (Filter 의 pipeline role + recall/precision 양 약점 흡수)
@@ -2806,7 +4940,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - over-smoothing 종합 보고서 의 Layer 3 (Filter Dominance) narrative
 
 - **영향 범위**:
-  - planning/filter_full_context_2026-05-12.md (신규)
+  - planning/filter/filter_full_context_2026-05-12.md (신규)
   - 본 DECISIONS.md (본 entry)
   - 기존 paper §3.5 Filter Dominance evidence 표 변경 X — 본 보고서는 통합 reference
 
@@ -2825,7 +4959,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction 병렬 + Narrative pivot V5 결과 후)
 
-> **사용자 직전 input (2026-05-12)**: 학술 전문 Agent 와의 토론 결과 `planning/oversmoothing_v5_plan.md` 도출. AskUserQuestion 결정: (1) **Tier 1+2 함께 진행**: D-1 + A + B + C / (2) **Narrative pivot V5 실험 결과 후**.
+> **사용자 직전 input (2026-05-12)**: 학술 전문 Agent 와의 토론 결과 `planning/oversmoothing/oversmoothing_v5_plan.md` 도출. AskUserQuestion 결정: (1) **Tier 1+2 함께 진행**: D-1 + A + B + C / (2) **Narrative pivot V5 실험 결과 후**.
 
 - **학술 Agent 의 결정적 reinterpretation (working hypothesis, narrative pivot 보류)**:
 
@@ -2879,7 +5013,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **근거**:
   - 사용자 remote-control 직접 input + AskUserQuestion 결정
-  - `planning/oversmoothing_v5_plan.md` 학술 Agent input — 6 Direction (A~F) + Tier 권고
+  - `planning/oversmoothing/oversmoothing_v5_plan.md` 학술 Agent input — 6 Direction (A~F) + Tier 권고
   - 직전 V4-Combo-Null narrative + Three-Axis Invariance evidence
 
 - **영향 범위**:
@@ -2912,7 +5046,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 > **사용자 직전 input (2026-05-12)**: "over smoothing 문제는 별도로 학술 전문 Agent 와 논의하려고 하니 V4 까지의 보고서를 작성해 놔 줘 over smoothing 과 관련된 모든 맥락을 포함하는 보고서로 만들어 줘".
 
 - **결정 — 신규 산출물**:
-  [`planning/oversmoothing_full_context_v4_2026-05-12.md`](oversmoothing_full_context_v4_2026-05-12.md) — 학술 전문 Agent 논의용 종합 보고서 (10 sections + Appendix A/B/C/D, ~580 lines).
+  [`planning/oversmoothing/oversmoothing_full_context_v4_2026-05-12.md`](oversmoothing_full_context_v4_2026-05-12.md) — 학술 전문 Agent 논의용 종합 보고서 (10 sections + Appendix A/B/C/D, ~580 lines).
 
 - **구조 — 10 sections + 4 appendix**:
   - §1 Problem Statement (V-3-ext + qcond R@15 ceiling ~0.61)
@@ -2949,7 +5083,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - V4-Combo-Null 결과 (5/12 완료) + Three-Axis Invariance + 10-trial null + APA 이론 framework 의 통합 narrative
 
 - **영향 범위**:
-  - planning/oversmoothing_full_context_v4_2026-05-12.md (신규)
+  - planning/oversmoothing/oversmoothing_full_context_v4_2026-05-12.md (신규)
   - 본 DECISIONS.md (본 entry)
   - 기존 4 over-smoothing 문서 변경 X — 본 보고서는 별도 산출물
 
@@ -3071,12 +5205,12 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **Narrative integration 4 위치 (planner 5/12 작업)**:
 
-  1. **planning/advisor_briefing_oversmoothing_2026-05-11.md**:
+  1. **planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md**:
      - §3 (Mitigation 진화): 8-trial 표 → **10-trial 표** (V4-A / V4-B 추가). 결정적 전환점 4 신설 ("V4 Architectural Intervention 의 이중 fail" — combo + row-stoch destroy 모두 fail narrative).
      - §4 (최종 mechanism 정식): "Mech(ii-b) DOMINANT 5/5 ⭐ absolute confirm" 으로 격상. 기존 "softmax × weighted-mean combo" → "fundamental architectural limitation" 정식. 4 pillar evidence box 신설.
      - §7 (진행 중 + 향후): V4 결과 (5/12 완료) 반영. 시도 8/9 V4 결과 + 시도 10 (v3 #2 Max aggregation, 5/14 ETA) 만 진행 중. Post-paper future work — V4 fail 후 새 candidate (Physics-Informed GRAND/GraphCon / Repulsive FAGCN / Domain-specific SBP).
 
-  2. **planning/oversmoothing_root_cause_report_2026-05-11.md**:
+  2. **planning/oversmoothing/oversmoothing_root_cause_report_2026-05-11.md**:
      - §3.1 Mechanism 평가 matrix: 8 trial → 10 trial 갱신. mech(ii-b) "DOMINANT 4/5" → "DOMINANT 5/5 ⭐ absolute confirm".
      - §3.2 Mech(ii-b) 정식화 표: 기존 (8-trial) ↔ 신규 (10-trial) contrast 신설. V4-A combo (산술합 fail) + V4-B row-stoch destroy (이론 보장 실증 fail) 두 행 추가.
      - §3.3 10 Mitigation 표: 시도 10 행까지 확장 (8 → 10).
@@ -3098,8 +5232,8 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 학회 narrative 의 2 시나리오 중 시나리오 2 (V4 둘 다 null → mech(ii-b) 5/5 절대 confirm + Filter Dominance 6번째 축 narrative 결정적 강화) 실현
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §3 + §4 + §7 (수정 완료)
-  - planning/oversmoothing_root_cause_report_2026-05-11.md §3.1 + §3.2 + §3.3 + §5 (수정 완료)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §3 + §4 + §7 (수정 완료)
+  - planning/oversmoothing/oversmoothing_root_cause_report_2026-05-11.md §3.1 + §3.2 + §3.3 + §5 (수정 완료)
   - planning/paper_research_direction.md §3.5 evidence #6 line 505 (수정 완료)
   - planning/DECISIONS.md (본 entry)
 
@@ -3116,7 +5250,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-11 (Mitigation V4 채택 — Architectural Intervention 두 Phase + Root chain 위임)
 
-> **사용자 직전 input (remote-control, 2026-05-11)**: "연구 전문 Agent 의 조언을 바탕으로 작성한 프롬프트를 활용해 구현 및 실험 진행이 가능하도록 핸드오프 작성" — Prerequisite: `planning/oversmoothing_solution_methodology_2026-05-11_apa.md` (보고서 C-1 + C-2 채택).
+> **사용자 직전 input (remote-control, 2026-05-11)**: "연구 전문 Agent 의 조언을 바탕으로 작성한 프롬프트를 활용해 구현 및 실험 진행이 가능하도록 핸드오프 작성" — Prerequisite: `planning/oversmoothing/oversmoothing_solution_methodology_2026-05-11_apa.md` (보고서 C-1 + C-2 채택).
 
 - **결정 — Mitigation V4 (Architectural Intervention) 채택**:
 
@@ -3233,8 +5367,8 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - `EXPERIMENT_HISTORY.md` line 1308 — `query_supernode=False 계열 (T1~T6, T8, s06 B0~B5E 등)` 일관 명시
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1 + §6 (수정 완료)
-  - planning/oversmoothing_root_cause_report_2026-05-11.md §1 + §5.2 (수정 완료)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §1 + §6 (수정 완료)
+  - planning/oversmoothing/oversmoothing_root_cause_report_2026-05-11.md §1 + §5.2 (수정 완료)
   - 본 DECISIONS.md (본 entry)
 
 - **에스컬레이션 필요 여부**: 없음. 사용자 결정 (A) narrative 보강만 — 즉시 처리 완료.
@@ -3251,7 +5385,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 > **사용자 직전 input (2026-05-11)**: "지금까지 정리된 내용을 바탕으로 Over-Smoothing의 주된 원인은 무엇이며 그 근거는 어떻게 되는지 보고서를 작성해 줘"
 
 - **결정 — 신규 보고서 작성** (advisor briefing 과 별도 파일):
-  1. **(a) 신규 산출물**: [`planning/oversmoothing_root_cause_report_2026-05-11.md`](oversmoothing_root_cause_report_2026-05-11.md) — 6 sections, ~240 lines.
+  1. **(a) 신규 산출물**: [`planning/oversmoothing/oversmoothing_root_cause_report_2026-05-11.md`](oversmoothing_root_cause_report_2026-05-11.md) — 6 sections, ~240 lines.
      - §1 분석 framework (4 mechanism 후보 + 핵심 측정 $\bar{c}_L$)
      - §2 근거 chain (4 evidence pillar: mech(iii) 부정 / mech(ii-a) partial mit / mech(ii-b) partial 부정 / mech(i-b) hierarchy)
      - §3 종합 — Softmax-Weighted-Mean Combo Root Cause (sub-mechanism 분리 + 8 mitigation null)
@@ -3283,7 +5417,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - Step 3 grad_flow 재측정 (4 ckpt ρ_skip 정확 수치) + Multi-DB attention 재측정 (4 ckpt L2 top5_conc spread 0.0023)
 
 - **영향 범위**:
-  - planning/oversmoothing_root_cause_report_2026-05-11.md (신규)
+  - planning/oversmoothing/oversmoothing_root_cause_report_2026-05-11.md (신규)
   - 본 DECISIONS.md (본 entry)
   - 기존 advisor briefing / summary 변경 X — 본 보고서는 별도 산출물
 
@@ -3320,7 +5454,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 두 measurement 가 직전 분리 narrative 였으나 본 review 에서 결합 가치 확인 — 학회 contribution candidate 강화
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §2 (통합 callout 추가) + §6 (제목/내용 확장)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §2 (통합 callout 추가) + §6 (제목/내용 확장)
   - 본 DECISIONS.md (본 entry)
 
 - **에스컬레이션 필요 여부**: 없음. 사용자가 advisor briefing 최종본 읽고 학회 발표 준비.
@@ -3355,7 +5489,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **갱신된 산출물**:
   - `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 v1 ckpt 표 확장 (p80, qcond_nl3 → 4 ckpt 전체), §4.2(a) narrative "Phase 1 4 ckpt 의 skip_dict 3.24~4.49 ratio 2.85~3.04 spread 0.19" 로 갱신, §6.2 종합 dashboard 에 topk20/abstau07 행 추가
-  - `planning/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 에 4 ckpt × ρ_skip 표 추가 (advisor 보고용 톤 유지 — 간결 표 + "어떤 학습 변형도 ρ_skip 을 의미 있게 흔들지 못함" narrative)
+  - `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 에 4 ckpt × ρ_skip 표 추가 (advisor 보고용 톤 유지 — 간결 표 + "어떤 학습 변형도 ρ_skip 을 의미 있게 흔들지 못함" narrative)
   - `outputs/analysis/dsn_oversmoothing/batch_summary.json` — step3 key 채워짐 (4 ckpt × grad_mean / grad_ratio / entropy / topk_conc / num_layers)
 
 - **에스컬레이션 / 후속**:
@@ -3373,7 +5507,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   1. **코드 patch**: `src/analysis/dsn_oversmoothing_analysis.py:main` 에서 step3 결과를 `results['step3']` 로 dump 하도록 수정 (현재 누락 — PNG 만 출력되고 raw json 없음). 또는 별도 `outputs/analysis/dsn_oversmoothing/grad_summary.json` 출력.
   2. **재측정**: 4 ckpt (p80, topk20, abstau07, qcond_nl3) × single-DB n=50 (직전 protocol 일관). CPU forward ~1-2 min wall.
   3. **Analyzer 보고서 보강**: `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 표에 topk20, abstau07 추가 (lin_dict / conv_L1/L2/L3 / out_lin_dict / skip_dict / ratio 모든 column).
-  4. **Advisor briefing 보강**: `planning/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 부분에 4 ckpt × ρ_skip 표 추가. 표 형식 간결 (advisor briefing 톤 유지).
+  4. **Advisor briefing 보강**: `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 부분에 4 ckpt × ρ_skip 표 추가. 표 형식 간결 (advisor briefing 톤 유지).
   5. **DECISIONS.md prepend**: 재측정 완료 entry.
 
 - **근거**:
@@ -3389,7 +5523,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **영향 범위**:
   - src/analysis/dsn_oversmoothing_analysis.py (코드 patch 1 곳)
   - notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md §4.1 (topk20, abstau07 추가)
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §2 (4 ckpt × ρ_skip 표 신규)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §2 (4 ckpt × ρ_skip 표 신규)
   - planning/DECISIONS.md (재측정 완료 entry, root 작성)
 
 - **에스컬레이션 필요 여부**: root 세션에 chain 위임 (코드 patch + 재측정 + 보고서 보강 + advisor briefing 보강 + DECISIONS prepend).
@@ -3437,9 +5571,9 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 학회 발표 톤: "이렇게 진단했고, 이런 시도를 거쳤고, 이게 의미하는 바입니다" — 출처 / 분석 코드 / 보고서 reference 모두 부담
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md (전면 재작성, ~590 → ~230 lines)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md (전면 재작성, ~590 → ~230 lines)
   - 본 DECISIONS.md (본 entry)
-  - **기존 정량 evidence 의 백업**: planning/over_smoothing_research_summary.md (~1100+ lines reference document, §A 정의 + §B 측정 metric + §C mitigation 수식 + 8 stage detailed evidence) 가 학위 논문 Part III chapter draft base 로 그대로 보존. advisor briefing 은 보고용 narrative only.
+  - **기존 정량 evidence 의 백업**: planning/oversmoothing/over_smoothing_research_summary.md (~1100+ lines reference document, §A 정의 + §B 측정 metric + §C mitigation 수식 + 8 stage detailed evidence) 가 학위 논문 Part III chapter draft base 로 그대로 보존. advisor briefing 은 보고용 narrative only.
 
 - **에스컬레이션 필요 여부**: 없음. 사용자가 새 narrative 톤 확인 후 학회 발표 준비 가능.
 
@@ -3466,7 +5600,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - advisor briefing 작성 시 root 가 표 width 가독성 위해 L2 만 인용한 것으로 보임 — narrative 정확성 측면에서 보강 필요
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.3 (수정 완료, top5_conc 표 + entropy 표 분리)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §1.3 (수정 완료, top5_conc 표 + entropy 표 분리)
   - 본 DECISIONS.md (본 entry)
 
 - **에스컬레이션 필요 여부**: 없음.
@@ -3488,7 +5622,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - grep `^\|.*\$[^$]*\|[^$]*\$` 로 안전 점검: line 95 / 437 의 layer-wise cosine 표 header (`$\bar{c}_{L_0}$ | $\bar{c}_{L_1}$ | ...`) 는 false positive — 각 cell 마다 `$...$` 가 닫히고 pipe 는 cell 구분자만 (정상).
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.2 + §2.2 (수정 완료)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §1.2 + §2.2 (수정 완료)
   - 본 DECISIONS.md (본 entry)
   - 다른 표는 모두 정상 (수식 내부 pipe 없음 확인)
 
@@ -3539,7 +5673,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **영향 범위**:
   - planning/DECISIONS.md (본 entry)
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md (보강 미정, Option A/B 사용자 결정 대기)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md (보강 미정, Option A/B 사용자 결정 대기)
   - 본 검토 자체는 read-only — 분석 보고서 / multi-DB 측정 / paradox narrative 모두 변경 없음
 
 - **에스컬레이션 필요 여부**: 없음. Analyzer 보고서의 priority 낮음 분류가 narrative 일관성 측면에서 valid 함을 planner 가 정량 검증. 단 사용자가 Option A/B 결정 시 advisor briefing 보강 진행.
@@ -3550,7 +5684,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-11 (advisor briefing narrative final review 완료 — paradox flow 학회 자연성 confirm + Stage 1 → Stage 4 causal chain 명시)
 
-> **사용자 직전 input (remote-control, 2026-05-11)**: "planning/advisor_briefing_oversmoothing_2026-05-11.md 의 narrative final review 를 수행. 검토 포인트: (1) paradox 1 톤다운 + paradox 3 NEW 가 학회 narrative 자연 흐름 형성? (2) §1.4 mech(ii-a) 검증 불가 → LayerNorm/GIN 직접 표적만 유일 검증 통로 명시할지?"
+> **사용자 직전 input (remote-control, 2026-05-11)**: "planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md 의 narrative final review 를 수행. 검토 포인트: (1) paradox 1 톤다운 + paradox 3 NEW 가 학회 narrative 자연 흐름 형성? (2) §1.4 mech(ii-a) 검증 불가 → LayerNorm/GIN 직접 표적만 유일 검증 통로 명시할지?"
 
 - **검토 결과**:
   1. **Paradox flow 학회 narrative 자연성 — confirm ✅**
@@ -3572,9 +5706,9 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - Paradox 3 의 학회 narrative 가치 평가: 학습 변형 invariance 는 "mitigation 만이 유일 검증 통로" 라는 결론의 직접 정당화 — Stage 4 motivation 강화
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §1.4 + §4.1 (수정 완료)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §1.4 + §4.1 (수정 완료)
   - 본 DECISIONS.md (본 entry)
-  - planning/over_smoothing_research_summary.md — narrative final review 적용 미정 (학위 논문 chapter draft 용 정량 evidence 중심 문서라서 narrative flow 강조는 advisor briefing 만으로 충분)
+  - planning/oversmoothing/over_smoothing_research_summary.md — narrative final review 적용 미정 (학위 논문 chapter draft 용 정량 evidence 중심 문서라서 narrative flow 강조는 advisor briefing 만으로 충분)
 
 - **에스컬레이션 필요 여부**: 없음. 사용자가 advisor briefing 최종본 읽고 학회 발표 준비 가능.
 
@@ -3626,8 +5760,8 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - `outputs/analysis/dsn_oversmoothing_multi_db/{p80, topk20, abstau07, qcond_nl3}/{attention_metrics, per_db_breakdown, fail_log}.json + plots`
   - `outputs/analysis/dsn_oversmoothing_multi_db/cross_ckpt_summary.json + comparison_4ckpt_multi_db.png`
   - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` (analyzer 보고서 형식)
-  - `planning/advisor_briefing_oversmoothing_2026-05-11.md` §0/§1.3/§1.4 갱신 (수치 + 새 paradox 추가)
-  - `planning/over_smoothing_research_summary.md` §1.4 갱신 (수치 + caveat 갱신)
+  - `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §0/§1.3/§1.4 갱신 (수치 + 새 paradox 추가)
+  - `planning/oversmoothing/over_smoothing_research_summary.md` §1.4 갱신 (수치 + caveat 갱신)
 
 - **에스컬레이션 / 후속**:
   - **planner 세션**: advisor briefing narrative final review — paradox 3개 중 paradox 1 톤다운 + paradox 3 (NEW, ckpt-invariance) 추가가 학회 narrative 에 자연 흐름 형성하는지 검토. 학회 보고용 시 mech(ii-a) softmax over-concentration 가설은 ckpt 변경으로 검증 불가 → LayerNorm/GIN 직접 표적 mitigation 만이 유일 검증 통로 명시.
@@ -3717,8 +5851,8 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 직전 advisor briefing 의 "0.91 / 0.51" 수치 출처는 추측: phase 2 b5_mit ckpt 의 col→tab top5_conc=0.6715 + mitigation 후 multi-DB 측정값 0.7144 등을 잘못 가져온 것으로 추정.
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md §0/§1.3/§1.4 (수정 완료)
-  - planning/over_smoothing_research_summary.md §1.4 (수정 완료)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §0/§1.3/§1.4 (수정 완료)
+  - planning/oversmoothing/over_smoothing_research_summary.md §1.4 (수정 완료)
   - planning/DECISIONS.md (본 entry)
 
 - **에스컬레이션 필요 여부**: Analyzer 보고서 보완 candidate — `dsn_phase2_mitigation_null_mechanism.md` §3 의 4 ckpt 표에 topk20, abstau07 추가 (현재 raw JSON 만 존재). 단 직전 narrative 의 main 목적은 Phase 2 b8 mit 효과 비교라 보완 priority 는 낮음 — Phase 1 진단 narrative 가 필요하면 별도 analyzer 요청 큐에 등록.
@@ -3732,7 +5866,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 > **사용자 직전 input (2026-05-11)**: "src/analysis/dsn_oversmoothing_analysis.py 을 기반으로 지도교수님께 이런 상황임을 보고하는 자료를 만드려고 해 / 전체적으로 이야기의 흐름에 공백이 좀 있는 것 같아 / 각 분석마다 왜 그런 분석을 했고 결과가 어땠으며 어떤 이유로 다른 분석을 시도한 건지 흐름이 잘 정리되면 좋겠네"
 
 - **결정**:
-  1. **(a) 신규 산출물** — [`planning/advisor_briefing_oversmoothing_2026-05-11.md`](advisor_briefing_oversmoothing_2026-05-11.md): 분석 흐름 중심 narrative 보고 자료. 기존 `over_smoothing_research_summary.md` 가 정량 evidence + 수식 reference 중심인 반면, advisor briefing 은 **stage 별 "왜 했는지 → 결과 → 다음 분석으로 간 이유"** 의 narrative flow 중심.
+  1. **(a) 신규 산출물** — [`planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md`](advisor_briefing_oversmoothing_2026-05-11.md): 분석 흐름 중심 narrative 보고 자료. 기존 `over_smoothing_research_summary.md` 가 정량 evidence + 수식 reference 중심인 반면, advisor briefing 은 **stage 별 "왜 했는지 → 결과 → 다음 분석으로 간 이유"** 의 narrative flow 중심.
 
   2. **(b) 두 문서 역할 분리**:
      - `over_smoothing_research_summary.md` (5/11 원본) — 학위 논문 Part III chapter draft 용 정량 evidence + 수식 reference (15 sections, ~600 lines, §A 정의 + §B 측정 metric + §C mitigation 수식)
@@ -3758,7 +5892,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 지도교수 보고용 자료는 별도 narrative 중심 문서가 적합 — 두 문서 역할 분리
 
 - **영향 범위**:
-  - planning/advisor_briefing_oversmoothing_2026-05-11.md (신규)
+  - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md (신규)
   - 기존 `over_smoothing_research_summary.md` 변경 X (reference document 그대로 보존)
   - DECISIONS.md (본 entry)
 
@@ -3773,7 +5907,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 > **사용자 직전 input (2026-05-11)**: "지금까지 Over-Smoothing 문제를 해결하기 위해 진행한 노력을 정리하고 싶어 / 새로운 마크다운으로 정리해 주는데 내용을 analyzer 의 분석 결과 마크다운 보고서를 참고해서 작성해 줘"
 
 - **결정**:
-  1. **(a) 신규 산출물** — [`planning/over_smoothing_research_summary.md`](over_smoothing_research_summary.md): planner 신규 narrative 정리 마크다운 (15 sections, ~600 lines). analyzer 6 보고서 직접 인용 형태:
+  1. **(a) 신규 산출물** — [`planning/oversmoothing/over_smoothing_research_summary.md`](over_smoothing_research_summary.md): planner 신규 narrative 정리 마크다운 (15 sections, ~600 lines). analyzer 6 보고서 직접 인용 형태:
      - [`dsn_oversmoothing_analysis.md`](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) (Phase 1 진단)
      - [`dsn_phase2_mitigation_null_mechanism.md`](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4-mech)
      - [`dsn_phase3_mitigation_results.md`](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) (4-trial dominance)
@@ -3813,7 +5947,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - **선행 분석**: analyzer 9 보고서 (Phase 1 진단부터 8-trial Final 까지 포함)
 
 - **영향 범위**:
-  - **신규 산출물 `planning/over_smoothing_research_summary.md`** — 학위 논문 Part III chapter draft 작성 base (15 sections, ~600 lines, analyzer 9 보고서 직접 인용)
+  - **신규 산출물 `planning/oversmoothing/over_smoothing_research_summary.md`** — 학위 논문 Part III chapter draft 작성 base (15 sections, ~600 lines, analyzer 9 보고서 직접 인용)
   - **DECISIONS 본 엔트리** — 산출물 위치 + 정리 구조 + 활용 목적 명시
   - **paper_research_direction.md** 영향 X (직전 entries 의 갱신 그대로 — 본 마크다운은 별도 narrative 정리)
   - **presentation_brief_2026-04-28.md** 영향 X (직전 §14.15 갱신 그대로)

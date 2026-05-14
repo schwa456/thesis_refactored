@@ -1033,7 +1033,7 @@ else:
 > 근거:
 > - planning/DECISIONS.md 2026-05-13 (V5 Sweep Launch 재시도) — module:selector 가 처음부터 V5-A/B/C 코드 구현
 > - planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan) — Tier 1+2 4 Direction 병렬 결정
-> - planning/oversmoothing_v5_plan.md §4.1/§4.2/§4.3 (학술 Agent 의 mechanism reference)
+> - planning/oversmoothing/oversmoothing_v5_plan.md §4.1/§4.2/§4.3 (학술 Agent 의 mechanism reference)
 > - V4 era 의 LN+GIN combo + AERO Softplus + Symmetric Norm 이중 fail → mech(ii-b) 5/5 absolute confirm → V5 architectural intervention 의 4 direction 후속
 
 ##### V5-A `GATEGATv2Conv` (alias `GATEConv`) — Conservation Law 수정
@@ -1115,7 +1115,7 @@ AERO Theorem 3 SR2OS guarantee 의 본 도메인 transfer 검증 — V4-B H10.1c
 
 > 근거:
 > - planning/DECISIONS.md 2026-05-14 (학술 Agent Phase 5 Response 통합) §4 Direction B HN-SupCon Spec + §6 Risk Mitigation + Smoke + Fallback
-> - planning/filter_proposal_by_scholar_agent_phase5_2026-05-14.md §3.1~§3.5 (Piao 2025 LitE-SQL 원문 확정값)
+> - planning/filter/filter_proposal_by_scholar_agent_phase5_2026-05-14.md §3.1~§3.5 (Piao 2025 LitE-SQL 원문 확정값)
 > - 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent Phase 5 §0 + Q4(c) 권고). EX 개선 아닌 Filter-Invariant boundary 추가 evidence — null result 도 학술적 가치.
 
 ##### Reference

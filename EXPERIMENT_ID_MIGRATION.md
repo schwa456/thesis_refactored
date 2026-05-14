@@ -1194,6 +1194,98 @@ vs vLLM era `s03_a07_01_enriched_gat` (F1≈0.7140): **+0.0411**.
 
 ---
 
+## Direction C 배포 Sweep (GRASTFDFilter + GPT-4.1-mini inferred FK, 2026-05-14, 1 신규 ID — 🎯 Direction A 비교 sub-noise + 비용 -33%)
+
+### 명명 규칙 — `a05_25_grast_with_inferred_fk_glm`
+
+신규 ID:
+- `a05_25_grast_with_inferred_fk_glm` — Direction C 본체 (GRASTFDFilter + 4 inferred FK)
+
+### 폴더 구조 정합
+
+- Config: `configs/experiments/abl/a05_filter_agentic/a05_25_grast_with_inferred_fk_glm.yaml`
+- Output: `outputs/experiments/abl/a05_filter_agentic/a05_25_grast_with_inferred_fk_glm/`
+- Log: `logs/grast_fd_sweep/sweep_20260514_024339.log`
+- 학습 ckpt 없음 (inference only, anchor ckpt 재사용: `best_gat_qcond_nl3.pt`)
+
+### Stack 정합
+
+- Builder + Selector + Extractor: Direction A (a05_23) 와 동일 (EnrichedHeteroGraph + EnsembleSelector α=0.5 top_k=20 + MSTPCSTUnionExtractor)
+- **Filter**: RSLBackwardFilter → **GRASTFDFilter** (Module:Filter commit e90d91a)
+  - 핵심 차이: LLM-based backward (Direction A) → algorithmic Steiner-tree restore + FK/PK hardcode (Direction C)
+  - Inferred FK: flat list 4개 (debit_card_specializing 3 + card_games 1)
+- SQL Generator: LLMSQLGenerator (GLM 4.7 evidence-aware, 동일)
+
+### 결과 + Δ vs Direction A
+
+| ID | R | P | F1 | EX | LLM calls | ΔF1 (vs a05_23) |
+|---|---:|---:|---:|---:|---:|---:|
+| a05_25 | 0.9251 | 0.4218 | **0.5794** | 0.5176 | 3068 (-33%) | **-0.0039** ≈ zero |
+
+### Config 주의사항
+
+- `connectivity_extractor.name: "MSTPCSTUnionExtractor"` + params (Direction A 동일: score_threshold=0.1, base_cost=1.0, belongs_to_cost=0.01, fk_cost=0.05, macro_cost=0.5)
+- `filter.name: "GRASTFDFilter"` + params:
+  - `provider="glm", model_name="zai-org/glm-4.7", temperature=0.0`
+  - `xiyan_max_iteration=1, xiyan_num_examples=3, num_examples=3`
+  - `inferred_fk: List[str]` (flat, 4개) — ⚠ yaml dict 형식 입력 시 list(dict)=keys wrong, flat list 필수
+  - `terminal_source="forward", top_k=10, steiner_method="default", max_restore=30, fk_pk_hardcode=true`
+- `sql_generator.enabled: true` (EX 측정)
+- Wrapper script: `scripts/run_grast_fd_sweep.sh` (single cell, GPU 0)
+
+### 결론
+
+- 1 신규 ID 등재 (a05_25, inference only)
+- Direction C ≈ Direction A (F1 sub-noise -0.0039) + 비용 효율 -33% LLM call / -48% token / -53% time
+- Filter Dominance 7번째 축 dual evidence (Direction A + Direction C 모두 F1 outlier, EX in-band)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Direction C 배포 Sweep (2026-05-14)](EXPERIMENT_HISTORY.md)
+
+---
+
+## Direction A 배포 Sweep (RSLBackwardFilter baseline + with_guard, 2026-05-13, 2 신규 ID — 🎯 Direction C 타겟 launch trigger)
+
+### 명명 규칙 — `a05_2{3,4}_rsl_backward_{baseline,with_guard}`
+
+신규 ID:
+- `a05_23_rsl_backward_baseline` — Direction A 본체 (risky_dbs=[])
+- `a05_24_rsl_backward_with_guard` — toxicology DB 에 guard (risky_dbs=["toxicology"])
+
+### 폴더 구조 정합
+
+- Configs: `configs/experiments/abl/a05_filter_agentic/a05_2{3,4}_*.yaml`
+- Outputs: `outputs/experiments/abl/a05_filter_agentic/a05_2{3,4}_*/`
+- Logs: `logs/experiments/abl/a05_filter_agentic/a05_2{3,4}_*/`
+- 학습 ckpt 없음 (inference only, anchor ckpt 재사용: `best_gat_qcond_nl3.pt`)
+
+### Stack 정합
+
+- Builder + Selector: c0 XiYan anchor 와 동일 (EnrichedHeteroGraph + EnsembleSelector α=0.5 top_k=20)
+- **Extractor**: MSTKruskal → **MSTPCSTUnionExtractor** (사용자 5/13 지시, 현재 anchor)
+- Filter: XiYanFilter → **RSLBackwardFilter** (Module:Filter commit 462798d)
+- SQL Generator: LLMSQLGenerator (GLM 4.7 evidence-aware, 동일)
+
+### 2 cell 결과 + Δ vs anchor
+
+| ID | risky_dbs | R | P | F1 | EX | ΔF1 (vs MSTPCSTUnion+XiYan F1=0.8666) |
+|---|---|---:|---:|---:|---:|---:|
+| a05_23 | `[]` | 0.9456 | 0.4219 | **0.5833** | 0.5169 | **-0.2833** ⚠ |
+| a05_24 | `["toxicology"]` | 0.9395 | 0.4202 | 0.5806 | 0.5150 | -0.2860 |
+
+### Config 주의사항
+
+- `connectivity_extractor.name: "MSTPCSTUnionExtractor"` + params `score_threshold=0.1, base_cost=1.0, belongs_to_cost=0.01, fk_cost=0.05, macro_cost=0.5`
+- `filter.name: "RSLBackwardFilter"` + params `model_name="zai-org/glm-4.7", provider="glm", xiyan_max_iteration=1, xiyan_num_examples=3, num_examples=3, fk_pk_hardcode=true, risky_dbs=[ ...], temperature=0.0`
+- `sql_generator.enabled: true` (EX 측정)
+- Wrapper script: parallel pattern (`scripts/run_rsl_backward_sweep.sh`) — GPU 0=a05_23, GPU 1=a05_24
+
+### 결론
+
+- 2 신규 ID 등재 (a05_23 + a05_24, inference only)
+- Direction A 단독 F1 net negative (-0.2833) → Direction C 타겟 launch trigger
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Direction A 배포 Sweep (2026-05-13)](EXPERIMENT_HISTORY.md)
+
+---
+
 ## DSN Mitigation V5 Tier 1+2 4-Direction 학습 (V-3-ext 단계 9, 2026-05-12, 5 신규 ckpt 예정 — 🚧 코드 준비 + Launch 보류)
 
 ### 명명 규칙 — `best_gat_directed_supernode_p80_v5{a_gate, b_gcnii_L{2,4,6}, c_aero_full}.pt`

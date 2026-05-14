@@ -3210,9 +3210,168 @@ Launch 진행 (module:filters 의 option 추가 후) 시 root 재호출 시 다�
 
 ---
 
+## Direction C 배포 Sweep (GRASTFDFilter + GPT-4.1-mini inferred FK, 2026-05-14, 🎯 Direction A 비교 sub-noise + 비용 효율 우세)
+
+근거: planning/DECISIONS.md 2026-05-14 (Direction C inferred_fk Analyzer 핸드오프 정식 launch). Module:Filter commit e90d91a (`GRASTFDFilter` — XiYan forward + FD graph 위 Steiner-tree restore + FK/PK hardcode). notebooks/analysis_results/direction_c_inferred_fk.md §5 (GPT-4.1-mini inferred FK 4개 yaml). Direction A (a05_23 F1=0.5833, EX=0.5169) 의 ΔF1 trigger (<0.02) 충족 → Direction C 타겟 launch.
+
+### Stack
+
+- Builder: EnrichedHeteroGraphBuilder
+- Selector: EnsembleSelector (best_gat_qcond_nl3.pt, α=0.5, top_k=20)
+- Extractor: **MSTPCSTUnionExtractor** (Direction A 정합)
+- Filter: **GRASTFDFilter** (provider=glm, model_name=zai-org/glm-4.7, terminal_source=forward, top_k=10, steiner_method=default, max_restore=30, fk_pk_hardcode=true)
+- SQL Generator: LLMSQLGenerator (GLM 4.7, evidence-aware)
+
+### Inferred FK (4개, flat list, GPT-4.1-mini predictions)
+
+- `transactions_1k.CustomerID->customers.CustomerID` (debit_card_specializing)
+- `transactions_1k.GasStationID->gasstations.GasStationID` (debit_card_specializing)
+- `transactions_1k.ProductID->products.ProductID` (debit_card_specializing)
+- `cards.setCode->sets.code` (card_games)
+
+⚠ yaml format caveat: 사용자 prompt + direction_c_inferred_fk.md §5.1 의 yaml = Dict[db_id, List[str]] 형식이지만, GRASTFDFilter 의 `__init__` 은 `inferred_fk: Optional[List[str]]` flat list expect. 본 config 는 flat list 로 변환 — `_build_fd_graph` (line 240-241) 가 query 별 db_id schema match 시만 적용. 후속 권고: module:filter 의 `inferred_fk: Union[List, Dict]` patch.
+
+### 운영 이력
+
+- **2026-05-14 02:43:39 launch (single cell, GPU 0)**: V5 학습 (GPU 0 V5-A + GPU 1 V5-C) 공존 — GPU 0 memory 2.5GB/24GB 안전. GLM API V5 와 충돌 없음 (V5 = local GAT).
+- **2026-05-14 04:33:26 DONE (wall 1h50m)**: Direction A 의 2h47m parallel 보다 짧음 (single cell 만 + GRAST-FD 의 algorithmic restore 빠른 per-q). per-q 4.37s (Direction A 6.04s 대비 -28%).
+
+### 결과 — a05_25_grast_with_inferred_fk_glm (1534 BIRD-Dev)
+
+| Cell | R | P | F1 | EX | LLM calls | Filter time mean | Token in |
+|---|---|---|---|---|---|---|---|
+| **a05_25** | **0.9251** | **0.4218** | **0.5794** | **0.5176** | 3068 (2/q) | 1.90s | 7.4M |
+
+### Δ 분석 매트릭스
+
+| 비교 | ΔR | ΔP | ΔF1 | ΔEX |
+|---|---|---|---|---|
+| **vs Direction A (a05_23 F1=0.5833)** | -0.0205 | -0.0001 | **-0.0039** ≈ zero | +0.0007 ≈ zero |
+| vs anchor (MSTPCSTUnion+XiYan F1=0.8666) | +0.0479 | -0.4346 | **-0.2872** ⚠ | +0.5176* |
+
+\* Anchor EX=0.0 측정 실패 — 정확 ΔEX 분석은 analyzer 진단 필요.
+
+### Inferred FK 적용 통계
+
+| DB | inferred FK 수 | 진입 query | 비중 |
+|---|---|---|---|
+| card_games | 1 (`cards.setCode->sets.code`) | **191** | 12.4% |
+| debit_card_specializing | 3 | **64** | 4.2% |
+| **합계** | 4 | **255** | 16.6% |
+
+### 핵심 발견
+
+1. **Direction C ≈ Direction A (F1 sub-noise)**: ΔF1 -0.0039 — algorithmic Steiner restore vs LLM-based backward 의 R-P tradeoff 동일 결과. paper §V.5.x 의 "R 회복 vs P 손실" narrative 의 dual-direction 정합.
+2. **비용 효율 우세** ⚡: LLM call 4602→**3068 (-33%)**, token 14.3M→**7.4M (-48%)**, filter time 4.03s→**1.90s (-53%)**. GRAST-FD 의 algorithmic restore (Steiner-tree + FK/PK hardcode) 가 LLM call 미사용으로 throughput 향상.
+3. **inferred FK 16.6% query 에 실제 적용** (card_games 191 + debit_card_specializing 64) — Steiner-tree restore 의 join path 회복 mechanism 동작. per-DB lift 정량은 analyzer 후속.
+4. **EX maintained** (0.5176, Direction A 0.5169 와 동일 sub-noise) — backward restore (LLM) 와 Steiner restore (algorithmic) 가 downstream SQL gen 에 동일 효과. **paper §V.5.x EX 측 Filter-Invariant 의 mechanism-agnostic** evidence.
+
+### Filter Dominance 7번째 축 (EX 측 Filter-Invariant) 보강
+
+직전 Direction A (a05_23) 의 caveat 2 (RSL Backward F1 outlier but EX in-band) 와 정합:
+- Filter Sweep v2: F1 spread 0.0072, EX spread 0.0085 (both sub-noise)
+- Direction A: ΔF1 -0.2832 outlier, ΔEX -0.0033 in-band
+- **Direction C: ΔF1 -0.2872 outlier, ΔEX +0.0007 in-band (vs A)** — RSL Backward 외 GRAST-FD (algorithmic Steiner) 도 동일 패턴
+- → **dual evidence**: GLM 4.7 의 schema noise tolerance + restoration mechanism (LLM/algorithmic 무관) 의 EX-axis robustness
+
+### 비용 / 운영
+
+- Wall: 1h 50min (single cell, GPU 0)
+- LLM call 합계: 3068
+- Token in: 7.4M, out: 113K
+- Filter time total: 2912s (=48.5min)
+- ckpt: 추가 없음 (inference only)
+
+### 산출물
+
+- Config: `configs/experiments/abl/a05_filter_agentic/a05_25_grast_with_inferred_fk_glm.yaml`
+- Sweep script: `scripts/run_grast_fd_sweep.sh`
+- Outputs: `outputs/experiments/abl/a05_filter_agentic/a05_25_grast_with_inferred_fk_glm/`
+- Module:Filter implementation: commit e90d91a (`GRASTFDFilter`)
+- Inferred FK source: `outputs/analysis/direction_c_inferred_fk.yaml` + `notebooks/analysis_results/direction_c_inferred_fk.md`
+
+### 후속
+
+- **Analyzer 위임** (즉시 trigger 가능): `notebooks/analysis_results/direction_c_grast_fd_sweep.md`
+  - Direction A vs Direction C F1 sub-noise (Δ -0.0039) + 비용 효율 narrative (-33% LLM call)
+  - per-DB lift: card_games (191 query) + debit_card_specializing (64 query)
+  - inferred FK 4개의 actual application rate + Steiner restore case studies
+  - F1 net negative 일관 (paper §V.5.x R/P tradeoff dual-direction)
+  - EX-axis Filter-Invariant 의 mechanism-agnostic evidence (Direction A + Direction C 통합)
+- **Planner 위임** (analyzer 후): paper §V.5.x narrative 확정 + Filter Dominance 7번째 축 dual evidence (Direction A + C) + DECISIONS prepend
+- **Cron 종료**: `2f8383e6` 5/14 09:00 사용자 명시로 종료 처리 완료
+
+---
+
+## Direction A 배포 Sweep (RSLBackwardFilter baseline + with_guard, 2026-05-13 → 05-13, 🎯 ΔF1 net negative — Direction C 타겟 launch trigger)
+
+근거: planning/DECISIONS.md 2026-05-13 (학술 Agent Phase 3 Response — Direction A GO 확정). Module:Filter commit 462798d (`RSLBackwardFilter` 구현 + smoke 15/15). 사용자 5/13 지시 — (i) 두 cell 병렬 + (ii) Extractor = **MSTPCSTUnionExtractor** (MSTKruskal → MSTPCSTUnion anchor 변경). Memory `feedback_parallel_first.md` + `project_current_anchor.md` 신규 등재.
+
+### Stack
+
+- Builder: EnrichedHeteroGraphBuilder
+- Selector: EnsembleSelector (best_gat_qcond_nl3.pt, α=0.5, top_k=20)
+- **Extractor: MSTPCSTUnionExtractor** (score_threshold=0.1, MST ∪ PCST union, 본 anchor)
+- Filter: RSLBackwardFilter (XiYan forward prune + Backward column restore + FK/PK guarantee)
+- SQL Generator: LLMSQLGenerator (GLM 4.7, evidence-aware)
+
+### 운영 이력
+
+- **2026-05-13 19:50 launch (v1)**: Sequential sweep wrapper, MSTKruskal anchor. 21:03 사용자 redirect — extractor MSTKruskal → MSTPCSTUnion 변경 + 두 cell 병렬화 명시. v1 kill (712 records 폐기).
+- **2026-05-13 21:03:57 → 23:51:20 (v2, PARALLEL, wall 2h47m)**: GPU 0=a05_23 baseline / GPU 1=a05_24 with_guard. GLM API 2 concurrent throughput 효율 ~98% (per-q 6.04→6.14s 분산 ~1.6%). V5 sweep (GPU 0/1 학습 동시) 와 충돌 없음 (각 GPU ~2.3GB / 24GB).
+
+### 결과 (2 cell × 1534 BIRD-Dev)
+
+| Cell | risky_dbs | R | P | F1 | EX | LLM calls | Filter time mean |
+|---|---|---|---|---|---|---|---|
+| **a05_23** baseline | `[]` | **0.9456** | 0.4219 | **0.5833** | 0.5169 | 4602 | 4.03s |
+| **a05_24** with_guard | `["toxicology"]` | 0.9395 | 0.4202 | 0.5806 | 0.5150 | 4602 | 4.01s |
+| ΔvsAnchor (vs MSTPCSTUnion+XiYan) | | +0.0684 | **-0.4345** | **-0.2833** | +0.5169* | +3068 | +2.07s |
+| Δ a05_24 vs a05_23 | toxicology guard | -0.0061 | -0.0017 | **-0.0027** | -0.0019 | 0 | -0.02s |
+
+*Anchor EX=0.0000 (sql_generator 비활성 또는 측정 실패) — Δ 정확치 보고 위해 analyzer 진단 필요. F1 의 Δ 는 신뢰 가능.
+
+### 핵심 발견
+
+1. **Backward restore 가 R +0.0684 회복 vs P -0.4345 손실** — 정량 R/P tradeoff 명확. F1 net negative.
+2. **EX 0.5169 maintained** — anchor 의 EX 측정 실패 case 제외 시, RSL backward 의 column restore 가 downstream SQL gen 에 useful evidence.
+3. **risky_dbs guard 효과 ≈ zero** (ΔF1 -0.0027, ΔR -0.0061, ΔEX -0.0019) — toxicology 의 backward restore 가 net neutral. **Guard 불필요** narrative.
+4. **양 cell 의 final_n 거의 동일** — qid 9 california_schools final_n=5, qid 306 toxicology final_n=10 (a05_23=a05_24), qid 1094 european_football_2 final_n=44 — guard 활성 DB (toxicology) 에서도 same final_nodes 가 다수, 일부 미세 차이 측정 필요.
+5. **Trigger 분기**: ΔF1 < 0.02 → **Direction C 타겟 launch** 명백히 trigger (실측 ΔF1 = -0.2833, 강한 negative).
+
+### Filter Dominance 7번째 축 (Filter-Invariant) 보강
+
+직전 Filter Sweep v2 (2026-05-13) 의 7 LLM filter spread 0.0072 → Direction A 의 RSLBackward 추가 시 spread 확장:
+- 7 LLM filter best F1 = ~0.87 (Stacked / TieredBidirectional)
+- RSLBackward F1 = 0.5833 (anchor 미만)
+- → **schema linking 단계 F1 ceiling 0.87 의 7번째 축 narrative 유지** + RSLBackward 는 P-aggressive restore 가 net negative 인 outlier case.
+
+### 비용 / 운영
+
+- Wall: 2h 47min (PARALLEL)
+- LLM call 합계: 9204 (a05_23 4602 + a05_24 4602)
+- Token in: 28.6M, out: 364K
+- Filter time total: 12.3K seconds (=205min)
+- ckpt: 추가 없음 (inference only)
+
+### 산출물
+
+- Configs: `configs/experiments/abl/a05_filter_agentic/a05_2{3,4}_rsl_backward_*.yaml`
+- Sweep script: `scripts/run_rsl_backward_sweep.sh` (parallel)
+- Outputs: `outputs/experiments/abl/a05_filter_agentic/a05_2{3,4}_rsl_backward_*/`
+- Module:Filter implementation: commit 462798d (`RSLBackwardFilter` + smoke 15/15)
+
+### 후속
+
+- **Analyzer 위임** (즉시 trigger 가능): `notebooks/analysis_results/direction_a_rsl_backward_sweep.md` (ΔF1 trigger 분기 final + anchor EX 측정 실패 진단 + R-P tradeoff narrative + Direction C 결정)
+- **Planner 위임** (analyzer 후): paper §V.5.x narrative integration + Direction C launch trigger 확정 + DECISIONS prepend
+- **Cron 종료**: `56c27b7f` 5/14 00:00 사용자 명시로 종료 처리 완료
+
+---
+
 ## DSN Mitigation V5 Tier 1+2 4-Direction (V5-A GATE / V5-B GCNII L=2/4/6 / V5-C Full AERO) 학습 (V-3-ext 단계 9, 2026-05-12, 🚧 코드 준비 완료 + Launch 보류)
 
-근거: planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction) + planning/oversmoothing_v5_plan.md (학술 Agent input). V4-Combo-Null (mech(ii-b) DOMINANT 5/5 absolute confirm) 의 conditional trigger — Conservation Law 수정 (V5-A) / GCNII Trainability (V5-B) / Full AERO + Hop Attention (V5-C) 세 architectural direction + V5-D-1 PLM Lower Bound 진단 (analyzer 위임). **본 entry 는 코드 준비 완료 + Launch 보류 (사용자 redirect 5/12) — module 세션 review 후 launch 결정 대기.**
+근거: planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction) + planning/oversmoothing/oversmoothing_v5_plan.md (학술 Agent input). V4-Combo-Null (mech(ii-b) DOMINANT 5/5 absolute confirm) 의 conditional trigger — Conservation Law 수정 (V5-A) / GCNII Trainability (V5-B) / Full AERO + Hop Attention (V5-C) 세 architectural direction + V5-D-1 PLM Lower Bound 진단 (analyzer 위임). **본 entry 는 코드 준비 완료 + Launch 보류 (사용자 redirect 5/12) — module 세션 review 후 launch 결정 대기.**
 
 ### 운영 이력
 
@@ -3266,7 +3425,7 @@ V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation (PN+IR α=0.2
 
 ### 후속 위임 (chain handoff)
 
-- **module:selectors (또는 신규 module:models)**: V5-A/B/C 클래스 + Hop Attention forward 의 코드 review (planning/oversmoothing_v5_plan.md §4.1/§4.2/§4.3 의 정확한 mechanism 일치 확인) → launch 결정. 본 root 가 root 영역 위반으로 직접 launch 불가.
+- **module:selectors (또는 신규 module:models)**: V5-A/B/C 클래스 + Hop Attention forward 의 코드 review (planning/oversmoothing/oversmoothing_v5_plan.md §4.1/§4.2/§4.3 의 정확한 mechanism 일치 확인) → launch 결정. 본 root 가 root 영역 위반으로 직접 launch 불가.
 - **analyzer (module session 후 sweep launch 후)**: dsn_oversmoothing_analysis.py 의 CKPTS 리스트 갱신 (v5a_gate / v5b_gcnii_L{2,4,6} / v5c_aero_full entry 등록) + 14-trial V5 결과 + Layer 1/2/3 evidence 재정량. `notebooks/analysis_results/dsn_mitigation_v5_4dir.md` 신규.
 - **analyzer (V5-D-1)**: anchor stack 의 c_L0 + c_L3 measurement (Plain vs Enriched 비교) — outputs/analysis/v5_d1_plm_lower_bound_diagnostic/. **별도 chain** — V5 학습 무관, CPU forward 가능.
 - **planner (analyzer 후)**: narrative pivot 결정 (시나리오 1/2/3) + 5 over-smoothing planning 문서 통합 갱신 + paper §3.5 narrative.
@@ -3290,7 +3449,7 @@ Launch 진행 (module session 위임 후) 시 root 재호출 시 다음 값 반�
 
 ## DSN Mitigation V4 Architectural Intervention (V4-A LN+GIN Combo + V4-B AERO Softplus) 학습 (V-3-ext 단계 8, 2026-05-11 → 05-12, 🎯 시나리오 V4-Combo-Null 확정)
 
-발사: 2026-05-11 23:23 KST → 종료: V4-B 2026-05-12 09:05 (wall 9h 38min) + V4-A 2026-05-12 10:14 (wall 10h 47min). DECISIONS 2026-05-11 §V4 채택 + `planning/oversmoothing_solution_methodology_2026-05-11_apa.md` §C-1 + §C-2 prerequisite — combo 가설 (mech(ii-b) softmax-weighted-mean DOMINANT 4/5 partial 부정) 의 정량 검증. **결과: 둘 다 baseline 0.6097 미달 → mech(ii-b) DOMINANT 5/5 absolute confirm + Filter Dominance 6번째 축 narrative 결정적 강화.**
+발사: 2026-05-11 23:23 KST → 종료: V4-B 2026-05-12 09:05 (wall 9h 38min) + V4-A 2026-05-12 10:14 (wall 10h 47min). DECISIONS 2026-05-11 §V4 채택 + `planning/oversmoothing/oversmoothing_solution_methodology_2026-05-11_apa.md` §C-1 + §C-2 prerequisite — combo 가설 (mech(ii-b) softmax-weighted-mean DOMINANT 4/5 partial 부정) 의 정량 검증. **결과: 둘 다 baseline 0.6097 미달 → mech(ii-b) DOMINANT 5/5 absolute confirm + Filter Dominance 6번째 축 narrative 결정적 강화.**
 
 ### 운영 이력
 
