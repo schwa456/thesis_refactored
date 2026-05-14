@@ -8,6 +8,63 @@
 
 ---
 
+## 2026-05-15 (planning/ 폴더 Reorg 완료 — filter/ + oversmoothing/ Subdir + Link Fix 일괄 + 2 README Chain Narrative 신규)
+
+> **사용자 직전 input (5/15)**: planning 폴더 의 filter / oversmoothing 관련 file 정리 요청 + 전체 link fix + README 작성 (chain narrative + 논리 전개 흐름).
+
+### §1. 정리 결과 (planning/ 구조 final)
+
+```
+planning/
+├── CLAUDE.md, DECISIONS.md, framework_snapshot_*, paper_research_direction.md,
+│   paper_outline_*, presentation_brief_*, Full Paper Structure.md,
+│   mechanism_final_concept_summary_* (root level, 보존)
+├── advisor_inputs/, proposals/, templates/ (보존)
+├── 🆕 filter/ (14 files + README.md)
+└── 🆕 oversmoothing/ (7 files + README.md)
+```
+
+### §2. Link Fix 일괄 결과
+
+- **19 affected files** 식별 + **8 sed pattern** × 19 file 일괄 replace
+- ✅ **0 broken link 잔존 confirm** (verify grep)
+
+### §3. README Chain Narrative 신규
+
+- [`planning/filter/README.md`](filter/README.md) — 6-Phase chain (5/12~5/15 Filter Dominance + Direction A/B/C/C-GT)
+- [`planning/oversmoothing/README.md`](oversmoothing/README.md) — 3-Phase chain (5/7~5/12 V1~V5 mitigation null effect)
+- **dual-axis mechanism-agnostic narrative**: axis #6 (training-pathology) + axis #7 (filter mechanism-agnostic) 결합
+
+### §4. Git 상태 — 사용자 Commit Candidate (Push 금지 정합)
+
+Working tree modified (다음 commit candidate):
+- planning/filter/ + planning/oversmoothing/ subdir 신규 (22 files)
+- planning/DECISIONS.md + paper_research_direction.md + framework_snapshot 갱신
+- EXPERIMENT_CATALOG/HISTORY/ID_MIGRATION.md (직전 chain entries)
+- notebooks/analysis_results/*.md (7 files link fix)
+- src/modules/{filters,selectors}/EXPERIMENT_PLAN_*.md (link fix)
+
+⚠️ **git push 금지** (사용자 관리 정합, 직전 entry §1 git push 규칙 명문화).
+
+### §5. 영향 범위
+
+- planning/{filter,oversmoothing}/ subdir + README.md 2 신규
+- 19 affected files 의 link fix (sed in-place)
+- planning/DECISIONS.md (본 entry)
+
+### §6. 근거
+
+- 사용자 직접 input (정리 + link fix + README 작성)
+- 직전 chain 의 5/12~5/15 Filter Dominance + 5/7~5/12 over-smoothing 의 모든 entries
+
+### §7. 사용자 후속 actions
+
+1. ✅ **Planning reorg 완료** (본 turn)
+2. 🚀 **사용자 직접 git commit** (위 §4 candidate, push 금지)
+3. ⏸ **5/17 Root chain launch** (Direction B + C-GT 학습, 직전 entry §8 Root 통합 핸드오프 prompt)
+
+---
+
 ## 2026-05-15 (Module 구현 Chain 완료 — Direction B + Direction C-GT 둘 다 Implementation 완료 + Root Sweep Launch Trigger 준비 + Module:Filter/Module:Selector 통합 보고)
 
 > **사용자 직전 input (5/14 저녁 ~ 5/15)**: Module:Filter 핸드오프 receive (Direction C-GT 완료 fb92775) + Module:Selector 핸드오프 receive (Direction B HN-SupCon 완료 fb92775 + ec4c2a9 ownership marker). 학술 Agent Phase 5 §6.4 일정의 **5/16 implementation 병렬 단계 둘 다 완료** — Root sweep launch chain 의 통합 핸드오프 작성 요청.
