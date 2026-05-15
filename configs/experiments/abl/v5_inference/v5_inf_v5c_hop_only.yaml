@@ -1,0 +1,78 @@
+# V5 Inference — v5c_hop_only
+# 근거: planning/DECISIONS.md 2026-05-15 §0 Option γ + 사용자 5/15 명시 V5 inference 병렬
+# Stack: anchor (MSTPCSTUnion+XiYan+SQL F1=0.8434 EX=0.4889) 의 selector 만 V5 ckpt 로 교체
+#   - Selector: DirectedTopKSuperNodeSelector (EnsembleSelector subclass) + V5 ckpt + gat_version="v2"
+#   - 다른 stack: anchor 와 동일 (Enriched builder + MSTPCSTUnion + XiYan + SQL gen GLM 4.7)
+#
+# V5 학습 ckpt: outputs/checkpoints/best_gat_directed_supernode_p80_v5c_hop_only_with_proj.pt
+# Training config: configs/training/dsn/train_dsn_p80_v5c_hop_only.yaml
+
+experiment_name: "v5_inf_v5c_hop_only"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "DirectedTopKSuperNodeSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_directed_supernode_p80_v5c_hop_only_with_proj.pt"
+    threshold_mode: "percentile"
+    threshold_value: 80.0
+    score_normalization: "minmax"
+    alpha: 0.5
+    top_k: 20
+    in_channels: 384
+    hidden_channels: 256
+    out_channels: 256
+    num_layers: 2
+    query_conditioned: false
+    query_supernode: true
+    supernode_edge_direction: "directed_from_sn"
+    encoder_type: "plm"
+    gat_version: "v2"
+    gat_v2_kwargs:
+      gat_layer_type: "aero_full"
+      pairnorm_mode: "pairnorm"
+      pairnorm_scale: 1.0
+      initial_residual_alpha: 0.2
+      jumping_knowledge: "none"
+      dual_stream: true
+      softplus_symmetric_norm: true
+      aero_hop_attention: true
+      aero_cumulative_attention: false
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

@@ -1,0 +1,78 @@
+# Mitigation V5-B — GCNII-style Identity Mapping (Chen 2020 + Peng 2024), L=2
+# 근거: planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan) §V5-B
+#       planning/oversmoothing_v5_plan.md §4.2 Direction B "Trainability 관점의 Architectural Redesign"
+#       Chen et al. 2020 GCNII (Simple and Deep Graph Convolutional Networks)
+#       Peng et al. 2024 "Beyond Over-smoothing: Trainability Challenges in Deep GNNs"
+#
+# Mechanism (Paradox 2 — ρ_skip ≈ 3 의 trainability 해석 직접 검증):
+#   Peng 2024 의 핵심 처방 — residual connection + learnable parameter 로 gradient flow upper bound 제어.
+#   GCNII (Initial Residual α + Identity Mapping β_l) 이 BN/DropEdge 보다 우수한 이유는 over-smoothing
+#   완화가 아니라, α + β_l 가 smoothing term + training term 을 동시에 제어하여 gradient flow 안정화.
+#
+# 본 V5-B 구현:
+#   - Initial Residual α = 0.2 (Chen 2020 default): h_l = (1-α)·GAT(h_{l-1}) + α·h_0  (이미 baseline 의 IR)
+#   - Identity Mapping β_l = log(λ/l + 1), λ=0.5: 매 layer 의 output 에 ((1-β_l) I + β_l W^(l)) 적용
+#     - W^(l) init: nn.init.eye_ — 작은 perturbation 으로 시작
+#   - L=2: layer index 1, 2 → β_1 = log(0.5/1+1) ≈ 0.405, β_2 = log(0.5/2+1) ≈ 0.223
+#
+# 시나리오 분기 (DECISIONS V5):
+#   V5-B 성공 (R > 0.6097): Paradox 2 의 trainability 해석 confirm → Trial 2/3 (Direct AC, LR x5) 의
+#                            gradient flow 강제 증가 fail 이 "upper bound 제어 없는 증폭" 으로 해석됨.
+#                            paper §V.5.4 main finding 의 새 dimension (gradient flow stabilization).
+#   V5-B null:               Trainability 가설 부정 + mech(ii-b) 5/5 absolute confirm 유지.
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5b_gcnii_L2"
+checkpoint_name: "best_gat_directed_supernode_p80_v5b_gcnii_L2.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 2
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2  # Chen 2020 default α
+  jumping_knowledge: "concat"
+  dual_stream: true
+
+  # V5-B: GCNII Identity Mapping (β_l = log(λ/l + 1), λ=0.5)
+  gat_layer_type: "gcnii"
+  gcnii_beta_lambda: 0.5
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85

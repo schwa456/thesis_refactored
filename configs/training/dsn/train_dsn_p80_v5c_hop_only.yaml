@@ -1,0 +1,92 @@
+# Mitigation V5-C (hop-only ablation) — Softplus+SymNorm + Node-Adaptive Hop Attention (Lee 2023 Theorem 4)
+# 근거: planning/DECISIONS.md 2026-05-13 (V5 Module:Selector Ownership 완료) §V5-C 3 cell ablation
+#       planning/oversmoothing_v5_plan.md §4.3 Direction C "Full AERO-GNN: Node-Adaptive Hop Attention 추가"
+#       planning/oversmoothing_full_context_v4_2026-05-12.md §10.1 H10.1c "Hop Attention 부재"
+#       Lee et al. 2023 AERO-GNN (arXiv:2306.02376) Theorem 4 (Hop Attention sum form)
+#
+# Ablation 위치: V5-C 3 cell ablation (v5c-full / v5c-hop-only / v5c-cum-only) 의 hop-only variant.
+#   Hop/Cumulative effect overlap 정량 검증 — Theorem 4 (Hop Attention sum) 단독 효과 분리.
+#
+# Mechanism (V4-B 의 H10.1c — Hop Attention 부재 직접 검증):
+#   V4-B (Softplus + Symmetric Norm) 가 row-stochasticity 파괴 + Wu 2023 JSR<1 가정 직접 위반에도
+#   R 미갱신. 학술 Agent (oversmoothing_v5_plan.md §4.3):
+#
+#     > V4-B는 전자만 구현하여 SR2OS guarantee의 절반만 실현했다. Full AERO-GNN의 Node-Adaptive Hop
+#     > Attention은 각 node가 적절한 hop depth에서 정보를 집계하도록 유도하므로, heterogeneous schema
+#     > graph에서 column node와 table node 간의 최적 aggregation depth가 다를 수 있다는 schema-specific
+#     > 특성과 잘 맞을 수 있다.
+#
+#   V5-C 구현:
+#     - Softplus + Symmetric Norm (V4-B 그대로, FullAEROGATv2Conv = SoftplusGATv2Conv subclass)
+#     - Node-Adaptive Hop Attention (SchemaHeteroGATv2.aero_hop_attention=True):
+#       β^{(l)}_v = w_hop^T H^{(l)}_v             (node-adaptive scalar score per layer)
+#       γ^{(l)}_v = softplus(β^{(l)}_v) / Σ_k softplus(β^{(k)}_v)  (per-node normalization)
+#       H^{out}_v = Σ_l γ^{(l)}_v · H^{(l)}_v    (cumulative weighted sum)
+#     - jumping_knowledge='none' (hop attention 가 cross-layer aggregation 의 대체 경로)
+#
+# 시나리오 분기 (DECISIONS V5):
+#   V5-C 성공 (R > 0.6097): AERO Theorem 3 SR2OS guarantee 가 Hop Attention 동반 시 본 도메인에 transfer
+#                            성공. V4-B H10.1c (Hop Attention 부재) 가설 confirm → mech(ii-b) 5/5 absolute
+#                            confirm narrative 약화 + paper §V.5.4 major rewrite.
+#   V5-C null:               H10.1a (heterogeneous graph) / H10.1c (Hop Attention 부재) 모두 부정 →
+#                            남은 H10.1b (domain-specific bottleneck) 가설 강화 → V5-D-1 결과와 결합 시
+#                            narrative pivot 의 핵심 evidence.
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5c_hop_only"
+checkpoint_name: "best_gat_directed_supernode_p80_v5c_hop_only.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 2
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2
+  # V5-C: hop attention 가 cross-layer aggregation 의 대체 경로 — JK 무시.
+  jumping_knowledge: "none"
+  dual_stream: true
+
+  # V5-C hop-only: Softplus + Sym-Norm + Hop Attention (Theorem 4 만, Cumulative 미사용)
+  gat_layer_type: "aero_full"
+  softplus_symmetric_norm: true
+  aero_hop_attention: true
+  aero_cumulative_attention: false
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85

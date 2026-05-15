@@ -1,0 +1,77 @@
+# Mitigation V5-C (full) — Softplus+SymNorm + Hop Attention + Cumulative Attention (Lee 2023 Theorem 3 + 4)
+# 근거: planning/DECISIONS.md 2026-05-13 (V5 Module:Selector Ownership 완료) §V5-C 3 cell ablation
+#       planning/oversmoothing_v5_plan.md §4.3 Direction C "Full AERO-GNN: Node-Adaptive Hop Attention 추가"
+#       Lee et al. 2023 AERO-GNN (arXiv:2306.02376)
+#         Theorem 3 — SR2OS guarantee (edge-level α 누적 + row-stochasticity 파괴)
+#         Theorem 4 — Hop Attention sum form (per-node hop weight 의 sum)
+#
+# Ablation 위치: V5-C 3 cell ablation 의 full variant — hop + cumulative 동시.
+#   학술 caveat (DECISIONS 2026-05-13 §V5-C):
+#     Lee 2023 의 Cumulative Attention 은 edge-level α 누적 (paper form).
+#     본 구현은 hidden-state level residual outer simulation (PyG MessagePassing inner α access 한계).
+#     paper Theorem 3 의 SR2OS guarantee 의 본 도메인 transfer 정합성 불완전 — post-paper 검증 candidate.
+#
+# Hop / Cumulative effect overlap (DECISIONS V5):
+#   v5c-full 결과 ≈ v5c-hop-only ≈ v5c-cum-only → 두 mechanism 의 hidden-state level 표현이 등가 (Lee 2023
+#   Theorem 4 의 hop sum 이 Theorem 3 의 cumulative outer 와 effect overlap) — paper 의 mechanism 분리 가설 약화.
+#   v5c-full > max(hop, cum) → 두 mechanism complementary, paper Theorem 3 + 4 의 결합 효과 confirm.
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5c_full"
+checkpoint_name: "best_gat_directed_supernode_p80_v5c_full.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 2
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2
+  # V5-C: hop attention 가 cross-layer aggregation 의 대체 경로 — JK 무시.
+  jumping_knowledge: "none"
+  dual_stream: true
+
+  # V5-C full: Softplus + Sym-Norm + Hop Attention + Cumulative Attention (decay=1.0)
+  gat_layer_type: "aero_full"
+  softplus_symmetric_norm: true
+  aero_hop_attention: true
+  aero_cumulative_attention: true
+  aero_cumulative_decay: 1.0
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85

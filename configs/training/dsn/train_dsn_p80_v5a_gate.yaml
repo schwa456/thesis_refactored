@@ -1,0 +1,75 @@
+# Mitigation V5-A — GATE (Conservation Law 수정, Mustafa & Burkholz NeurIPS 2024)
+# 근거: planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan — Tier 1+2 4 Direction) §V5-A
+#       planning/oversmoothing_v5_plan.md §4.1 Direction A "GATE: GAT의 Conservation Law 위반 Architecture"
+#       planning/oversmoothing_full_context_v4_2026-05-12.md §10.1 (H10.1a-c)
+#
+# Mechanism (mech(ii-b) DOMINANT 5/5 absolute confirm 의 task-irrelevant aggregation 차원 직접 표적):
+#   GATv2Conv 의 단일 attention parameter a (shape [1, heads, out_channels]) 가 conservation law 에
+#   의해 ||a||_2 norm 이 제한됨. 큰 norm 으로 unnecessary neighbor information 을 무시할 수 없음.
+#   GATE: a 를 a_s (self) + a_t (neighbor) 로 분리 → budget 교환 가능 → 작은 norm 으로도 aggregation
+#   switch-off 실현. heterophilic 데이터셋에서 GATE 가 GAT 를 큰 margin 으로 상회 (Mustafa & Burkholz 2024).
+#
+# 시나리오 분기 (DECISIONS V5):
+#   V5-A 성공 (R > 0.6097): mech(ii-b) 의 task-irrelevant aggregation 차원 mitigation 가능 evidence →
+#                            "5/5 absolute confirm" narrative 약화 → V5-A 가 architectural intervention
+#                            path 의 첫 회복 시도. paper §V.5.4 main finding 변경 candidate.
+#   V5-A null:               mech(ii-b) 5/5 absolute confirm 유지 + Conservation Law 수정 fail.
+#                            "도메인 측면의 deeper bottleneck (schema sibling lower bound, query
+#                            understanding 한계)" 가설 강화. V5-D-1 결과와 결합 시 narrative pivot.
+#
+# 비교 baseline: train_dsn_p80_v4a_lngin_combo.yaml + train_dsn_p80_v4b_aero.yaml (V4 이중 fail).
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5a_gate"
+checkpoint_name: "best_gat_directed_supernode_p80_v5a_gate.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 2
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2
+  jumping_knowledge: "concat"
+  dual_stream: true
+
+  # V5-A: GATE (Conservation Law 수정 — attention parameter 분리)
+  gat_layer_type: "gate"
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85

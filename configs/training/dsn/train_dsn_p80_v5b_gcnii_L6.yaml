@@ -1,0 +1,63 @@
+# Mitigation V5-B — GCNII-style Identity Mapping, L=6
+# 근거: planning/DECISIONS.md 2026-05-12 (V5 Mitigation Plan) §V5-B
+#       planning/oversmoothing_v5_plan.md §4.2 — "L=2/4/6 sweep" 의 최고 depth.
+# L=6 의 β_l: l=1..6 → β = log(λ/l + 1), λ=0.5
+#   β_1 ≈ 0.405, β_2 ≈ 0.223, β_3 ≈ 0.154, β_4 ≈ 0.118, β_5 ≈ 0.0953, β_6 ≈ 0.0800
+# 본 schema linking task 의 graph diameter 가 보통 2-3 — L=6 은 over-parametrized 영역.
+# GCNII 의 핵심 주장 (Chen 2020): 깊이 깊을수록 표준 GCN 은 collapse, GCNII 는 R 개선. 본 V5-B-L=6 가
+# baseline L=2 (R=0.6097) 보다 더 좋으면 → Identity Mapping 의 깊이 정당화 evidence.
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5b_gcnii_L6"
+checkpoint_name: "best_gat_directed_supernode_p80_v5b_gcnii_L6.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 6
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2
+  jumping_knowledge: "concat"
+  dual_stream: true
+
+  gat_layer_type: "gcnii"
+  gcnii_beta_lambda: 0.5
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85

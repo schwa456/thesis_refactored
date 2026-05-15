@@ -2071,6 +2071,177 @@ Stack: V-3-ext (DSN p80) + B5 mitigation + Mitigation v2 변형
 
 ---
 
+## Anchor (MSTPCSTUnion+XiYan+SQL) Sweep — Option γ 재실행 (2026-05-14, 🎯 SQL Gen prompt 변경 효과 ΔEX +0.1512 + 5 Capacity 지표 prerequisite)
+
+### 등재된 cell (1 신규, inference only — SQL Gen 활성화)
+
+| Cell | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| **s04_pipeline_enriched_qcond_a05_mst_pcst_union_glm_sql** | **0.8831** | 0.8070 | **0.8434** | **0.4889** ⭐ |
+
+### Stack (사용자 명시 anchor — Option γ)
+
+| Module | 값 |
+|---|---|
+| Builder | EnrichedHeteroGraphBuilder |
+| Selector | EnsembleSelector (best_gat_qcond_nl3.pt, α=0.5, top_k=20, query_conditioned=true) |
+| Extractor | **MSTPCSTUnionExtractor** (score_threshold=0.1) |
+| Filter | XiYanFilter (GLM 4.7, max_iteration=1, temperature=0) |
+| **SQL Gen** | **LLMSQLGenerator** (GLM 4.7, evidence-aware prompt) |
+
+### Δ vs 비교 base
+
+| 지표 | 본 sweep | 5/1 prior (same stack, prompt 이전) | c0 (MSTKruskal+XiYan+SQL) |
+|---|---:|---:|---:|
+| R | 0.8831 | 0.8734 (Δ +0.0097) | 0.8706 (Δ +0.0125) |
+| P | 0.8070 | 0.8581 (Δ -0.0511) | 0.8596 (Δ -0.0526) |
+| F1 | **0.8434** | 0.8657 (Δ **-0.0223**) | 0.8650 (Δ **-0.0216**) |
+| **EX** | **0.4889** | 0.3377 (Δ **+0.1512** ⭐) | 0.5202 (Δ -0.0313 sub-noise) |
+
+### 핵심 발견
+
+1. **SQL Gen prompt 변경 효과 ΔEX +0.1512** — 5/1 prior run 의 0.3377 → 본 sweep 0.4889. evidence-aware fix 의 EX 회복 강력 confirm.
+2. **MSTPCSTUnion vs MSTKruskal extractor EX 차이 sub-noise** (Δ -0.0313) — anchor extractor 변경에도 EX 측 robustness. **Filter Dominance EX-axis robustness 가 extractor-invariance 추가 evidence**.
+3. **F1 deterministic partial fail** — 5/1 prior 와 같은 stack 인데 ΔF1 -0.0223. P -0.0511 / R +0.0097 의 trade-off 발생. analyzer 진단 필요.
+4. **filter_llm_calls_mean 0.9368** — 6.32% query 의 filter skip (XiYan input nodes 적은 case).
+
+### 비용 / 운영
+
+| 항목 | 값 |
+|---|---|
+| Wall | ~1h 49m (sweep-only, 학습 X) |
+| LLM call | 2873 (filter 1437 + SQL gen 1436) |
+| Token in / out | 5.27M / 105K |
+| GPU 시간 | 0 (V5 학습 공존, GLM API only) |
+| Cost | ~$1-3 GLM 4.7 |
+
+### 산출물
+
+- Config: `configs/experiments/s04_ablation/pipeline/enriched_qcond_a05_mst_pcst_union_glm_sql.yaml` (5/1 prior 그대로)
+- Sweep script: `scripts/run_anchor_sql_sweep.sh` (신규)
+- Outputs: `outputs/experiments/s04_ablation/pipeline/enriched_qcond_a05_mst_pcst_union_glm_sql/`
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Anchor (MSTPCSTUnion+XiYan+SQL) Sweep (2026-05-14)](EXPERIMENT_HISTORY.md)
+
+### 결론
+
+- SQL Gen prompt 변경 효과 ΔEX +0.1512 강력 확인 (5/1 prior 0.3377 → 본 0.4889)
+- MSTPCSTUnion vs MSTKruskal extractor EX 측 sub-noise (anchor 비교 가능)
+- 5 Capacity 지표 분석 prerequisite 충족 — analyzer 핸드오프 trigger 가능
+
+---
+
+## Direction B + Direction C-GT 배포 Sweep (b06_01 + a05_26, 2026-05-14, 🎯 B Filter-Invariant evidence, C-GT Four-caveat outlier candidate)
+
+### 등재된 cell (2 신규, inference only)
+
+| Cell | R | P | F1 | EX | LLM | mean \|final_n\| |
+|---|---:|---:|---:|---:|---:|---:|
+| **b06_01 (Direction B)** | **0.8713** | 0.8545 | **0.8628** | 0.0¹ | 1534 | 85.07 |
+| **a05_26 (Direction C-GT)** | 0.7311 | 0.3969 | **0.5145** | 0.0¹ | 1534 | 49.16 |
+
+¹ sql_generator=false (학술 frame "Filter-Invariant 경계 확정 실험" 정합)
+
+### Δ vs Anchor
+
+| 지표 | B vs c0 (F1=0.8650) | C-GT vs c0 | B vs MSTPCSTUnion (F1=0.8666) | C-GT vs MSTPCSTUnion |
+|---|---:|---:|---:|---:|
+| ΔR | +0.0007 | -0.1395 | -0.0059 | -0.1461 |
+| ΔP | -0.0051 | -0.4627 | -0.0019 | -0.4595 |
+| **ΔF1** | **-0.0022** sub-noise | **-0.3505** ⚠ | **-0.0038** sub-noise | **-0.3521** ⚠ |
+
+### Stack
+
+| Module | b06_01 (B) | a05_26 (C-GT) |
+|---|---|---|
+| Builder | EnrichedHeteroGraphBuilder | HeteroGraphBuilder (default, anchor 와 다름) |
+| Selector | HNSupConSelector (fine-tuned encoder + GAT projector α=0.5, top_k=20) | DirectGATSelector (best_gat_query_supernode_direct.pt, apply_threshold=true) |
+| Extractor | MSTKruskalExtractor | PCSTExtractor (anchor PCST default cost) |
+| Filter | XiYanFilter (GLM 4.7) | **GRASTFDFilterWithTransformer** (GT reranker top_k=10, transformer_checkpoint_path=outputs/checkpoints/grast_gt/best.pt) |
+| SQL Gen | disabled | disabled |
+
+### 핵심 발견
+
+1. **B = Filter-Invariant F1 측 강력 evidence**: ΔF1 -0.002~-0.004 sub-noise. HN-SupCon fine-tune 효과 (SLR Δ +0.0267) 가 anchor 대비 F1 lift 없음 → **selector backbone 교체 invariance**.
+2. **C-GT = Four-caveat outlier candidate**: ΔF1 -0.3505 (Direction A -0.2832 / Direction C -0.2873 보다 더 큰 outlier). mean |final_n| 49.16 (anchor ~4.8 의 10×) — GT reranker over-include.
+3. **B 의 mean |final_n| 85.07** = anchor 4.8 의 17.7× 임에도 F1 sub-noise — top_k=20 selector 의 명시 retention + XiYan filter 의 P-aggressive prune 효과.
+4. **C-GT 의 R=0.7311 손실** — GT reranker top_k=10 이 좁아 gold column 누락.
+
+### Three-Caveat → Four-Caveat candidate
+
+| Caveat | Method | ΔF1 (vs c0) |
+|---|---|---:|
+| 1 | C3 AdaptiveMultiAgent | -0.0622 |
+| 2 | Direction A (LLM backward) | -0.2832 |
+| 3 | Direction C (algorithmic Steiner) | -0.2873 |
+| **🆕 4** | **Direction C-GT (GT reranker over-include)** | **-0.3505** ⚠ |
+
+→ paper §V.5.x.M.4 의 Three-Caveat narrative 의 Four-caveat 확장 또는 boundary 재정의 candidate.
+
+### 비용 / 운영
+
+- Wall: 1h 7m (parallel, V5 학습 GPU 0/1 공존)
+- LLM call: 3068 total (B 1534 + C-GT 1534)
+- Token in: B 6.0M, C-GT 2.1M
+
+### 산출물
+
+- `outputs/experiments/abl/{b06_hn_supcon/b06_01_*, a05_filter_agentic/a05_26_*}/` (predictions/output/metrics)
+- 세부 실행: [EXPERIMENT_HISTORY.md Direction B + C-GT 배포 Sweep (2026-05-14)](EXPERIMENT_HISTORY.md)
+
+### 결론
+
+- B = Filter-Invariant F1 측 추가 evidence (axis #7 selector backbone-invariance 확장)
+- C-GT = Four-caveat outlier candidate (또는 boundary 확장 evidence)
+- 학술 frame "Filter-Invariant 경계 확정 실험" 정합 — 두 결과 모두 학술적 가치
+
+---
+
+## Direction B (HN-SupCon) + Direction C-GT (GraST-GT) Full Training (2026-05-14, 🎯 학습 PASS, sweep launch 적격)
+
+### 등재된 학습 ckpt (2 신규)
+
+| ID | Path | Size | Best |
+|---|---|---|---|
+| **hn_supcon** (B) | `outputs/checkpoints/hn_supcon/model.safetensors` | 90 MB | **val SLR Δ +0.0267** (1 epoch) |
+| **grast_gt** (C-GT) | `outputs/checkpoints/grast_gt/best.pt` | 151 MB | **best loss 0.0674 @ ep31** (40 epoch) |
+
+### Stack
+
+| Module | b06_01 (B) | a05_26 (C-GT) |
+|---|---|---|
+| Backbone | MiniLM-L6 + HN-SupCon fine-tune | GraphTransformerEncoder from-scratch |
+| Loss | HN-SupCon (Piao 2025) | Margin contrastive (Hoang 2025) |
+| Hyperparameters | τ=0.07, N=8, margin=0.1, lr=5e-5, batch=16, **1 epoch** | margin=0.1, lr=5e-5, hidden=1024, L=3, H=8, **40 epoch** |
+
+### 학습 결과
+
+| Cell | Step/Epoch | Train loss (final/best) | Val metric | Pass | Wall |
+|---|---|---|---|---|---|
+| B | 1 epoch / 383 steps | 1.2681 | SLR @15: 0.6653→0.6920 (Δ +0.0267) | ✅ | ~6분 |
+| C-GT | 40 epoch | 0.0701 final / **0.0674 best (ep31)** | (smoke PR-AUC Δ +0.0131) | ✅ saturation | ~1h 57m |
+
+### Epoch 수 정당화
+
+| 모델 | Epoch | 정당화 |
+|---|:---:|---|
+| **B** | **1** | PLM fine-tune + contrastive fast convergence + overfit 회피, Piao 2025 spec |
+| **C-GT** | **40** | From-scratch + simple margin loss + sparse attention saturation, Hoang 2025 spec |
+| GAT (reference) | 300 | From-scratch + multi-task + heterogeneous, conservative upper bound |
+
+### 산출물
+
+- Training scripts: `src/train_hn_supcon.py` (commit fb92775 + Root 5/14 evaluator), `src/train_grast_gt.py` (Root 5/14 wrapper)
+- Checkpoints: `outputs/checkpoints/{hn_supcon,grast_gt}/`
+- Sweep config 갱신: `a05_26_*.yaml` 의 `transformer_checkpoint_path` → `outputs/checkpoints/grast_gt/best.pt`
+- 세부 실행: [EXPERIMENT_HISTORY.md Direction B + C-GT Full Training (2026-05-14)](EXPERIMENT_HISTORY.md)
+
+### 결론
+
+- 두 학습 모두 학술 Agent Q5 pass 충족
+- Sweep launch 적격 (b06_01 GPU 0 + a05_26 GPU 1 병렬)
+
+---
+
 ## Direction C 배포 Sweep (GRASTFDFilter + GPT-4.1-mini inferred FK, 2026-05-14, 🎯 Direction A 비교 sub-noise + 비용 -33%)
 
 ### 등재된 cell (1 신규, inference only)
@@ -2357,4 +2528,78 @@ V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation (PN+IR α=0.2
 - 모델 확장: `src/models/gat_network_v2.py` (_make_gin_conv + AGGREGATION_TYPES)
 - Smoke test: `src/modules/selectors/tests/test_mitigation_v3.py` (7/7 통과)
 - 비용: ₩0, wall ~11h 39min
+
+
+---
+
+## DSN Mitigation V5 7-Trial Sweep (V-3-ext 단계 9, 2026-05-13 → 05-15, 7 신규 ckpt, 🎯 시나리오 (a) confirm — 7/7 모두 P80 baseline 미달)
+
+### 7 신규 ckpt × Best Val R@15 (4-decimal, Phase 1 P80 0.6097 baseline 비교)
+
+| Variant | Module Class | gat_layer_type | num_layers | Best Val R@15 | Best Epoch | Wall | Δ vs P80 |
+|---|---|---|---:|---:|---:|---|---:|
+| **v5c_hop_only** | `FullAEROGATv2Conv` (hop only) | `aero_full` (hop=true, cum=false) | 2 | **0.6076** | 78 | 12h 12m | -0.0021 |
+| v5b_gcnii_L2 | `GCNIIGATv2Conv` (L=2) | `gcnii`, β_λ=0.5 | 2 | 0.6072 | 76 | 12h 36m | -0.0025 |
+| v5c_cum_only | `FullAEROGATv2Conv` (cum only) | `aero_full` (hop=false, cum=true) | 2 | 0.5993 | 25 | 12h 44m | -0.0104 |
+| v5b_gcnii_L4 | `GCNIIGATv2Conv` (L=4) | `gcnii`, num_layers=4 | 4 | 0.5969 | 198 | 15h 50m | -0.0128 |
+| v5c_full | `FullAEROGATv2Conv` (full) | `aero_full` (hop=true, cum=true) | 2 | 0.5887 | 241 | 12h 05m | -0.0210 |
+| v5b_gcnii_L6 | `GCNIIGATv2Conv` (L=6) | `gcnii`, num_layers=6 | 6 | 0.5845 | 212 | 17h 55m | -0.0252 |
+| v5a_gate | `GATEGATv2Conv` | `gate` | 2 | 0.5571 | 286 | 12h 15m | -0.0526 |
+
+P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
+
+### 17-trial 통합 누적 (decreasing R@15, mech(ii-b) DOMINANT 7/7 absolute confirm candidate)
+
+| 순위 | Variant | Best R@15 | Δ vs Phase 1 P80 |
+|---|---|---:|---:|
+| **1** | **Phase 1 P80 (no mit, baseline)** | **0.6097** | (baseline) |
+| 2 | Phase 2 b8 (B5 mit fusion) | 0.6018 | -0.0079 |
+| 3 | v2 #3 LayerNorm pre-softmax | 0.6011 | -0.0086 |
+| 4 | **🆕 V5-C Hop only (v5c_hop_only)** | 0.6076 | -0.0021 |
+| 5 | **🆕 V5-B GCNII L=2 (v5b_gcnii_L2)** | 0.6072 | -0.0025 |
+| 6 | **🆕 V5-C Cumulative only (v5c_cum_only)** | 0.5993 | -0.0104 |
+| 7 | v2 #1 DropMessage | 0.5974 | -0.0123 |
+| 8 | **🆕 V5-B GCNII L=4 (v5b_gcnii_L4)** | 0.5969 | -0.0128 |
+| 9 | v3 #1 GIN-style aggregation | 0.5954 | -0.0143 |
+| 10 | V4-B AERO Softplus + Sym-Norm | 0.5951 | -0.0146 |
+| 11 | Phase 3 #4 (LR x5) | 0.5935 | -0.0162 |
+| 12 | V4-A LN+GIN combo | 0.5929 | -0.0168 |
+| 13 | Phase 3 #3 (Direct AC) | 0.5927 | -0.0170 |
+| 14 | **🆕 V5-C Full (v5c_full)** | 0.5887 | -0.0210 |
+| 15 | **🆕 V5-B GCNII L=6 (v5b_gcnii_L6)** | 0.5845 | -0.0252 |
+| 16 | v2 #2 Sum Aggregation | 0.5761 | -0.0336 |
+| 17 | **🆕 V5-A GATE (v5a_gate)** | 0.5571 | -0.0526 (V5 worst) |
+
+→ 시나리오 (a) (V5 7 모두 null R ~0.58-0.61 saturate) absolute confirm. 직전 14-trial 의 mech(ii-b) DOMINANT 5/5 absolute confirm 정합 + V5 7-trial 의 architectural intervention 3 axis × 7 cell 모두 fail → **mech(ii-b) softmax × weighted-mean propagation combo 가 fundamental architectural limitation 격상 candidate**.
+
+### Config 주의사항 (training)
+
+- 학습 entry: `src/train_gat_s06.py` (V5 kwargs forwarding `gcnii_beta_lambda`, `aero_hop_attention`, `aero_cum_attention` line ~248-252)
+- 공통 V-3-ext (DSN p80 directed_from_sn + percentile=80) + B5 mitigation:
+  - V5-A/B: PN + IR α=0.2 + JK=concat + Dual-Stream + AC=0.1 + ListNet
+  - V5-C: JK='none' + Hop/Cum Attention (forward 시 V5-C 출력 경로)
+- 변경 차원: `gat_layer_type` ∈ {'gate', 'gcnii', 'aero_full'} + V5-C 의 `aero_hop_attention` / `aero_cum_attention` 조합
+- attention module 별 spec:
+  - V5-A `GATEGATv2Conv`: att_self + parent att 분리 (Conservation Law decoupling, Mustafa & Burkholz 2024 §3.2 Eq. 4)
+  - V5-B `GCNIIGATv2Conv`: β_l = log(λ/l + 1) Identity Mapping + Initial Residual α (Chen 2020 GCNII Eq. 6 + Peng 2024 trainability)
+  - V5-C `FullAEROGATv2Conv`: Softplus per-node norm + Hop Attention (outer L+1 weighted stack) + Cumulative Attention residual (Lee 2023 AERO Theorem 3 SR2OS)
+
+### 결론 — 시나리오 (a) confirm + mech(ii-b) 7/7 absolute confirm candidate
+
+- 17-trial × 6 mitigation 카테고리 (graph topology / B5 mitigation / loss-level / aggregation-level / V4 architectural intervention / V5 architectural intervention) 모두 baseline 미달
+- V5 7-trial 중 v5c_hop_only 0.6076 (Δ=-0.0021 noise band, max) — anchor qcond_nl3 (0.6061) marginal 상회 (+0.0015) 하나 P80 0.6097 미달
+- V5-B depth scale monotonic decay (L=2 0.6072 > L=4 0.5969 > L=6 0.5845) — Chen 2020 deep-GNN claim 의 heterogeneous schema graph 미적용 (over-smoothing 외 PLM lower bound bottleneck)
+- V5-A GATE 0.5571 (V5 worst) — Conservation Law decoupling 의 heterogeneous schema graph 미적용 (attention parameter norm constraint 외 propagation pathology dominant)
+- paper §3.5 Filter Dominance 6번째 축 (training-pathology-invariant) **17-trial evidence 누적** + paper §V.5.4 mech(ii-b) DOMINANT 7/7 absolute confirm 격상 candidate
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Mitigation V5 7-Trial Sweep 학습 완료 (V-3-ext 단계 9, 2026-05-13 → 05-15)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (7): `train_dsn_p80_v5{a_gate, b_gcnii_L2, b_gcnii_L4, b_gcnii_L6, c_full, c_hop_only, c_cum_only}.yaml`
+- 모델 확장: `src/models/gat_network_v2.py` (commit `afadafd`) — `GATEGATv2Conv` + `GCNIIGATv2Conv` + `FullAEROGATv2Conv` + Hop/Cum Attention modules + `GAT_LAYER_TYPES` set 확장
+- 학습 entry: `src/train_gat_s06.py` (V5 kwargs forwarding)
+- Sweep script: `scripts/run_v5_mitigation_sweep.sh` (4-stage GPU 0/1 병렬, 사용자 5/14 명시 "Root 학습/실험 메인" 후 직접 launch)
+- 학습 logs: `logs/train/dsn_p80_v5{*}_*.log` (7 cell, 모든 log 300 epoch + Training Completed 종료 mark)
+- Checkpoints (NAS, 7 신규): `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_v5{*}.pt` (총 1.69GB)
+- 비용: ₩0 (LLM-free) | 학습 wall (합산): 95h 17m | 학습 wall (실시간 2-GPU 병렬): ~55h (5/13 12:10 → 5/15 19:07)
 

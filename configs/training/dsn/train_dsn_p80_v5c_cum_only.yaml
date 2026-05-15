@@ -1,0 +1,77 @@
+# Mitigation V5-C (cum-only ablation) — Softplus+SymNorm + Cumulative Attention (Lee 2023 Theorem 3)
+# 근거: planning/DECISIONS.md 2026-05-13 (V5 Module:Selector Ownership 완료) §V5-C 3 cell ablation
+#       planning/oversmoothing_v5_plan.md §4.3 Direction C "Full AERO-GNN: Node-Adaptive Hop Attention 추가"
+#       Lee et al. 2023 AERO-GNN (arXiv:2306.02376) Theorem 3 (Cumulative Attention)
+#
+# Ablation 위치: V5-C 3 cell ablation (v5c-full / v5c-hop-only / v5c-cum-only) 의 cum-only variant.
+#   Theorem 3 (SR2OS via edge-level α 누적) 단독 효과 분리 — Theorem 4 (Hop sum) 미사용.
+#
+# 학술 caveat (DECISIONS 2026-05-13 §V5-C):
+#   Lee 2023 의 Cumulative Attention 은 edge-level α 누적 (paper form):
+#     α^{(l)} = α^{(l-1)} + softplus(e^{(l)})
+#   본 구현은 hidden-state level residual outer simulation (PyG MessagePassing inner α access 한계):
+#     h^{(l)} = h^{(l)} + decay · h^{(l-1)}
+#   paper Theorem 3 의 SR2OS guarantee 의 본 도메인 transfer 정합성 불완전 — post-paper 검증 candidate.
+#
+# Decay 선택 (0.5): module:selector default = 1.0 이지만, cum-only 단독 시 hop 의 normalization 부재로
+#   누적 explosion 위험 → 보수적 0.5 (절반 누적).
+
+project_name: "Text-to-SQL-Alignment"
+experiment_name: "dsn_p80_v5c_cum_only"
+checkpoint_name: "best_gat_directed_supernode_p80_v5c_cum_only.pt"
+
+builder:
+  type: "EnrichedHeteroGraphBuilder"
+  tables_json_path: "/SSL_NAS/peoples/khj/thesis/train/train_tables.json"
+
+paths:
+  train_json: "/SSL_NAS/peoples/khj/thesis/train/train.json"
+  train_db_dir: "/SSL_NAS/peoples/khj/thesis/train/train_databases"
+  test_json: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev.json"
+  test_db_dir: "/home/hyeonjin/thesis_refactored/data/raw/BIRD_dev/dev_databases"
+  checkpoint_dir: "./outputs/checkpoints"
+  cache_dir: "./data/processed"
+
+model:
+  in_channels: 384
+  hidden_channels: 256
+  out_channels: 256
+  num_layers: 2
+  heads: 4
+  dropout: 0.1
+  classifier_hidden: 256
+
+  query_conditioned: false
+  query_supernode: true
+
+  supernode_edge_direction: "directed_from_sn"
+  supernode_threshold_mode: "percentile"
+  supernode_threshold_value: 80.0
+  supernode_score_normalization: "minmax"
+
+  pairnorm_mode: "pairnorm"
+  pairnorm_scale: 1.0
+  initial_residual_alpha: 0.2
+  # cum-only: hop attention 없음 → 기존 JK concat 유지 (cross-layer aggregation 의 default 경로).
+  jumping_knowledge: "concat"
+  dual_stream: true
+
+  # V5-C cum-only: Softplus + Sym-Norm + Cumulative Attention (decay=0.5), Hop Attention 미사용
+  gat_layer_type: "aero_full"
+  softplus_symmetric_norm: true
+  aero_hop_attention: false
+  aero_cumulative_attention: true
+  aero_cumulative_decay: 0.5
+  aggregation_type: "mean"
+
+training:
+  epochs: 300
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  pos_weight: 100.0
+  val_split: 0.1
+  recall_k: 15
+  loss_type: "listnet"
+  anti_collapse_weight: 0.1
+  anti_collapse_tau_max: 0.85
