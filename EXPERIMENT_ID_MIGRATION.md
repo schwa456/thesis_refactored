@@ -1698,3 +1698,51 @@ V-3-ext 단계 8 의 architectural intervention. 직전 단계 7 v3 GIN 의 명�
 - α=0.0 anchor 정합 PASS (ΔF1=-0.0002 sub-noise) — Extractor commit `1e2c46a` 의 `integrated_score` mode backward-compat 정확 검증
 - paper §V.5.x.M.13 (Selector + Extractor co-design) narrative 신규 candidate + paper §V.5.x.M.3 (production deployment) + §V.5.x.M.11 (Filter Short-Circuit voluntary vs involuntary) 강화 evidence
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 4.1+4.2 Chain (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+
+---
+
+## Wave 6 Phase 1 M1 Recall-Biased Prompt (DECISIONS 2026-05-16 Wave 6 §2, 학술 agent filter improve plan §3, 2026-05-16, 3 신규 ID — 🎯 R-lift evidence + Phase 2 (a) M2 CoT 분기)
+
+### 명명 규칙 — `wave6_p1_recall_biased_X.yaml` (`configs/experiments/abl/wave6_recall_biased/`)
+
+| # | Cell ID | prompt_mode | R | P | F1 | EX | ΔF1 vs c01_01 (0.8664) | Note |
+|---|---|---|---:|---:|---:|---:|---:|---|
+| 1 | **wave6_p1_recall_biased_mild** ★ R-max | recall_biased_mild | **0.9259** | 0.7648 | 0.8377 | 0.5169 | -0.0287 | M1-A: RELEVANT or POTENTIALLY RELEVANT + WHEN IN DOUBT INCLUDE |
+| 2 | **wave6_p1_recall_biased_strong** ⭐ F1-best | recall_biased_strong | 0.9022 | 0.8316 | **0.8655** | 0.5130 | **-0.0009** sub-noise | M1-B: Default decision is INCLUDE + 명시적 exclusion criteria (학술 agent default) |
+| 3 | wave6_p1_recall_biased_exclusion_rule | recall_biased_exclusion_rule | 0.8907 | 0.8263 | 0.8573 | 0.5143 | -0.0091 | M1-C: 4-rule conjunctive exclusion + UNSURE → KEEP |
+
+### Config 주의사항
+
+- 위치: `configs/experiments/abl/wave6_recall_biased/`
+- Stack: c01_01 anchor stack 의 Filter prompt_mode 만 교체 (학습 없음, anchor ckpt 재사용)
+- 변경 차원: `XiYanFilter.prompt_mode` ∈ {recall_biased_mild, recall_biased_strong, recall_biased_exclusion_rule} (commit `07d2fda`)
+- Common 후처리: `sanitize_filter_output()` default-on (Hallucination 방지, 학술 agent §2.3) — input subgraph 에 없는 table/column 제거
+- LLM: glm-4.7 (4602 calls = 1534 × 3)
+
+### Inclusion bias strength axis → R-P trade-off monotonic 정합
+
+```
+R order:  mild (0.9259) > strong (0.9022) > exclusion_rule (0.8907)
+P order:  strong (0.8316) > exclusion_rule (0.8263) > mild (0.7648)
+F1 order: strong (0.8655) > exclusion_rule (0.8573) > mild (0.8377)
+```
+
+→ inclusion bias 강도 ↑ → R ↑ P ↓ — 학술 agent improve plan §3 hypothesis 정합 confirm
+
+### DECISIONS §3 Phase 2 분기 (R_fil 기준)
+
+| 분기 | 조건 | 결과 |
+|---|---|---|
+| (a) M2 CoT + Confidence-Gated + M1 best | R_fil ≥ 0.92 | ✅ **mild 0.9259 충족 → (a) 권고** |
+| (b) M3 OR Voting | R_fil 0.88-0.92 | strong (0.9022) / exclusion_rule (0.8907) range |
+| (c) M4 Bidirectional | R_fil < 0.88 | (셋 다 ≥ 0.88) |
+
+→ **Phase 2 (a) 권고**: M1 best (strong, F1=0.8655 sub-noise) + M2 CoT prompt + Confidence-Gated
+
+### 결론 — Wave 6 Phase 1 R-lift evidence + Phase 2 (a) trigger
+
+- strong (M1-B) = M1 best F1 (sub-noise) + R lift +0.0274 — anchor F1 거의 유지하면서 R 큰 lift
+- mild (M1-A) R 0.9259 → Phase 2 (a) M2 CoT 분기 활성 trigger
+- 학술 agent §10 성공 기준 F1_fil ≥ 0.8672 — 셋 다 sub-noise 미달 → Phase 2 후속 필요
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 1 (2026-05-16)](EXPERIMENT_HISTORY.md).

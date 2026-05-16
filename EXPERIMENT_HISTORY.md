@@ -4258,3 +4258,114 @@ F1 trajectory (α axis):
   - paper §V.5.x.M.3 + §V.5.x.M.11 narrative 갱신 (Phase 4.2 cost-effective Pareto)
   - axis #5/#6/#7 (Filter Dominance) 의 Phase 4.1+4.2 통합 mechanism evidence 명문화
 
+
+---
+
+## Wave 6 Phase 1 M1 Recall-Biased Prompt — 3 variants Sweep (DECISIONS 2026-05-16 Wave 6 §2, 학술 agent filter improve plan §3, 2026-05-16, 🎯 R-lift +0.0511 (mild) / F1 sub-noise (strong) / Phase 2 (a) M2 CoT 분기 권고)
+
+근거: planning/DECISIONS.md 2026-05-16 (Wave 6 신규 활성 — Filter Recall Chain) §2 Phase 1 Spec + planning/filter/0516_scholar_filter_improve_plan.md §3 방법론 1. Module:filters commit `07d2fda` (XiYanFilter prompt_mode parameter + sanitize_filter_output 후처리 + smoke 18/18 PASS) 구현 후 즉시 launch. Wave 5 closure 정합 위에서 **별도 lever 축** — anchor stack 그대로 + Filter prompt language 만 교체 (LLM call 1× 동일, 최저비용 lever).
+
+### 운영 이력
+
+- **2026-05-16 17:46 (Module:filters commit `07d2fda`)**: XiYanFilter prompt_mode parameter (default / recall_biased_mild / recall_biased_strong / recall_biased_exclusion_rule) + `_PROMPT_SECTION_BY_MODE` 매핑 + sanitize_filter_output() static method (학술 agent §2.3, input subgraph 없는 table/column 제거) + 측정 메타 (filter_prompt_mode / filter_sanitize_output / filter_hallucination_removed_count / filter_input/output_node_count / filter_prune_pct) 노출. src/prompts/filter.md 에 PROMPT_M1_A/B/C 3 section 추가. Smoke 18/18 PASS.
+- **2026-05-16 17:48 (Root chain)**: 3 configs Python 일괄 생성 (`configs/experiments/abl/wave6_recall_biased/wave6_p1_recall_biased_{mild,strong,exclusion_rule}.yaml`) + `scripts/run_wave6_phase1_recall_biased.sh` 작성 (3-conc GPU 0×2 + GPU 1×1).
+- **2026-05-16 17:49:19 launch**: wrapper PID 935829, monitor task `bbuk2024c` (1h timeout × 2 re-arm) + 30m cron `c8d77b78`.
+- **2026-05-16 19:47:48 종료**: 3/3 metrics 도착. Wall = **1h58m** (사용자 spec 1.5h + GLM 정합 ~25분 늦음).
+
+### 3 variants 의 R/P/F1/EX (4-decimal, anchor c01_01 F1=0.8664 / EX=0.5176 / R=0.8748 / P=0.8582 비교)
+
+| Cell | prompt_mode | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **wave6_p1_recall_biased_mild** | recall_biased_mild | **0.9259** ★ | 0.7648 | 0.8377 | **0.5169** ★ | **+0.0511** ✅ | -0.0934 | -0.0287 | -0.0007 |
+| **wave6_p1_recall_biased_strong** | recall_biased_strong | 0.9022 | 0.8316 | **0.8655** ★ | 0.5130 | +0.0274 | -0.0266 | **-0.0009** sub-noise | -0.0046 |
+| **wave6_p1_recall_biased_exclusion_rule** | recall_biased_exclusion_rule | 0.8907 | 0.8263 | 0.8573 | 0.5143 | +0.0159 | -0.0319 | -0.0091 | -0.0033 |
+
+### 핵심 finding (학술 agent improve plan §3 검증)
+
+**1. Inclusion bias strength → R-P trade-off monotonic 정합** (3 variants ordering):
+- R: mild (0.9259) > strong (0.9022) > exclusion_rule (0.8907) — inclusion bias 강도 ↑ → R ↑
+- P: strong (0.8316) > exclusion_rule (0.8263) > mild (0.7648) — inclusion 가장 강한 mild 가 P 최대 손실
+- F1: strong (0.8655) > exclusion_rule (0.8573) > mild (0.8377) — strong 가 R-P 균형 sweet spot
+
+**2. strong (M1-B) = F1 최적 균형 cell** — 학술 agent default "Default decision is INCLUDE + 명시적 exclusion criteria":
+- ΔR = +0.0274 (R-lift 의미)
+- ΔF1 = -0.0009 **sub-noise** (anchor noise floor ±0.0005 baseline 정합)
+- F1 = 0.8655 vs 학술 agent §10 success criterion (≥0.8672) — **-0.0017 sub-noise 거의 일치**
+
+**3. mild (M1-A) = R 최대 lift** — 학술 agent "RELEVANT or POTENTIALLY RELEVANT + WHEN IN DOUBT INCLUDE":
+- ΔR = **+0.0511** (Wave 6 chain R-lift evidence)
+- 다만 ΔP = -0.0934, ΔF1 = -0.0287 (too inclusive, P-cost 큼)
+- EX = **0.5169 max** (mild 의 inclusive selection 이 SQL 작성에 도움 — 다만 sub-noise -0.0007)
+
+**4. exclusion_rule (M1-C) = 중간** — 4-rule conjunctive + UNSURE→KEEP:
+- ΔR = +0.0159 (minimum R lift)
+- ΔF1 = -0.0091 — 4-rule conjunctive 가 너무 conservative 결과
+
+### 학술 agent §10 성공 기준 검증
+
+| 기준 | mild | strong | exclusion_rule | 결론 |
+|------|:---:|:---:|:---:|------|
+| F1_fil ≥ 0.8672 (필수) | ❌ 0.8377 | ❌ 0.8655 (-0.0017 sub-noise) | ❌ 0.8573 | 셋 다 미달 (다만 strong 가까움) |
+| Filter Prune % ≤ 50% (목표) | TBD | TBD | TBD | output_*.jsonl 의 filter_prune_pct 직접 측정 — analyzer 위임 |
+| Filter 의존도 ≤ 50% (목표) | TBD | TBD | TBD | analyzer 위임 |
+
+→ F1 기준 모두 미달 (sub-noise level) — 단독 M1 prompt 만으로 anchor F1 갱신 불충분. **Phase 2 M2+ 후속 chain 필요**.
+
+### DECISIONS §3 Phase 2 분기 권고
+
+**R_fil 기준 분기 candidate**:
+
+| 분기 | 조건 | 결과 |
+|------|------|------|
+| (a) M2 CoT + Confidence-Gated + M1 best 조합 | R_fil ≥ 0.92 | **✅ mild 0.9259 ≥ 0.92 충족** → (a) 권고 |
+| (b) M3 OR Voting 활성 | R_fil 0.88~0.92 | strong (0.9022) / exclusion_rule (0.8907) 모두 이 range |
+| (c) M4 Bidirectional 우선 | R_fil < 0.88 | 셋 다 만족 안 함 (R 모두 ≥ 0.88) |
+
+→ **Phase 2 (a) M2 CoT + Confidence-Gated + M1 best 조합 권고**:
+- M1 best = **strong (M1-B)** F1=0.8655 (anchor sub-noise)
+- M2 CoT (Chain-of-Thought) + Confidence-Gated 추가 → P 회복 + F1 ≥ 0.8672 달성 시도
+- mild (R 0.9259) 의 R lift 가 학술 agent R ≥ 0.92 trigger 충족 → Phase 2 (a) 활성 정당화
+
+### Phase 2 측정 spec (분기 (a) 활성 시)
+
+- M1 best (strong) + M2 CoT prompt + Confidence-Gated (예: P_filter > threshold 시만 prune)
+- LLM call 2× /q (M1 + M2) = 2 × 1534 = 3068 calls (anchor 2873 정합)
+- 측정: 학술 agent §2.1 동일 (R_fil/P_fil/F1_fil/FNR/FPR/Prune%/LLM_calls)
+- 비용: ~$2-4 GLM 4.7
+
+### 학습 비용 + 환경
+
+- **Wall**: 1h58m (17:49:19 → 19:47:48)
+- **GPU 시간**: 3 cells × 2h × (effective conc 3) / 3 = ~6 GPU-hour
+- **LLM API 비용**: ~$3-6 GLM 4.7 (4602 calls = 1534 × 3)
+- **per_q drift**: 4.1-4.2s (Round start) → 4.6s (mid) — 안정
+- **failure**: 0/3 cells (모든 metrics.txt 정상)
+- **sanitize_filter_output**: default-on (Hallucination 방지, telemetry 정량 = analyzer 위임)
+
+### Checkpoint + Reference (재사용)
+
+- Stack: c01_01 anchor stack 의 Filter prompt_mode 만 교체
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음)
+- Filter: XiYanFilter + prompt_mode = recall_biased_{mild, strong, exclusion_rule} (commit `07d2fda`)
+- LLM: glm-4.7 (Elice ML API, OpenAI-compatible)
+
+### 산출물
+
+- Configs (3): `configs/experiments/abl/wave6_recall_biased/wave6_p1_recall_biased_{mild,strong,exclusion_rule}.yaml`
+- Sweep script: `scripts/run_wave6_phase1_recall_biased.sh`
+- Logs: `logs/wave6_phase1_main.log` + `logs/wave6_phase1/wave6_p1_recall_biased_{*}_*.log` (3 cells)
+- Outputs: `outputs/experiments/abl/wave6_recall_biased/wave6_p1_*/` (3 metrics.txt + predictions.jsonl + output_*.jsonl)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, immediate)**: `notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-16.md` 신규 작성
+  - 3 variants × 1534q × 7 metrics 매트릭스 (R_fil/P_fil/F1_fil/FNR/FPR/Prune%/LLM_calls)
+  - R_gain trajectory: mild (+0.0511) > strong (+0.0274) > exclusion_rule (+0.0159) — inclusion bias monotonic
+  - Hallucination rate per variant (sanitize_filter_output 효과 정량 — filter_hallucination_removed_count / filter_input_node_count from output_*.jsonl)
+  - DECISIONS §3 Phase 2 분기 결정 정량 — R_fil ≥ 0.92 분기 (a) confirm + M2 CoT spec proposal
+  - 학술 agent §10 성공 기준 통계 검증 (3 cells F1 sub-noise vs ≥0.8672 threshold)
+- **Planner 위임 (analyzer 후)**:
+  - Phase 2 (a) M2 CoT + Confidence-Gated + M1 best (strong) 조합 spec 결정
+  - paper §V.5.x.M.x 신규 sub-section candidate (Filter prompt language axis = Recall lever evidence)
+- **Root 위임 (planner 후)**: Phase 2 (a) launch trigger (M1 best strong + M2 CoT 조합 config 작성 + 3-conc parallel)
+

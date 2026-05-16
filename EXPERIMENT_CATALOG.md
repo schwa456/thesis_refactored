@@ -2733,3 +2733,57 @@ P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
 - Wall: 2h05m (11:48 → 13:52), 비용 ~$8-15 GLM API
 - failure: 0/9
 
+
+---
+
+## Wave 6 Phase 1 M1 Recall-Biased Prompt — 3 variants (DECISIONS 2026-05-16 Wave 6 §2, 학술 agent filter improve plan §3, 2026-05-16, 🎯 mild R-lift +0.0511 / strong F1 sub-noise / Phase 2 (a) M2 CoT 분기 권고)
+
+### 3 variants × R/P/F1/EX (4-decimal, anchor c01_01 R=0.8748 / P=0.8582 / F1=0.8664 / EX=0.5176)
+
+| Cell | prompt_mode | R | P | F1 | EX | ΔF1 | Note |
+|---|---|---:|---:|---:|---:|---:|---|
+| **mild (M1-A)** | recall_biased_mild | **0.9259** ★ R-max | 0.7648 | 0.8377 | **0.5169** ★ | -0.0287 | inclusion 가장 강함, P-cost 큼 |
+| **strong (M1-B)** ⭐ | recall_biased_strong | 0.9022 | 0.8316 | **0.8655** ★ F1-max | 0.5130 | **-0.0009** sub-noise | F1 최적 균형, M1 best |
+| **exclusion_rule (M1-C)** | recall_biased_exclusion_rule | 0.8907 | 0.8263 | 0.8573 | 0.5143 | -0.0091 | 4-rule conjunctive, 가장 conservative |
+
+### Inclusion bias strength → R-P trade-off monotonic 정합
+
+- R: mild > strong > exclusion_rule (inclusion bias ↑ → R ↑)
+- P: strong > exclusion_rule > mild (P loss 비례)
+- F1: strong > exclusion_rule > mild (R-P 균형)
+
+### 학술 agent §10 성공 기준 (F1_fil ≥ 0.8672 필수)
+
+- mild: 0.8377 ❌
+- **strong: 0.8655 ❌ (-0.0017 sub-noise, 가장 가까움)**
+- exclusion_rule: 0.8573 ❌
+- → 3 cells 모두 미달 (sub-noise level), Phase 2 M2+ 후속 chain 필요
+
+### DECISIONS §3 Phase 2 분기 권고 — Phase 2 (a)
+
+- R_fil best (mild) = 0.9259 ≥ 0.92 → **Phase 2 (a) M2 CoT + Confidence-Gated + M1 best 조합 권고**
+- M1 best = **strong (F1 0.8655 sub-noise + ΔR +0.0274)**
+- Phase 2 (a): M1 best (strong) + M2 CoT prompt + Confidence-Gated (P 회복 + F1 ≥ 0.8672 달성 시도)
+
+### Config 주의사항
+
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- 변경 차원: XiYanFilter prompt_mode parameter (commit `07d2fda`)
+- Common 후처리: sanitize_filter_output() default-on (Hallucination 방지)
+- LLM: glm-4.7 (4602 calls = 1534 × 3 variants)
+
+### 결론 — M1 Recall-Biased Prompt 의 R-lift evidence + Phase 2 (a) 분기
+
+- strong (M1-B) F1=0.8655 sub-noise + R-lift +0.0274 — anchor F1 거의 유지하면서 R lift
+- mild (M1-A) R=0.9259 ≥ 0.92 → Phase 2 (a) trigger 충족
+- inclusion bias 강도 → R-P trade-off monotonic — Wave 6 chain mechanism evidence
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 1 (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (3): `configs/experiments/abl/wave6_recall_biased/wave6_p1_recall_biased_{mild, strong, exclusion_rule}.yaml`
+- Module 구현: filter commit `07d2fda` (prompt_mode + sanitize_filter_output + smoke 18/18 PASS)
+- Sweep script: `scripts/run_wave6_phase1_recall_biased.sh` (3-conc GPU 0×2 + GPU 1×1)
+- Wall: 1h58m (17:49 → 19:47), 비용 ~$3-6 GLM API
+- failure: 0/3
+

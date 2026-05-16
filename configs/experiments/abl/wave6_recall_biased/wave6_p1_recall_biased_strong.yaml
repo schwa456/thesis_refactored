@@ -1,0 +1,56 @@
+# Wave 6 Phase 1 M1 Recall-Biased Prompt — M1-B Strong Recall-Bias (Default decision is INCLUDE + 명시적 exclusion criteria)
+# DECISIONS 2026-05-16 Wave 6 신규 활성 entry §2 Phase 1 Spec + 학술 agent filter improve plan §3 방법론 1
+# Module:Filter commit 07d2fda — XiYanFilter prompt_mode parameter + sanitize_filter_output 후처리
+# Anchor stack 그대로 (c01_01) + Filter prompt_mode 만 차이
+
+experiment_name: "wave6_p1_recall_biased_strong"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    prompt_mode: "recall_biased_strong"
+    sanitize_output: true
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0
