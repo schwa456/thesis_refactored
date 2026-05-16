@@ -2670,3 +2670,66 @@ P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
 - Wall: 8h14m50s (00:47:25 → 09:02:15)
 - failure: 0/25 (모든 cells 의 metrics.txt 정상 생성)
 
+
+---
+
+## Phase 4.1 (α sweep) + Phase 4.2 (TCR-conditional) Chain — 6+3=9 cells (학술 agent plan §Phase 4, 2026-05-16, 🎯 α=0.0~0.8 plateau confirm + α=1.0 cliff -0.0952 + thr=0.5 Pareto sweet spot)
+
+### 9 cells × 4 metrics (R/P/F1/EX 4-decimal, anchor c01_01 F1=0.8664 / EX=0.5176 비교)
+
+**Phase 4.1 α sweep (6 cells)**:
+
+| α | F1 | EX | ΔF1 | Note |
+|---|---:|---:|---:|---|
+| **0.0** ⭐ | 0.8662 | 0.5150 | -0.0002 ✅ | anchor 정합 PASS (deterministic verify) |
+| 0.2 | **0.8665** | 0.5137 | +0.0001 | sub-noise |
+| 0.4 | 0.8662 | 0.5137 | -0.0002 | sub-noise |
+| 0.6 | 0.8657 | 0.5169 | -0.0007 | sub-noise |
+| 0.8 | **0.8667** | 0.5150 | +0.0003 | sub-noise marginal max |
+| **1.0** ★ | **0.7712** | **0.3638** | **-0.0952** | TopK-only cliff drop |
+
+→ **α=0.0~0.8 plateau (spread 0.0010), α=1.0 cliff drop**.
+
+**Phase 4.2 TCR-conditional (3 cells)**:
+
+| thr | F1 | EX | ΔF1 | Skip / 1534 | Skip % |
+|---|---:|---:|---:|---:|---:|
+| 0.3 | 0.8673 | 0.5111 | +0.0009 | 0 | 0.0% |
+| **0.5** ⭐ | 0.8671 | 0.5156 | **+0.0007** sub-noise | 8 | 0.5% (Pareto sweet spot) |
+| 0.7 | 0.8588 | 0.5150 | **-0.0076** | 39 | 2.5% |
+
+→ thr=0.5 Pareto sweet spot, thr=0.7 aggressive (F1 -0.0076 cost). TCR 분포 high (대부분 ≥ 0.7).
+
+### Anchor 정합 검증 (α=0.0 ↔ c01_01 ↔ p2_02 deterministic 일치)
+
+| Source | F1 | ΔF1 vs c01_01 |
+|---|---:|---:|
+| c01_01 (5/15) | 0.8664 | (base) |
+| p2_02 (5/16 morning) | 0.8669 | +0.0005 |
+| p4_01 α=0.0 (5/16 noon) | 0.8662 | -0.0002 |
+
+→ GLM stochastic noise floor: **~±0.0005 F1**, 3 measurement spread 0.0007.
+
+### Config 주의사항
+
+- 학습 entry: 없음 (sweep only, anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- Phase 4.1 변경 차원: `MSTPCSTUnionExtractor.seed_selection_mode="integrated_score"` + alpha (commit `1e2c46a`)
+- Phase 4.2 변경 차원: `ConditionalFilterWrapper(inner=XiYanFilter)` + tcr_threshold (commit `e0685eb`)
+- Stack: c01_01 anchor (QCondGAT 3-layer + bidirectional SN + MSTPCSTUnion + XiYanFilter GLM 4.7 + LLMSQLGenerator)
+
+### 결론 — Plateau + Cliff (Extractor rescue dominant) + Pareto Filter cost
+
+- α plateau (α=0.0~0.8) — PCST prize weighting 의 final F1 invariance
+- α=1.0 cliff drop F1 -0.0952 — Extractor threshold-pass rescue 가 dominant lever
+- Phase 4.2 TCR distribution heavy tail → thr=0.5 sweet spot (cost saving 0.5% + F1 sub-noise)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 4.1+4.2 Chain (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Phase 4.1 Configs (6): `configs/experiments/abl/c04_phase4_alpha_sweep/p4_{01..06}_alpha_X.yaml`
+- Phase 4.2 Configs (3): `configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_{0.3, 0.5, 0.7}.yaml`
+- Module 구현: extractor commit `1e2c46a` + filter commit `e0685eb`
+- Sweep script: `scripts/run_phase4_chain.sh` (9-conc parallel GPU 0×4 + GPU 1×5)
+- Wall: 2h05m (11:48 → 13:52), 비용 ~$8-15 GLM API
+- failure: 0/9
+

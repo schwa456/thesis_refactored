@@ -4142,3 +4142,119 @@ DECISIONS 2026-05-08 §1 분기:
 - **Planner 위임 (analyzer 후)**: closure narrative axis #11 (builder-axis invariance) 의 Phase 2 plateau 흡수 evidence 추가 명문화
 - **Caveat**: p2_03 (θ=0.1, K=30) F1=0.8680 / p2_07 (θ=0.125, K=20) EX=0.5189 의 noise floor 약간 초과 sub-noise candidate — 추가 measurement (seed sweep 또는 GLM stochastic variance 분석) 으로 statistical significance 검증 후속 backlog
 
+
+---
+
+## Phase 4.1 (α sweep) + Phase 4.2 (TCR-conditional Filter) Chain (학술 agent plan §Phase 4, DECISIONS 2026-05-16 §3+§4, 2026-05-16, 🎯 α=0.0~0.8 plateau confirm + α=1.0 cliff -0.0952 (Extractor threshold rescue dominant) + thr=0.5 Pareto sweet spot)
+
+근거: planning/DECISIONS.md 2026-05-16 (학술 agent plan Phase 3+4 활성) §3 Phase 4.1 + §3 Phase 4.2 + §4 결정 요약 (Phase 4.1+4.2 = 6+3=9 cells parallel launch). Module:extractors commit `1e2c46a` (`MSTPCSTUnionExtractor.seed_selection_mode="integrated_score"` + α weighting) + Module:filters commit `e0685eb` (`ConditionalFilterWrapper(inner=XiYanFilter)` + TCR-gated voluntary skip + smoke 16/16 PASS) 구현 후 통합 chain launch.
+
+### 운영 이력
+
+- **2026-05-16 11:34 (Module:filters commit `e0685eb`)**: `ConditionalFilterWrapper` 구현 — TCR(q) = |subgraph cols| / |full schema cols| 계산 (kwargs override 우선, metadata fallback). call_mode ∈ {"conditional", "always"} + tcr_threshold ∈ [0,1]. skip 시 subgraph 그대로 final_nodes 반환 (LLM call 0). stats/filter_info 에 voluntary_skipped/inner_called/tcr_value/tcr_source/inner_filter_name 노출.
+- **2026-05-16 11:38 (Module:extractors commit `1e2c46a`)**: `MSTPCSTUnionExtractor.seed_selection_mode="integrated_score"` + α ∈ [0,1] 구현. integrated_score 모드는 `s_integrated(v) = α·𝟙[v∈Selector_TopK] + (1-α)·𝟙[s_v≥score_threshold]` 를 양쪽 sub-extractor 의 node_scores 로 전달. last_info 에 integrated_topk_only/threshold_only/intersection/positive_total telemetry.
+- **2026-05-16 11:47 (Root chain)**: `scripts/run_phase4_chain.sh` 신규 작성 — 9-conc parallel (GPU 0 × 4 Phase 4.1 α=0.0~0.6 + GPU 1 × 5 Phase 4.1 α=0.8/1.0 + Phase 4.2 thr=0.3/0.5/0.7). 사용자 5/16 spec "9 cells parallel launch" + "kill 금지".
+- **2026-05-16 11:48:04 launch**: wrapper PID 391843, monitor task `bpe89xnyc` (1h timeout × 3 re-arm) + 30m cron `a60df239`.
+- **2026-05-16 13:52 종료**: 9/9 metrics 모두 도착. Wall = **2h05m** (사용자 spec 2-3h ETA 정합).
+
+### Phase 4.1 6 cells α sweep — 결과 (anchor c01_01 F1=0.8664 / EX=0.5176)
+
+| Cell | α | mode 설명 | R | P | F1 | EX | ΔF1 | ΔEX |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| **p4_01** ⭐ | **0.0** | threshold-only (= c01_01 default) | 0.8767 | 0.8559 | **0.8662** | 0.5150 | **-0.0002** ✅ anchor 정합 PASS | -0.0026 |
+| p4_02 | 0.2 | TopK 가중 + threshold 가중 | 0.8769 | 0.8564 | **0.8665** | 0.5137 | **+0.0001** sub-noise | -0.0039 |
+| p4_03 | 0.4 | balanced | 0.8764 | 0.8563 | **0.8662** | 0.5137 | -0.0002 sub-noise | -0.0039 |
+| p4_04 | 0.6 | balanced | 0.8762 | 0.8554 | 0.8657 | 0.5169 | -0.0007 sub-noise | -0.0007 |
+| p4_05 | 0.8 | TopK 강화 | 0.8771 | 0.8566 | **0.8667** | 0.5150 | **+0.0003** sub-noise | -0.0026 |
+| **p4_06** | **1.0** | TopK-only | 0.7254 | 0.8232 | **0.7712** | 0.3638 | **-0.0952** ★ | **-0.1538** |
+
+**핵심 finding (Phase 4.1)**:
+- **α=0.0~0.8 plateau** — 모두 sub-noise (|ΔF1| ≤ 0.0007, GLM stochastic noise floor 정합). Phase 2 Grid 의 anchor-band plateau (5×5 25 cells, F1 spread 0.0057) 와 일관.
+- **α=1.0 cliff drop** — F1=0.7712 (ΔF1=-0.0952, -11%), R=0.7254 (ΔR=-0.1494, -17%), EX=0.3638 (ΔEX=-0.1538, -30%). 
+- **Extractor threshold-pass rescue 가 final R/F1/EX 의 dominant contributor** — Selector top-K (~20 nodes) 만으로는 schema linking 의 minimum coverage 미달, threshold-pass rescue 가 ~10% F1 lever.
+- α=0.0 anchor deterministic 일치 PASS (ΔF1=-0.0002, |Δ|<0.005 sub-noise verify, GLM stochastic ~0.001 floor 안).
+
+### Phase 4.2 3 cells TCR-conditional — 결과 (anchor c01_01 F1=0.8664)
+
+| Cell | thr | R | P | F1 | EX | ΔF1 | Skip / 1534 | Skip % | LLM cost saving |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| p4_2_thr_0.3 | 0.3 | 0.8772 | 0.8577 | **0.8673** | 0.5111 | **+0.0009** sub-noise | 0 | 0.0% | 0% |
+| **p4_2_thr_0.5** ⭐ | **0.5** | 0.8793 | 0.8553 | **0.8671** | 0.5156 | **+0.0007** sub-noise | 8 | 0.5% | 0.5% |
+| p4_2_thr_0.7 | 0.7 | 0.8785 | 0.8399 | 0.8588 | 0.5150 | **-0.0076** | 39 | 2.5% | 2.5% |
+
+**핵심 finding (Phase 4.2)**:
+- **TCR 분포 high** — anchor-band Prune% 92-94% 의 inverse (TCR = col coverage). 대부분 query 의 TCR ≥ 0.7, 따라서 thr=0.3/0.5 시 skip 거의 무 (0-0.5%).
+- **thr=0.5 = Pareto sweet spot** — F1 sub-noise +0.0007 + 0.5% saving (8 calls). production deployment 의 cost-effective candidate.
+- **thr=0.7 aggressive** — 2.5% saving 위해 F1 -0.0076 cost. 39 skipped query 의 F1 average 낮음 (skip 시 schema 부족하지만 Filter 가 못 prune)
+- TCR threshold sensitivity: 0.3 → 0.5 → 0.7 의 skip rate 0% → 0.5% → 2.5% non-linear increase (TCR distribution heavy tail toward 1.0).
+
+### α=0.0 ↔ c01_01 ↔ p2_02 deterministic 정합 통계 (3 anchor 동일 spec)
+
+| Source | F1 | EX | Δ vs c01_01 (F1) |
+|---|---:|---:|---:|
+| c01_01 (Phase 1.1, 5/15) | 0.8664 | 0.5176 | (base) |
+| p2_02 (Phase 2 Grid, 5/16 morning) | 0.8669 | 0.5163 | +0.0005 |
+| **p4_01 α=0.0 (Phase 4 Chain, 5/16 noon)** | **0.8662** | **0.5150** | **-0.0002** |
+
+→ GLM stochastic noise floor: **~±0.0005 F1, ~±0.0026 EX** (3 measurement spread). Phase 4 metric 의 statistical significance threshold candidate.
+
+### α axis interpolation 분석 (Phase 4.1, α=0.0~1.0 6 cells)
+
+```
+F1 trajectory (α axis):
+  α=0.0 → 0.8662  (anchor 정합)
+  α=0.2 → 0.8665  (sub-noise)
+  α=0.4 → 0.8662  (sub-noise)
+  α=0.6 → 0.8657  (sub-noise)
+  α=0.8 → 0.8667  (sub-noise, marginal max)
+  α=1.0 → 0.7712  ★ CLIFF DROP (-0.0950)
+```
+
+- **α=0.0~0.8 plateau** (F1 spread 0.0010 sub-noise, GLM noise floor 정합)
+- **α=0.95-1.0 transition zone** (single cliff event at α=1.0)
+- → Extractor seed 의 PCST prize weighting (α) 가 0.0~0.8 range 안에서 final F1 에 거의 영향 무. **threshold-pass rescue 가 plateau 유지의 핵심**.
+
+### 학습 비용 + 환경
+
+- **Wall**: 2h05m (11:48:04 → 13:52:56)
+- **GPU 시간**: 9 cells × 2h × (effective conc 7) / 9 = ~14 GPU-hours (8-conc Phase 2 정합 + Phase 4.2 skip 효과)
+- **LLM API 비용**: ~$8-15 GLM 4.7 (Phase 4.2 skip 으로 ~2% saving 만)
+- **per_q drift**: 4.2-4.4s (Round 1 start) → 4.7-4.9s (mid) → 안정
+- **failure**: 0 cells (9/9 metrics 정상 생성)
+- **process kill**: 0 (사용자 spec "kill 금지" 정합)
+
+### Checkpoint + Reference (재사용)
+
+- Stack: c01_01 anchor (QCondGAT 3-layer + bidirectional SN + MSTPCSTUnion + XiYanFilter GLM 4.7 + LLMSQLGenerator)
+- Phase 4.1 변경: `MSTPCSTUnionExtractor.seed_selection_mode="integrated_score"` + α (6 cells)
+- Phase 4.2 변경: `ConditionalFilterWrapper(inner=XiYanFilter)` + tcr_threshold (3 cells)
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (anchor 동일, 학습 없음)
+
+### 산출물
+
+- Phase 4.1 Configs (6, tracked from commit 1e2c46a): `configs/experiments/abl/c04_phase4_alpha_sweep/p4_{01..06}_alpha_X.yaml`
+- Phase 4.2 Configs (3, untracked from commit e0685eb): `configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_{0.3, 0.5, 0.7}.yaml`
+- Sweep script: `scripts/run_phase4_chain.sh` (9-conc parallel, GPU 0 × 4 + GPU 1 × 5)
+- Logs: `logs/phase4_chain_main.log` + `logs/phase4_chain/p4_*_*.log` (9 cells)
+- Outputs: `outputs/experiments/abl/c0[45]_phase4*/p4_*/` (9 metrics.txt + predictions.jsonl + output_*.jsonl)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 #1 (Phase 4.1, primary)**: `notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-16.md` 신규 작성
+  - α axis 6 cells F1/EX/Filter Prune% visualization
+  - α=0.0~0.8 plateau mechanism 분석 (PCST prize weighting 의 final F1 invariance — Extractor threshold-rescue dominance)
+  - α=1.0 cliff drop 의 Selector top-K only effective seed 분석 — schema coverage 부족 → R -0.1494 / F1 -0.0952 / EX -0.1538
+  - paper §V.5.x.M.13 (Selector + Extractor co-design integration) narrative 신규 권고
+  - integrated_topk_only / threshold_only / intersection / positive_total telemetry 분포 정량
+- **Analyzer 위임 #2 (Phase 4.2)**: `notebooks/analysis_results/phase4_2_conditional_filter_2026-05-16.md` 신규 작성
+  - TCR(q) 분포 histogram (1534 queries × 3 cells)
+  - 3 threshold (0.3/0.5/0.7) Filter skip rate + F1 trade-off frontier
+  - per-difficulty (simple/moderate/challenging) Filter 호출 비율 + F1 손실 비교
+  - LLM call 절감 % + GLM 4.7 API token cost ratio
+  - thr=0.5 Pareto sweet spot evidence + paper §V.5.x.M.3 production deployment narrative 직접 매핑
+  - paper §V.5.x.M.11 (Filter Short-Circuit voluntary vs involuntary) narrative 강화
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.13 신규 sub-section (α plateau + α=1.0 cliff = Selector + Extractor co-design integration evidence)
+  - paper §V.5.x.M.3 + §V.5.x.M.11 narrative 갱신 (Phase 4.2 cost-effective Pareto)
+  - axis #5/#6/#7 (Filter Dominance) 의 Phase 4.1+4.2 통합 mechanism evidence 명문화
+

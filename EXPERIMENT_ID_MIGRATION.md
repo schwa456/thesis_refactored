@@ -1645,3 +1645,56 @@ V-3-ext 단계 8 의 architectural intervention. 직전 단계 7 v3 GIN 의 명�
 - θ axis monotonic decay (Phase 1.1 정합), K axis anchor-band 안 sub-noise (Phase 1.2 정합)
 - → axis #11 (builder-axis invariance) plateau evidence retain + strengthen
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 2 Grid Sweep (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+
+---
+
+## Phase 4.1 (α sweep) + Phase 4.2 (TCR-conditional Filter) Chain (학술 agent plan §Phase 4, 2026-05-16, 9 신규 ID — 🎯 α=0.0~0.8 plateau + α=1.0 cliff + thr=0.5 Pareto sweet spot)
+
+### 명명 규칙
+
+**Phase 4.1** — `p4_{NN}_alpha_X.yaml` (`c04_phase4_alpha_sweep/`):
+
+| # | Cell ID | α | F1 | EX | ΔF1 vs c01_01 (0.8664) | Note |
+|---|---|---:|---:|---:|---:|---|
+| 1 | **p4_01_alpha_0.0** ⭐ | 0.0 | **0.8662** | 0.5150 | **-0.0002** ✅ | anchor 정합 PASS (deterministic verify, threshold-only mode) |
+| 2 | p4_02_alpha_0.2 | 0.2 | 0.8665 | 0.5137 | +0.0001 | sub-noise (middle α) |
+| 3 | p4_03_alpha_0.4 | 0.4 | 0.8662 | 0.5137 | -0.0002 | sub-noise (balanced) |
+| 4 | p4_04_alpha_0.6 | 0.6 | 0.8657 | 0.5169 | -0.0007 | sub-noise (TopK 강화 시작) |
+| 5 | p4_05_alpha_0.8 | 0.8 | **0.8667** | 0.5150 | **+0.0003** | sub-noise plateau max |
+| 6 | **p4_06_alpha_1.0** ★ | 1.0 | **0.7712** | **0.3638** | **-0.0952** | TopK-only cliff drop (R=-0.1494 / EX=-0.1538) |
+
+**Phase 4.2** — `p4_2_thr_X.yaml` (`c05_phase4_conditional_filter/`):
+
+| # | Cell ID | thr | F1 | EX | ΔF1 | Skip / 1534 | Skip % | LLM saving |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 7 | p4_2_thr_0.3 | 0.3 | 0.8673 | 0.5111 | +0.0009 | 0 | 0.0% | 0% (conservative, no skip) |
+| 8 | **p4_2_thr_0.5** ⭐ | 0.5 | 0.8671 | 0.5156 | **+0.0007** | 8 | 0.5% | 0.5% (Pareto sweet spot) |
+| 9 | p4_2_thr_0.7 | 0.7 | 0.8588 | 0.5150 | **-0.0076** | 39 | 2.5% | 2.5% (aggressive, F1 cost) |
+
+### Anchor 정합 검증 (3 deterministic measurement: c01_01 ↔ p2_02 ↔ p4_01)
+
+| Source | F1 | EX | ΔF1 vs c01_01 |
+|---|---:|---:|---:|
+| c01_01 (Phase 1.1, 5/15) | 0.8664 | 0.5176 | (base) |
+| p2_02 (Phase 2 Grid, 5/16 morning) | 0.8669 | 0.5163 | +0.0005 |
+| p4_01 α=0.0 (Phase 4 Chain, 5/16 noon) | 0.8662 | 0.5150 | -0.0002 |
+| **GLM noise floor** | — | — | **~±0.0005 (3 measurement spread 0.0007)** |
+
+### Config 주의사항
+
+- 위치: `configs/experiments/abl/c0[45]_phase4*/`
+- Stack: c01_01 anchor stack 의 Extractor (Phase 4.1) 또는 Filter (Phase 4.2) module 만 교체
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음, anchor ckpt 재사용)
+- 변경 차원:
+  - Phase 4.1: `MSTPCSTUnionExtractor.seed_selection_mode="integrated_score"` + alpha (commit `1e2c46a`)
+  - Phase 4.2: `ConditionalFilterWrapper(inner=XiYanFilter)` + tcr_threshold (commit `e0685eb`, smoke 16/16 PASS)
+- LLM: glm-4.7 (XiYanFilter + LLMSQLGenerator) GLM API
+
+### 결론 — α plateau + α=1.0 cliff (Extractor threshold rescue dominant) + Pareto Filter cost
+
+- **Phase 4.1**: α=0.0~0.8 plateau (sub-noise, |ΔF1|≤0.0007), α=1.0 cliff -0.0952 — Selector top-K (~20) 만으로는 schema coverage 부족, Extractor threshold-pass rescue 가 dominant final R/F1/EX lever
+- **Phase 4.2**: TCR(q) 분포 high (anchor-band Prune% 92-94% inverse). thr=0.5 Pareto sweet spot (F1 sub-noise + 0.5% saving)
+- α=0.0 anchor 정합 PASS (ΔF1=-0.0002 sub-noise) — Extractor commit `1e2c46a` 의 `integrated_score` mode backward-compat 정확 검증
+- paper §V.5.x.M.13 (Selector + Extractor co-design) narrative 신규 candidate + paper §V.5.x.M.3 (production deployment) + §V.5.x.M.11 (Filter Short-Circuit voluntary vs involuntary) 강화 evidence
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 4.1+4.2 Chain (2026-05-16)](EXPERIMENT_HISTORY.md).

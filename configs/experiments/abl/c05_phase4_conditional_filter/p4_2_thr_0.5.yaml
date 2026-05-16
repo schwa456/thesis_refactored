@@ -1,0 +1,58 @@
+# Phase 4.2 — Conditional Filter call (TCR-gated voluntary skip)
+# Cell: tcr_threshold = 0.5 (학술 agent default, balanced)
+# 학술 Agent Improving Plan §Phase 4.2 + DECISIONS 2026-05-16 §3 Phase 4.2 spec.
+
+experiment_name: "p4_2_thr_0.5"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "ConditionalFilterWrapper"
+  params:
+    call_mode: "conditional"
+    tcr_threshold: 0.5
+    inner_filter:
+      name: "XiYanFilter"
+      params:
+        provider: "glm"
+        model_name: "zai-org/glm-4.7"
+        max_iteration: 1
+        temperature: 0.0
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0
