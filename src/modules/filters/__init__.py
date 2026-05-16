@@ -11,6 +11,9 @@ from .rsl_backward_filter import RSLBackwardFilter
 from .grast_fd_filter import GRASTFDFilter
 from .grast_fd_filter_with_transformer import GRASTFDFilterWithTransformer
 from .conditional_filter_wrapper import ConditionalFilterWrapper
+from .multi_prompt_voting_filter import MultiPromptVotingFilter
+from .bidirectional_filter import BidirectionalFilter
+from .two_stage_filter import TwoStageFilter
 
 __all__ = [
     "SingleAgentFilter",
@@ -28,4 +31,7 @@ __all__ = [
     "GRASTFDFilter",
     "GRASTFDFilterWithTransformer",
     "ConditionalFilterWrapper",
+    "MultiPromptVotingFilter",
+    "BidirectionalFilter",
+    "TwoStageFilter",
 ]

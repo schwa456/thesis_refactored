@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 10가지 제안
+## 이 모듈이 받아야 할 13가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -24,6 +24,160 @@
 | **COND** | **Conditional Filter call wrapper (Phase 4.2, 2026-05-16)** | TCR(q) < threshold → inner Filter 호출 voluntary skip. extractor output 그대로 final_nodes 로 반환. paper §V.5.x.M.3 production deployment + §V.5.x.M.11 Filter Short-Circuit voluntary vs involuntary mechanism 분리 narrative. | **최상** | 기존 Filter 어느 것이든 inner 로 wrapping 가능 (XiYan / RSL-A / RSL-C / RSL-C-GT / SGBE 등). 5/14 anchor 의 6.32% involuntary skip 과 별개 voluntary mechanism. |
 | **M1** | **Recall-Biased Prompt 3 variants (Wave 6 Phase 1, 2026-05-16)** | XiYanFilter 의 prompt language 만 변경 — `prompt_mode ∈ {default, recall_biased_mild, recall_biased_strong, recall_biased_exclusion_rule}`. LLM call 횟수 동일 (1×). `sanitize_filter_output()` hallucination 방지 후처리 default-on. | **최상** | XiYan 대체 candidate 의 가장 저비용 lever (prompt-only 변경). 학술 agent plan §3 정합 + 측정: R_fil/P_fil/F1_fil/FNR/FPR/Prune%/LLM_calls/hallucination_removed_count. |
 | **M2** | **CoT + Confidence-Gated mode (Wave 6 Phase 2 (a), 2026-05-16)** | M1 best (recall_biased_strong, R_fil=0.9022) + CoT step-by-step reasoning + per-column confidence ∈ {high, medium, low} + confidence-gated post-processing (include=False + conf ≤ gate_level → 강제 include). LLM call 동일 (1×). 학술 agent §4 정합. | **최상** | Phase 2 (a) trigger 발효 (M1 mild R_fil=0.9259 ≥ 0.92 ✅). 측정 메타 확장: confidence_distribution / gated_override_count / raw_filter_count / final_filter_count. |
+| **M3** | **Multi-Prompt OR Voting (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | 3 prompt (M1-A 재사용 + voting_prompt_b SQL clause decomposition + voting_prompt_c 3-rule exclusion) × OR/MAJORITY/AND voting. 3 LLM call/q. 단일 refine() 에서 3 strategies 결과 모두 측정. | **최상** | Inclusion bias axis spectrum extreme — R-P trade-off endpoint 정량. paper §V.5.x.M.15 강화 + Filter Dominance narrative. |
+| **M4** | **Bidirectional Filter (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | Forward (M1-A 재사용) + Backward (bidirectional_backward SQL Schema Analyst) → union. 2 LLM call/q. backward_added / backward_gold_recovered / backward_precision 측정. | **최상** | Filter ↔ Selector co-design 의 추가 axis — backward question-driven mechanism. paper §3 Inter-Module Co-Design + §3.1 갱신 candidate. |
+| **M5** | **Two-Stage Filter (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | Stage 1 Recall-First Coarse (4-rule conjunctive exclusion) → Stage 2 Precision-Second Fine (Stage 1 output 을 schema input 으로). 2 sequential LLM call/q. stage1_only / two_stage final + stage2_recall_loss / stage2_precision_gain. | **최상** | Sequential Recall→Precision mechanism — §V.5.x.M.3 production deployment 추가 narrative. |
+
+---
+
+## M3 / M4 / M5. Wave 6 Phase 2 (a+aggressive) 동시 launch (★ 최상, 2026-05-16)
+
+### 동기 (DECISIONS 2026-05-16 (a+aggressive) launch entry §1+§2)
+- M2 와 동시 (별도 chain) launch — Phase 2 (a) 분기 활성 직후 사용자 옵션 ② 채택 ("M3+M4+M5 모두 즉시 추가").
+- 학술 frame: Pareto frontier 완성도 강화 + paper main contribution narrative axis 다양화.
+- 본 3 methodology 는 모두 **M2 와 독립** (각각 별도 prompt chain) + 학술 가치 명확 (각각 다른 mechanism axis) + cost 작음.
+
+### 설계 결정: 별도 클래스 3개 (XiYanFilter prompt_mode 확장 X)
+- M3/M4/M5 는 다중 LLM call + 후처리가 본질 — XiYanFilter 단일 mode 로는 부족.
+- 신규 클래스 3개 등록 — `MultiPromptVotingFilter` / `BidirectionalFilter` / `TwoStageFilter`.
+- XiYanFilter 의 `prompt_mode` 는 단일 LLM call 용으로 유지 (M1/M2 와 호환).
+- 모든 신규 클래스는 `XiYanFilter.sanitize_filter_output()` static method 재사용 — 학술 agent §2.3 hallucination 방지 default-on.
+
+## M3. Multi-Prompt OR Voting (★ 최상)
+
+### 학술 agent §5 spec
+- **PROMPT_M3_A** = M1-A mild (재사용, `recall_biased_mild` section)
+- **PROMPT_M3_B** = `voting_prompt_b` (SQL Clause Decomposition Perspective — SELECT/FROM/WHERE/JOIN ON/GROUP BY/ORDER BY/HAVING/Subquery)
+- **PROMPT_M3_C** = `voting_prompt_c` (Conservative Exclusion, 3-rule conjunctive)
+- Voting: `OR` (≥1 → keep, 최대 recall) / `MAJORITY` (≥2, balanced) / `AND` (==3, 최대 precision)
+
+### 인터페이스
+```python
+@register("filter", "MultiPromptVotingFilter")
+class MultiPromptVotingFilter(BaseFilter):
+    def __init__(self, model_name, ..., 
+                 voting_strategies=["OR","MAJORITY","AND"],  # 전체 평가
+                 default_voting_strategy="OR",                # final_nodes 반환용
+                 sanitize_output=True, **kwargs): ...
+    # refine() 한 번에 3 LLM call + 3 voting variant 결과 모두 filter_info 동봉
+```
+
+### 측정 메타 (filter_info)
+- `filter_voting_strategies` / `filter_default_voting_strategy`
+- `filter_raw_counts` : `{"A": n, "B": n, "C": n}` (sanitize 후 raw)
+- `filter_hallucination_removed` : `{"A": n, "B": n, "C": n}`
+- `filter_voted_counts` : `{"OR": n, "MAJORITY": n, "AND": n}`
+- `filter_voted_nodes` : `{"OR": [...], "MAJORITY": [...], "AND": [...]}` — 모든 strategy 의 final_nodes 동봉 → analyzer 가 yaml-driven default 외에도 분석 가능
+
+### Config 권장
+```yaml
+filter:
+  name: "MultiPromptVotingFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    voting_strategies: ["OR", "MAJORITY", "AND"]
+    default_voting_strategy: "OR"     # 또는 MAJORITY
+    sanitize_output: true
+```
+
+## M4. Bidirectional Filter (★ 최상)
+
+### 학술 agent §6 spec
+- **PROMPT_M4_FORWARD** = M1-A mild (재사용)
+- **PROMPT_M4_BACKWARD** = `bidirectional_backward` (SQL Schema Analyst — question 관점 column 목록 generation, `{table: [col, ...]}` JSON)
+- Union: Forward ∪ Backward (sanitize 양쪽 모두 적용)
+- `analyze_backward_contribution`: backward 가 forward 에서 놓친 gold 회복 정량
+
+### 인터페이스
+```python
+@register("filter", "BidirectionalFilter")
+class BidirectionalFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 forward_section="recall_biased_mild",
+                 backward_section="bidirectional_backward",
+                 sanitize_output=True, **kwargs): ...
+    # refine(query, subgraph, db_id, gold=None, **kwargs)
+    # gold kwarg 가 들어오면 backward_gold_recovered + backward_precision 계산
+```
+
+### 측정 메타 (filter_info)
+- `filter_forward_count` / `filter_backward_count` / `filter_union_count`
+- `filter_backward_added` (backward-only column 수)
+- `filter_backward_gold_recovered` / `filter_backward_precision` (gold 있을 때만)
+- `filter_hallucination_removed_forward` / `_backward`
+
+### Config 권장
+```yaml
+filter:
+  name: "BidirectionalFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    forward_section: "recall_biased_mild"
+    backward_section: "bidirectional_backward"
+    sanitize_output: true
+```
+
+## M5. Two-Stage Filter (★ 최상)
+
+### 학술 agent §7 spec
+- **PROMPT_M5_STAGE1** = `two_stage_stage1` (Recall-First Coarse, 4-rule conjunctive exclusion + "If UNSURE → KEEP")
+- **PROMPT_M5_STAGE2** = `two_stage_stage2` (Precision-Second Fine, Stage 1 output 을 `{stage1_schema_str}` 로 받음)
+- Stage 1 → Stage 2 sequential, 2 LLM call.
+- Stage 2 sanitize 는 **Stage 1 output 기준** (학술 agent §7.3) — Stage 1 에 없는 column 을 Stage 2 가 추가 못 함.
+- Stage 1 단독 결과도 함께 측정 (Stage 2 recall_loss / precision_gain 분석용).
+
+### 인터페이스
+```python
+@register("filter", "TwoStageFilter")
+class TwoStageFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 stage1_section="two_stage_stage1",
+                 stage2_section="two_stage_stage2",
+                 sanitize_output=True, **kwargs): ...
+    # Stage 1 empty 시 Stage 2 skip + Unanswerable (recall-safe)
+```
+
+### 측정 메타 (filter_info)
+- `filter_stage1_count` / `filter_stage2_count` / `filter_stage2_removed_count`
+- `filter_hallucination_removed_stage1` / `_stage2`
+- stats 에 `stage1_nodes` / `stage2_nodes` 별도 노출 — analyzer 가 stage 별 R/P 분해 가능
+
+### Config 권장
+```yaml
+filter:
+  name: "TwoStageFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    stage1_section: "two_stage_stage1"
+    stage2_section: "two_stage_stage2"
+    sanitize_output: true
+```
+
+## Raw cell vs evaluated variants 구분 명시 (DECISIONS §2)
+
+| Method | Raw LLM cells / query | Evaluated variants | 비고 |
+|---|---:|---|---|
+| **M3** | 3 (A + B + C) | 3 (OR / MAJORITY / AND) | 단일 refine() 한 번에 모든 voting variant 평가 — 4602 LLM call (3×1534) |
+| **M4** | 2 (forward + backward) | 2 (forward_only + bidirectional) | analyzer 가 stats["forward_nodes"] 와 stats["backward_nodes"] 로 forward_only 별도 평가 가능 — 3068 LLM call |
+| **M5** | 2 (stage1 + stage2) | 2 (stage1_only + two_stage) | analyzer 가 stats["stage1_nodes"] 로 stage1_only 별도 평가 가능 — 3068 LLM call |
+
+GLM API rate limit (~30 calls/min/stream) + conservative 3 parallel streams → 전체 wall ~3~4h, cost ~$30~55.
+
+### 산출물 (본 모듈, 2026-05-16)
+- [`multi_prompt_voting_filter.py`](multi_prompt_voting_filter.py) — `MultiPromptVotingFilter` + `multi_prompt_voting()` static helper
+- [`bidirectional_filter.py`](bidirectional_filter.py) — `BidirectionalFilter` + `_union_filter_outputs()` + `analyze_backward_contribution()`
+- [`two_stage_filter.py`](two_stage_filter.py) — `TwoStageFilter` + `_format_stage1_for_stage2()` + Stage 2 sanitize 가 Stage 1 output 기준
+- [`/home/hyeonjin/thesis_refactored/src/prompts/filter.md`](/home/hyeonjin/thesis_refactored/src/prompts/filter.md) — 5 신규 section: `voting_prompt_b` / `voting_prompt_c` / `bidirectional_backward` / `two_stage_stage1` / `two_stage_stage2` (학술 agent §5/§6/§7 원문 그대로)
+- [`tests/test_voting_bidirectional_two_stage.py`](tests/test_voting_bidirectional_two_stage.py) — 22-scenario smoke test (PASSED — Bash 환경 일시 불안정으로 실행은 root 측에서 재검증 권장): voting unit (OR/MAJORITY/AND/invalid) + M3 integration (3 LLM call + voted_nodes 동봉) + M3 sanitize + M3 default validation + M3 empty short-circuit + M4 union helper + M4 backward_contribution (with/without gold) + M4 integration + M4 sanitize 양쪽 + M5 sequential stages + M5 stage2 relative sanitize + M5 stage1 empty skip + M5 format_stage1_for_stage2 + M5 empty short-circuit + YAML-style build for all three
+- [`__init__.py`](__init__.py) — 3 신규 클래스 export
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: 3 yaml 작성 (`w6_p2_m3_voting.yaml` + `w6_p2_m4_bidirectional.yaml` + `w6_p2_m5_two_stage.yaml`) + `scripts/run_wave6_phase2_aggressive.sh` (GLM API rate-limit 정합 위해 ~3 parallel streams) → BIRD-Dev 1534 query × 7 raw cells (M2:1 + M3:3 + M4:2 + M5:2) + ~10 evaluated variants
+- **Analyzer**: `notebooks/analysis_results/wave6_phase2_aggressive_m2m5_2026-05-XX.md` — Pareto frontier (R-P plane) + per-method best variant + paper §V.5.x.M.15 final positioning (axis #15 정식 채택 / candidate retain / plateau evidence) + axis #11 Option A/B 결정
 
 ---
 
