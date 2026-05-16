@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 7가지 제안
+## 이 모듈이 받아야 할 8가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -21,6 +21,82 @@
 | **RSL-A** | **RSL-SQL Backward Filter (Cao 2024)** (학술 Agent Phase 3, 2026-05-13) | XiYan forward + preliminary SQL backward → S_restore union (forward 가 놓친 column 회복) | **하 (보류)** | Direction A 정식 배포 보류 (Analyzer 2026-05-14: ΔF1 = -0.2832, P drop -0.4345). 단 EX maintained -0.0033 — paper §V.5.x.M narrative 의 R-P/F1-EX dichotomy evidence. |
 | **RSL-C** | **GRAST-SQL FD Filter (Hoang 2025)** (Direction C trigger, 2026-05-14) | XiYan forward + FD graph (declared FK + inferred_fk) Steiner-tree based selective restoration | **최상** | RSL-A 의 noise 폭증 한계를 schema graph 의 structural constraint 로 제어. LLM calls/query = 1 (XiYan only, terminal_source="forward") — RSL-A 의 2 LLM 대비 cost 절반. |
 | **RSL-C-GT** | **GRAST-SQL + Graph Transformer reranking (Hoang 2025 Option β)** (학술 Agent Phase 5, 2026-05-14) | RSL-C 의 Steiner terminal selection 전 Step 2 add-on — Relation-aware Graph Transformer (3 layer, hidden 1024, 8 head, edge types R={fk, col→fk, col→pk}×{fwd,rev}) 가 column-level relevance score 출력. 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent §0). | **최상** | h^0 = anchor LLM column scorer 출력 재활용 (Step 1 학습 생략, 5/22 일정 정합). Fallback to terminal_source="forward" on checkpoint 부재 / divergence (학술 Agent Q5). |
+| **COND** | **Conditional Filter call wrapper (Phase 4.2, 2026-05-16)** | TCR(q) < threshold → inner Filter 호출 voluntary skip. extractor output 그대로 final_nodes 로 반환. paper §V.5.x.M.3 production deployment + §V.5.x.M.11 Filter Short-Circuit voluntary vs involuntary mechanism 분리 narrative. | **최상** | 기존 Filter 어느 것이든 inner 로 wrapping 가능 (XiYan / RSL-A / RSL-C / RSL-C-GT / SGBE 등). 5/14 anchor 의 6.32% involuntary skip 과 별개 voluntary mechanism. |
+
+---
+
+## COND. Conditional Filter call wrapper (★ 최상, Phase 4.2 활성 2026-05-16)
+
+### 동기 (DECISIONS 2026-05-16 §3 Phase 4.2 + 학술 Agent Improving Plan §Phase 4.2)
+- 5/14 anchor sweep 결과 anchor-band Prune% **92~94%** (Phase 1+2 grid evidence) — extractor 가 schema 의 대부분을 trim 한 query 에서 추가 LLM Filter call 의 marginal value 미미.
+- 직전 5/14 anchor 의 6.32% **involuntary** skip (filter 자체가 빈 결과 반환 등) 과 별개 **voluntary** cost-effective skip mechanism — production deployment 정량.
+- 학술 frame: paper §V.5.x.M.3 production deployment narrative + §V.5.x.M.11 Filter Short-Circuit voluntary/involuntary mechanism 분리 evidence.
+
+### 설계 — TCR(q) gated voluntary skip
+```
+TCR(q) = |filter input subgraph columns| / |full schema columns|
+         (작을수록 extractor 가 schema 를 잘 trim 한 query — Filter 추가 호출 marginal)
+
+if TCR(q) < tcr_threshold:                     ← voluntary skip
+    final_nodes = subgraph 의 모든 column 그대로
+    inner Filter NOT called → LLM call cost 0
+else:
+    final_nodes = inner.refine(query, subgraph, ...).final_nodes   ← 정상 호출
+```
+
+- TCR 우선순위 (compute_tcr): kwargs `tcr` override > metadata['col_to_id'] 자체 계산 > None (caller 가 safe path = inner-call 결정)
+- skip 시: status="Answerable" if final_nodes else "Unanswerable" — extractor output 자체가 비어있으면 그대로 전파
+
+### 인터페이스 (계약 유지)
+```python
+@register("filter", "ConditionalFilterWrapper")
+class ConditionalFilterWrapper(BaseFilter):
+    def __init__(self,
+                 inner_filter: Dict,                   # any registered filter
+                 call_mode: str = "conditional",        # "conditional" | "always"
+                 tcr_threshold: float = 0.5,
+                 **kwargs): ...
+
+    def refine(self, query, subgraph, db_id=None,
+               tier2_pool=None, gat_scores=None,
+               metadata=None, tcr=None,                # kwargs override 가능
+               **kwargs) -> Dict:
+        # stats: call_mode, tcr_threshold, tcr_value, voluntary_skipped,
+        #        inner_called, inner_filter_name, n_input_columns,
+        #        n_full_schema_columns, n_final_nodes
+        # filter_info: filter_call_mode / filter_tcr_threshold / filter_tcr_value /
+        #              filter_tcr_source ("override"|"computed"|"unavailable") /
+        #              filter_voluntary_skipped / filter_inner_called /
+        #              filter_inner_filter_name / filter_inner_status /
+        #              (inner_*: inner filter 의 진단 일체 carry over)
+```
+
+### 측정 메타 (output 자동 노출)
+- **Filter 호출 비율 (cumulative)**: aggregate `filter_voluntary_skipped` 의 (1 − rate)
+- **Filter skip 시 F1 손실 (per-query)**: skip 한 query 의 final F1 vs always-call baseline F1 비교 (Root + analyzer 분담)
+- **LLM call 절감 % (cost 정량)**: aggregate `filter_inner_called=False` 비율 × inner filter 의 평균 LLM call 수 — paper §V.5.x.M.3 production deployment 핵심 정량
+
+### Config (Phase 4.2 3 cells)
+- [`configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_0.3.yaml`](../../../configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_0.3.yaml) — 보수적
+- [`configs/.../p4_2_thr_0.5.yaml`](../../../configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_0.5.yaml) — 학술 agent default
+- [`configs/.../p4_2_thr_0.7.yaml`](../../../configs/experiments/abl/c05_phase4_conditional_filter/p4_2_thr_0.7.yaml) — 공격적
+
+전부 anchor c01_01 (θ=0.1, K=20) stack 그대로 + Filter 만 `ConditionalFilterWrapper(inner=XiYanFilter GLM 4.7)`.
+
+### 한계 / Caveat
+- **TCR 정의 의존성**: 본 구현은 `|subgraph cols| / |full schema cols|` 단순 ratio. 학술 agent doc §4.2 의 더 풍부한 정의 (`Confidence(q) = R_sel(q) + 1/TCR(q)`) 는 Root pipeline 측에서 `tcr` kwargs 로 override 주입 시 그대로 동작 (본 wrapper 가 override 우선).
+- **skip 시 precision 위험**: extractor 가 noise 컬럼을 통과시킨 경우 그대로 final 에 반영 → P drop 가능. paper §V.5.x.M.3 의 voluntary skip cost-effective trade-off narrative.
+- **threshold sensitivity**: 0.3 (skip ↓ → safe, marginal cost saving) vs 0.7 (skip ↑ → high cost saving, F1 drop risk) — Phase 4.2 3-cell sweep 의 frontier 정량.
+
+### 산출물 (본 모듈 책임, 2026-05-16)
+- [`conditional_filter_wrapper.py`](conditional_filter_wrapper.py) — `ConditionalFilterWrapper` 신규 클래스
+- [`tests/test_conditional_filter_wrapper.py`](tests/test_conditional_filter_wrapper.py) — 16-scenario smoke test (**PASSED 16/16**): TCR 계산 / skip vs call / always mode / override / unknown TCR safe path / 빈 subgraph / invalid arg / yaml-build
+- [`__init__.py`](__init__.py) — `ConditionalFilterWrapper` export
+- 3 sweep configs (위 §"Config")
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: `scripts/run_phase4_2_conditional_filter.sh` (3 yaml 순차/병렬 실행 — GLM API 단일 endpoint 부하 고려) → 5/14 anchor a05_xxx 와 함께 ablation chain. ETA ~ 5~9h × 3 cells (or skip rate 에 따라 단축).
+- **Analyzer**: `notebooks/analysis_results/phase4_2_conditional_filter_2026-05-XX.md` — TCR 분포 / Filter 호출 비율 / skip 시 F1 손실 per-difficulty / cost 절감 % / threshold frontier 정량 / paper §V.5.x.M.3 + §V.5.x.M.11 narrative evidence 직접 매핑.
 
 ---
 
