@@ -3,7 +3,7 @@ import re
 import json
 import sqlite3
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from modules.registry import register
 from modules.base import BaseFilter
@@ -13,13 +13,35 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Wave 6 Phase 1 (학술 agent filter improve plan §3, DECISIONS 2026-05-16):
+# M1 Recall-Biased Prompt 3 variants + default. PromptManager section 매핑.
+_PROMPT_SECTION_BY_MODE: Dict[str, str] = {
+    "default": "xiyan_filter",
+    "recall_biased_mild": "recall_biased_mild",
+    "recall_biased_strong": "recall_biased_strong",
+    "recall_biased_exclusion_rule": "recall_biased_exclusion_rule",
+}
+
+
 @register("filter", "XiYanFilter")
 class XiYanFilter(BaseFilter):
     """
     XiYanSQL의 Iterative Column Selection을 모사한 Filter 모듈.
     LLM 프롬프트 생성 시, 실제 DB에 쿼리를 날려 컬럼별 최대 3개의 예시 데이터(Example Values)를 삽입합니다.
+
+    Wave 6 Phase 1 (DECISIONS 2026-05-16 §2 + 학술 agent plan §3):
+    - prompt_mode ∈ {default, recall_biased_mild, recall_biased_strong,
+                      recall_biased_exclusion_rule}
+    - sanitize_output (default True): 학술 agent §2.3 hallucination 방지 후처리 —
+      LLM 출력에서 input subgraph (extractor output) 에 없는 table/column 제거
+    - 측정 메타: filter_prompt_mode / filter_prune_pct / filter_hallucination_removed_count
     """
-    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, num_examples: int = 3, **kwargs):
+    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, num_examples: int = 3, prompt_mode: str = "default", sanitize_output: bool = True, **kwargs):
+        if prompt_mode not in _PROMPT_SECTION_BY_MODE:
+            raise ValueError(
+                f"prompt_mode='{prompt_mode}' invalid. "
+                f"Expected one of {sorted(_PROMPT_SECTION_BY_MODE.keys())}."
+            )
         self.model_name = model_name
         self.max_iteration = max_iteration
         self.temperature = temperature
@@ -27,9 +49,65 @@ class XiYanFilter(BaseFilter):
         self.provider = provider
         # num_examples: column 별 example value 개수 (0 = 비활성, default 3)
         self.num_examples = max(0, int(num_examples))
+        self.prompt_mode = prompt_mode
+        self._prompt_section = _PROMPT_SECTION_BY_MODE[prompt_mode]
+        self.sanitize_output = bool(sanitize_output)
         self.prompt_manager = PromptManager()
         self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
-        logger.info(f"Initialized XiYanFilter (Iterations: {self.max_iteration}, num_examples: {self.num_examples}, Provider: {provider or 'auto'})")
+        logger.info(
+            f"Initialized XiYanFilter (Iterations: {self.max_iteration}, "
+            f"num_examples: {self.num_examples}, Provider: {provider or 'auto'}, "
+            f"prompt_mode: {self.prompt_mode}, sanitize: {self.sanitize_output})"
+        )
+
+    # ------------------------------------------------------------------
+    # Wave 6 §2.3 Hallucination 방지 후처리
+    # ------------------------------------------------------------------
+    @staticmethod
+    def sanitize_filter_output(
+        raw_output: Dict[str, List[str]],
+        extractor_output: Dict[str, List[str]],
+    ) -> Tuple[Dict[str, List[str]], int]:
+        """LLM 출력에서 extractor_output 에 없는 table/column 제거.
+
+        학술 agent plan §2.3 정합. raw_output 의 각 (table, col) 이
+        extractor_output 의 schema 에 있는지 확인하고 없으면 제거.
+
+        Returns:
+            (sanitized_dict, removed_count)
+              - sanitized_dict: {table: [col, ...]} (제거 후, 빈 table 도 제거)
+              - removed_count: raw_output 의 (table, col) 중 제거된 entry 수
+                              (table 단위 제거도 그 안의 col 수 만큼 계산)
+        """
+        if not isinstance(raw_output, dict):
+            return {}, 0
+        ext_keys: Dict[str, set] = {
+            t: set(cols or []) for t, cols in (extractor_output or {}).items()
+        }
+        sanitized: Dict[str, List[str]] = {}
+        removed = 0
+        for table, cols in raw_output.items():
+            if not isinstance(cols, list):
+                # LLM 이 list 가 아닌 형식으로 반환한 경우 (dict 등) — 안전하게 skip
+                removed += 1
+                continue
+            if table not in ext_keys:
+                # 통째로 hallucinate 한 table — col 수만큼 removed 가산
+                removed += len(cols)
+                continue
+            kept: List[str] = []
+            for col in cols:
+                if not isinstance(col, str):
+                    removed += 1
+                    continue
+                if col in ext_keys[table]:
+                    if col not in kept:
+                        kept.append(col)
+                else:
+                    removed += 1
+            if kept:
+                sanitized[table] = kept
+        return sanitized, removed
 
     def _build_mschema_with_values(self, schema_dict: Dict[str, List[str]], db_id: str) -> str:
         """DB에 직접 접근하여 컬럼별 Example Value를 포함한 M-Schema 문자열을 생성합니다."""
@@ -83,6 +161,10 @@ class XiYanFilter(BaseFilter):
                 t_start=t_start,
                 model=self.model_name,
                 iterations_run=0,
+                prompt_mode=self.prompt_mode,
+                sanitize_output=self.sanitize_output,
+                hallucination_removed_count=0,
+                prune_pct=0.0,
             )
             return {"status": "Unanswerable", "final_nodes": [], "reasoning": "Empty input subgraph", "filter_info": dict(self.last_info)}
 
@@ -91,6 +173,8 @@ class XiYanFilter(BaseFilter):
         iterations_run = 0
         parse_errors = 0
         iteration_trace: List[Dict[str, Any]] = []
+        hallucination_removed_total = 0
+        input_node_count = sum(len(v) for v in subgraph.values())
 
         for i in range(self.max_iteration):
             iterations_run += 1
@@ -107,10 +191,10 @@ class XiYanFilter(BaseFilter):
                 example_json_obj[t] = current_schema[t][: (2 if idx == 0 else 1)]
             example_json_str = json.dumps(example_json_obj)
 
-            # 3. LLM 프롬프트 텍스트 구성
+            # 3. LLM 프롬프트 텍스트 구성 — Wave 6 prompt_mode 별 section 분기
             prompt = self.prompt_manager.load_prompt(
                 file_name='filter',
-                section='xiyan_filter',
+                section=self._prompt_section,
                 schema_str=schema_str,
                 query=query,
                 example_json_str=example_json_str
@@ -140,7 +224,21 @@ class XiYanFilter(BaseFilter):
                     selected_columns = json.loads(json_str)
 
                     if isinstance(selected_columns, dict):
-                        current_schema = selected_columns
+                        # Wave 6 §2.3 hallucination 방지 후처리 (default-on, recall_biased
+                        # 모드 활성 시에도 자동 적용 — sanitize_output=True default)
+                        if self.sanitize_output:
+                            sanitized_schema, removed = self.sanitize_filter_output(
+                                selected_columns, subgraph,
+                            )
+                            if removed > 0:
+                                logger.debug(
+                                    f"[XiYanFilter] sanitize removed {removed} "
+                                    f"hallucinated entries (mode={self.prompt_mode})."
+                                )
+                            hallucination_removed_total += int(removed)
+                            current_schema = sanitized_schema
+                        else:
+                            current_schema = selected_columns
                         logger.debug(f"[XiYanFilter] 파싱 성공. 추출된 테이블 수: {len(current_schema)}")
                         iter_parse_ok = True
                     else:
@@ -179,6 +277,13 @@ class XiYanFilter(BaseFilter):
 
         status = "Answerable" if final_nodes else "Unanswerable"
         token_after = AgentUtils.token_snapshot()
+        # Wave 6 §2.1 측정 — Prune% 직접 계산 (R_fil/P_fil/F1_fil/FNR/FPR 는 evaluate
+        # step 에서 gold 와 합산 계산 필요 — root 책임)
+        output_node_count = len(final_nodes)
+        prune_pct = (
+            (input_node_count - output_node_count) / input_node_count
+            if input_node_count > 0 else 0.0
+        )
         self.last_info = AgentUtils.build_filter_info(
             filter_type="XiYanFilter",
             input_subgraph=subgraph,
@@ -193,10 +298,21 @@ class XiYanFilter(BaseFilter):
             parse_errors=parse_errors,
             iteration_trace=iteration_trace,
             temperature=float(self.temperature),
+            prompt_mode=self.prompt_mode,
+            sanitize_output=self.sanitize_output,
+            hallucination_removed_count=int(hallucination_removed_total),
+            prune_pct=float(prune_pct),
+            input_node_count=int(input_node_count),
+            output_node_count=int(output_node_count),
         )
         return {
             "status": status,
             "final_nodes": final_nodes,
-            "reasoning": f"Filtered with DB Value Examples (iterations={self.max_iteration})",
+            "reasoning": (
+                f"Filtered with DB Value Examples "
+                f"(iterations={self.max_iteration}, mode={self.prompt_mode}, "
+                f"sanitize={self.sanitize_output}, hallucination_removed="
+                f"{hallucination_removed_total}, prune%={prune_pct:.3f})"
+            ),
             "filter_info": dict(self.last_info),
         }

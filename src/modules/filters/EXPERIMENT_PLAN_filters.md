@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 8가지 제안
+## 이 모듈이 받아야 할 9가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -22,6 +22,80 @@
 | **RSL-C** | **GRAST-SQL FD Filter (Hoang 2025)** (Direction C trigger, 2026-05-14) | XiYan forward + FD graph (declared FK + inferred_fk) Steiner-tree based selective restoration | **최상** | RSL-A 의 noise 폭증 한계를 schema graph 의 structural constraint 로 제어. LLM calls/query = 1 (XiYan only, terminal_source="forward") — RSL-A 의 2 LLM 대비 cost 절반. |
 | **RSL-C-GT** | **GRAST-SQL + Graph Transformer reranking (Hoang 2025 Option β)** (학술 Agent Phase 5, 2026-05-14) | RSL-C 의 Steiner terminal selection 전 Step 2 add-on — Relation-aware Graph Transformer (3 layer, hidden 1024, 8 head, edge types R={fk, col→fk, col→pk}×{fwd,rev}) 가 column-level relevance score 출력. 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent §0). | **최상** | h^0 = anchor LLM column scorer 출력 재활용 (Step 1 학습 생략, 5/22 일정 정합). Fallback to terminal_source="forward" on checkpoint 부재 / divergence (학술 Agent Q5). |
 | **COND** | **Conditional Filter call wrapper (Phase 4.2, 2026-05-16)** | TCR(q) < threshold → inner Filter 호출 voluntary skip. extractor output 그대로 final_nodes 로 반환. paper §V.5.x.M.3 production deployment + §V.5.x.M.11 Filter Short-Circuit voluntary vs involuntary mechanism 분리 narrative. | **최상** | 기존 Filter 어느 것이든 inner 로 wrapping 가능 (XiYan / RSL-A / RSL-C / RSL-C-GT / SGBE 등). 5/14 anchor 의 6.32% involuntary skip 과 별개 voluntary mechanism. |
+| **M1** | **Recall-Biased Prompt 3 variants (Wave 6 Phase 1, 2026-05-16)** | XiYanFilter 의 prompt language 만 변경 — `prompt_mode ∈ {default, recall_biased_mild, recall_biased_strong, recall_biased_exclusion_rule}`. LLM call 횟수 동일 (1×). `sanitize_filter_output()` hallucination 방지 후처리 default-on. | **최상** | XiYan 대체 candidate 의 가장 저비용 lever (prompt-only 변경). 학술 agent plan §3 정합 + 측정: R_fil/P_fil/F1_fil/FNR/FPR/Prune%/LLM_calls/hallucination_removed_count. |
+
+---
+
+## M1. Recall-Biased Prompt 3 variants (★ 최상, Wave 6 Phase 1 활성 2026-05-16)
+
+### 동기 (DECISIONS 2026-05-16 §2 Wave 6 Phase 1 + 학술 agent filter improve plan §3)
+- anchor XiYanFilter 의 `xiyan_filter` prompt 는 "absolutely necessary" 등 strict-prune 언어 — Filter 가 정답 column 도 over-prune 하는 FNR (False Negative Rate) 의 mechanism 근거.
+- LLM call 횟수 동일 (1×) 한 최저비용 lever — prompt language 만 교체.
+- 학술 frame: Wave 5 closure (R 갱신 시도 final 중단) 와 별개 axis. anchor stack 의 다른 lever 축 시도 — Filter prompt language axis.
+
+### 학술 agent plan §3.1 의 3 prompt variants (본 구현 그대로 인용)
+| Mode | Trigger phrase | Inclusion bias 강도 |
+|---|---|---|
+| `recall_biased_mild` (M1-A) | "RELEVANT or POTENTIALLY RELEVANT" + "WHEN IN DOUBT, INCLUDE" | 직관적 |
+| `recall_biased_strong` (M1-B) | "Default decision is INCLUDE" + 명시적 inclusion criteria | 강함 |
+| `recall_biased_exclusion_rule` (M1-C) | 4-rule conjunctive exclusion + "If UNSURE → KEEP" | 가장 강함 |
+| `default` (기존 anchor) | "filter ... include ONLY tables and columns absolutely necessary" | strict (baseline) |
+
+### 공통 후처리 — `sanitize_filter_output()` (학술 agent §2.3 정합)
+- LLM 출력 `{table: [col, ...]}` 에서 input subgraph (extractor output) 에 없는 entry 제거
+- whole-table hallucination 의 경우 col 수만큼 `hallucination_removed_count` 가산
+- malformed (non-list value, non-string col) 도 안전하게 제거 + count
+- default-on (`sanitize_output=True`). backward-compat 을 위해 yaml 에서 false 로 끌 수 있음 (recommended: ON 유지).
+
+### 인터페이스
+```python
+@register("filter", "XiYanFilter")
+class XiYanFilter(BaseFilter):
+    def __init__(self,
+                 model_name, max_iteration=1, temperature=0.0,
+                 db_dir="...", num_examples=3,
+                 prompt_mode="default",            # 신규 (Wave 6)
+                 sanitize_output=True,              # 신규 (학술 agent §2.3)
+                 provider=None, api_key=None, base_url=None,
+                 **kwargs): ...
+
+    @staticmethod
+    def sanitize_filter_output(raw_output, extractor_output) -> Tuple[Dict, int]:
+        """학술 agent §2.3 hallucination 방지 후처리. (sanitized_dict, removed_count) 반환."""
+```
+
+### 측정 메타 (학술 agent §2.1 정합 — filter_info 자동 노출)
+- `filter_prompt_mode` : 4 mode 중 어느 것
+- `filter_sanitize_output` : bool
+- `filter_hallucination_removed_count` : sanitize 가 제거한 entry 수 (iteration 합)
+- `filter_input_node_count` / `filter_output_node_count`
+- `filter_prune_pct` = (input − output) / input
+- 기존 `filter_llm_calls` / `filter_tokens_in` / `filter_tokens_out` / `filter_time_s` 유지
+- **Root + Analyzer 책임**: R_fil / P_fil / F1_fil / FNR = (R_ext − R_fil) / R_ext / FPR = 1 − P_fil 는 gold 와 합산해서 evaluate step 에서 계산
+
+### Config (Wave 6 Phase 1 — anchor c01_01 stack 그대로, prompt_mode 만 차이)
+```yaml
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    prompt_mode: "recall_biased_mild"   # 또는 strong / exclusion_rule
+    sanitize_output: true                # 학술 agent §2.3, default-on
+```
+
+3 cells: `wave6_p1_recall_biased_{mild, strong, exclusion_rule}.yaml`. Root 책임.
+
+### 산출물 (본 모듈, 2026-05-16)
+- [`xiyan_filter.py`](xiyan_filter.py) — `prompt_mode` parameter + `sanitize_filter_output()` static method + 측정 메타 노출
+- [`/home/hyeonjin/thesis_refactored/src/prompts/filter.md`](/home/hyeonjin/thesis_refactored/src/prompts/filter.md) — `recall_biased_mild` / `recall_biased_strong` / `recall_biased_exclusion_rule` 3 section 추가 (학술 agent §3.1 PROMPT_M1_A/B/C 원문 그대로)
+- [`tests/test_xiyan_recall_biased.py`](tests/test_xiyan_recall_biased.py) — 18-scenario smoke test (**PASSED 18/18**): sanitize unit (table/col hallucination 제거, dedup, non-list, non-dict) + prompt_mode validation + 각 mode 의 prompt section 검증 (signature phrase 확인) + 통합 sanitize (LLM hallucination 자동 제거) + 측정 메타 (mode/prune_pct/halluc_count) + backward-compat
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: `scripts/run_wave6_phase1_recall_biased.sh` 작성 → 3 yaml parallel launch (GPU 0+1, ~1.5h, ~17K LLM call 의 일부). HISTORY + CATALOG + ID_MIGRATION 3종 갱신.
+- **Analyzer**: `notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-XX.md` — 3 variants × 1534q × 7 metrics 매트릭스 + R_gain / P_loss / ΔF1 trajectory + hallucination rate per variant + **Phase 2 분기 결정 권고** (DECISIONS §3 분기 spec: R_fil ≥ 0.92 → M2 CoT 결합 / R_fil 0.88~0.92 → M3 OR Voting / R_fil < 0.88 → M4 Bidirectional 우선).
 
 ---
 
