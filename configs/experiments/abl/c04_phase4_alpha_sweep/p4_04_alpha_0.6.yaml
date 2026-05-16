@@ -1,0 +1,55 @@
+# Phase 4.1 — Selector + Extractor 통합 점수 α sweep (학술 Agent Plan §4.1, DECISIONS 2026-05-16)
+# Cell: α=0.6 (TopK-leaning blend; TopK-only s=0.6, threshold-only s=0.4, ∩ s=1.0)
+# Anchor (θ, K) = c01_01 (θ=0.1, K=20).
+
+experiment_name: "p4_04_alpha_0.6"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+    seed_selection_mode: "integrated_score"
+    alpha: 0.6
+
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

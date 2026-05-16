@@ -212,6 +212,64 @@ class HybridFKPriorPCSTExtractor(BasePCSTExtractor):
 - **Idea 2 (Product Cost)**, **Idea 4 (Component-Aware)**: 모두 완료. I24b F1=0.7063.
 - 위 3개와 **교차 실험 (기존 × 신규 축)** 은 가능하나 기존 단독 변형은 재실행하지 않음.
 
+## Phase 4.1 — Selector + Extractor 통합 점수 mode (2026-05-16, 학술 Agent Plan §4.1)
+
+### 동기
+- 현 anchor (c01_01 `MSTPCSTUnionExtractor`) 의 seed 선택은 `node_scores ≥ score_threshold(=0.1)` 단독 — Selector top-K (예: 20) 결과는 score-threshold 와 무관하게 폐기.
+- Selector 와 Extractor 의 **co-design integration evidence** 가 paper §3.5 axis #5/#6/#7 narrative 보강 필요.
+- closure 정합 (Wave 5 closure final, R 갱신 시도 중단) 위에서, R 상승 lever 보다는 **mechanism contribution 정량** 축으로 재정의됨.
+
+### 신규 mode 정의
+[mst_pcst_union.py:MSTPCSTUnionExtractor](mst_pcst_union.py) 에 `seed_selection_mode` 파라미터 추가:
+- `"threshold"` (default, **backward compat**): 기존 동작 (양쪽 sub-extractor 가 `node_scores ≥ score_threshold` 자체 적용).
+- `"integrated_score"` (신규): 통합 점수 mode.
+    ```
+    s_integrated(v) = α · 𝟙[v ∈ Selector_TopK] + (1-α) · 𝟙[node_scores[v] ≥ score_threshold]
+    ```
+    - s_integrated ∈ {0, α, 1-α, 1} 4-valued discrete blend.
+    - 양쪽 sub-extractor (MSTKruskal, PCST) 의 threshold 를 일시 0.0 으로 override 한 뒤, `s_integrated` 를 `node_scores` 자리에 전달 → s_integrated > 0 (= TopK ∪ threshold-pass) 인 노드만 effective seed 진입.
+    - PCST prize 는 s_integrated 값 자체 (max(s − 0, 0) = s) → α 가 노드별 prize 가중치로 직접 반영됨.
+
+### α grid 의 의미
+| α | s_integrated 식 | TopK-only prize | threshold-only prize | intersection prize | 효과 |
+|---|---|---:|---:|---:|---|
+| 0.0 | 𝟙[s ≥ θ] | 0 | 1.0 | 1.0 | threshold only (≈ anchor c01_01) |
+| 0.2 | 0.2·𝟙[TopK] + 0.8·𝟙[s≥θ] | 0.2 | 0.8 | 1.0 | threshold-leaning |
+| 0.4 | 0.4·𝟙[TopK] + 0.6·𝟙[s≥θ] | 0.4 | 0.6 | 1.0 | threshold-leaning |
+| 0.6 | 0.6·𝟙[TopK] + 0.4·𝟙[s≥θ] | 0.6 | 0.4 | 1.0 | TopK-leaning |
+| 0.8 | 0.8·𝟙[TopK] + 0.2·𝟙[s≥θ] | 0.8 | 0.2 | 1.0 | TopK-leaning |
+| 1.0 | 𝟙[TopK] | 1.0 | 0 | 1.0 | TopK only |
+
+> α=0.2~0.8 은 TopK ∪ threshold-pass union 으로 effective seed set 동일하지만 PCST prize 분포가 달라 → bridge 노드 포함 양상 변화 측정.
+
+### 인터페이스 계약 (변경 없음)
+`extract(graph_data, node_scores, seed_nodes=None, **kwargs)`
+- `seed_nodes` 는 [pipeline/schema_linking.py:197](../../pipeline/schema_linking.py) 에서 Selector top-K 가 그대로 전달됨 (기존 contract 활용, 추가 인터페이스 변경 없음).
+- `seed_selection_mode="threshold"` (default) 인 경우 `seed_nodes` 무시 — 기존 모든 config 가 변경 없이 동작.
+
+### 실험 설정
+| 실험 ID | α | 고정 (θ, K) | 비고 |
+|---------|---|------------|-----|
+| `p4_01_alpha_0.0` | 0.0 | (0.1, 20) | threshold only (≈ c01_01) |
+| `p4_02_alpha_0.2` | 0.2 | (0.1, 20) | threshold-leaning blend |
+| `p4_03_alpha_0.4` | 0.4 | (0.1, 20) | threshold-leaning blend |
+| `p4_04_alpha_0.6` | 0.6 | (0.1, 20) | TopK-leaning blend |
+| `p4_05_alpha_0.8` | 0.8 | (0.1, 20) | TopK-leaning blend |
+| `p4_06_alpha_1.0` | 1.0 | (0.1, 20) | TopK only |
+
+- Anchor stack: QCondGAT + MSTPCSTUnion + XiYanFilter (GLM) + LLMSQLGenerator (GLM).
+- Configs: [configs/experiments/abl/c04_phase4_alpha_sweep/](../../../configs/experiments/abl/c04_phase4_alpha_sweep/).
+- 측정: TCR_new + Filter Pruning Ratio + R/P/F1/EX + integrated_* telemetry (`integrated_topk_only`, `integrated_threshold_only`, `integrated_intersection`, `integrated_positive_total`) — `extractor_info` 에 자동 기록.
+
+### 검증 포인트
+- α=0.0 의 R/P/F1 이 c01_01 (R=0.8654 P=0.8675 F1=0.8664) 와 sub-noise (|Δ| < 0.005) 정합 — backward-compat 의 deterministic 확인.
+- α=1.0 의 effective seed = Selector top-20 만 → R 손실 (threshold-pass 의 추가 노드 폐기) 정도 정량.
+- α 중간값에서 prize 가중치 차이가 PCST bridge 포함 양상에 미치는 효과 — `integrated_positive_total` 동일하나 `extractor_num_selected_nodes` / Filter Pruning Ratio 차이 측정.
+
+### 산출
+- [notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-XX.md](../../../notebooks/analysis_results/) (root + analyzer 단계).
+- paper §3.5 axis #5/#6/#7 narrative 보강 candidate.
+
 ## 검증 방법 (모듈 내)
 - **Recall/Precision/F1 4소수점**.
 - **3-table JOIN 특화 분석**: 이 쿼리군에서 bridge 포함 비율, PCST✗ 복구율.
