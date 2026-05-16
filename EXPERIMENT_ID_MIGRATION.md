@@ -1746,3 +1746,58 @@ F1 order: strong (0.8655) > exclusion_rule (0.8573) > mild (0.8377)
 - mild (M1-A) R 0.9259 → Phase 2 (a) M2 CoT 분기 활성 trigger
 - 학술 agent §10 성공 기준 F1_fil ≥ 0.8672 — 셋 다 sub-noise 미달 → Phase 2 후속 필요
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 1 (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+
+---
+
+## Wave 6 Phase 2 (a+aggressive) M2 + M3 + M4 + M5 4 cells (DECISIONS 2026-05-16 §2~§6, 학술 agent §3~§7+§10, 2026-05-16 ~ 2026-05-17, 4 신규 ID — 🎯 F1 모두 미달 + M4 EX gain 첫 evidence)
+
+### 명명 규칙 — `configs/experiments/abl/wave6_recall_biased/`
+
+| # | Cell ID | Method | Filter class | R | P | F1 | EX | ΔF1 vs c01_01 | ΔEX |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | **w6_p2a_m2cot_strong** ★ R-max | CoT + Confidence-Gated (M1 strong + cot_reasoning + confidence_gated thr=0.5) | XiYanFilter (commit `7dac875`) | **0.9745** | 0.2286 | **0.3703** ★ catastrophic | 0.5169 | **-0.4961** ❌ | -0.0007 |
+| 2 | **w6_p2_m3_voting** | Multi-Prompt OR Voting (3 prompts: M1-A + voting_b SQL Clause + voting_c Conservative, default OR) | MultiPromptVotingFilter (commit `88ad47e`) | 0.9408 | 0.6859 | 0.7934 | 0.5202 | -0.0730 | +0.0026 |
+| 3 | **w6_p2_m4_bidirectional** ⭐ | Forward (M1-A mild) + Backward (SQL Schema Analyst) union | BidirectionalFilter (commit `88ad47e`) | 0.9325 | 0.7593 | **0.8370** ★ F1-best | **0.5300** ★ EX-max | -0.0294 | **+0.0124** ✅ |
+| 4 | **w6_p2_m5_two_stage** | Sequential Stage1 (Coarse Recall) → Stage2 (Fine Precision) | TwoStageFilter (commit `88ad47e`) | 0.7739 | 0.7964 | 0.7850 | 0.5222 | -0.0814 | +0.0046 |
+
+### Config 주의사항
+
+- 위치: `configs/experiments/abl/wave6_recall_biased/`
+- Stack: c01_01 anchor stack 의 Filter module 만 4 variants 교체
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음, anchor ckpt 재사용)
+- LLM: glm-4.7 (각 cell 다른 LLM call/q):
+  - M2: 2 calls/q (M1 + CoT)
+  - M3: 3 calls/q (3 prompts)
+  - M4: 2 calls/q (Forward + Backward)
+  - M5: 2 calls/q (Stage1 + Stage2 sequential)
+
+### Inclusion bias strength axis spectrum (Phase 1 + Phase 2 7 cells 통합)
+
+```
+F1-best: anchor 0.8664 > M1-B strong 0.8655 > M1-C exclusion 0.8573 > M4 0.8370 >
+         M1-A mild 0.8377 > M3 OR 0.7934 > M5 0.7850 > M2 0.3703 ★ catastrophic
+
+R-max:   M2 0.9745 > M3 0.9408 > M4 0.9325 > M1-A mild 0.9259 > M1-B strong 0.9022 >
+         M1-C exclusion 0.8907 > anchor 0.8748 > M5 0.7739 ★ R loss
+
+EX-max:  M4 0.5300 ★ > M5 0.5222 > M3 0.5202 > anchor 0.5176 > M1-A mild 0.5169 ≈
+         M2 0.5169 ≈ M1-B 0.5130 ≈ M1-C 0.5143
+```
+
+→ **inclusion bias 강도 axis** + **EX-axis 신규**: M4 Bidirectional 가 schema linking F1 trade-off 안에서도 SQL EX 갱신 (Backward 의 SQL-aware column generation 효과)
+
+### DECISIONS §5 분기 결정 — Outcome (b) confirmed
+
+- F1 robust > 0.8672 → 4 cells 모두 미달 (M4 가장 가까움 0.8370, ΔF1=-0.0294)
+- → **Outcome (b)**: axis #15 evidence retain (prompt-level strengthening) + axis #11 Option A retain (prompt-axis + builder-axis 별도)
+- universal absorption 가설 retain — Filter Dominance 의 prompt-axis 까지 robust
+
+### 결론 — Outcome (b) confirmed + M4 EX gain 첫 evidence
+
+- 4 cells 모두 학술 agent §10 F1 미달 (Phase 1 3 cells 도 동일) — 7-cell sub-noise plateau
+- **🚀 M4 EX gain +0.0124** ★ — Wave 6 chain 첫 EX 갱신, Filter ↔ Selector co-design 의 EX-axis new evidence
+- schema linking F1 ↔ SQL EX correlation 약함 (M2 catastrophic F1 with EX plateau)
+- paper §V.5.x.M.15 본문 정식 채택 candidate (M1 R-lift + M4 EX gain 통합)
+- paper §3.1 Inter-Module Co-Design 의 Filter ↔ Selector EX-axis new axis (M4 evidence)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 2 (a+aggressive) (2026-05-17)](EXPERIMENT_HISTORY.md).

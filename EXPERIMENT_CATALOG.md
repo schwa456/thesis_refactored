@@ -2787,3 +2787,61 @@ P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
 - Wall: 1h58m (17:49 → 19:47), 비용 ~$3-6 GLM API
 - failure: 0/3
 
+
+---
+
+## Wave 6 Phase 2 (a+aggressive) — M2 + M3 + M4 + M5 4 cells (DECISIONS 2026-05-16 §2+§3, 학술 agent §3~§7+§10, 2026-05-16 ~ 2026-05-17, 🎯 Outcome (b) — F1 모두 미달 + M4 EX gain +0.0124 첫 evidence)
+
+### 4 cells × 4 metrics (R/P/F1/EX 4-decimal, anchor c01_01 R=0.8748 / P=0.8582 / F1=0.8664 / EX=0.5176)
+
+| Cell | Method | R | P | F1 | EX | ΔF1 | ΔEX |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **M2** w6_p2a_m2cot_strong | CoT + Confidence-Gated | 0.9745 ★ R | 0.2286 | **0.3703** ★ worst | 0.5169 | **-0.4961** ❌ | -0.0007 |
+| **M3** w6_p2_m3_voting | Multi-Prompt OR Voting | 0.9408 | 0.6859 | 0.7934 | 0.5202 | -0.0730 | +0.0026 |
+| **M4** w6_p2_m4_bidirectional ⭐ | Forward + Backward union | 0.9325 | 0.7593 | **0.8370** ★ F1-best | **0.5300** ★ EX-max | -0.0294 | **+0.0124** ✅ |
+| **M5** w6_p2_m5_two_stage | Sequential Stage1 → Stage2 | 0.7739 | 0.7964 | 0.7850 | 0.5222 | -0.0814 | +0.0046 |
+
+### Key findings
+
+- **학술 agent §10 success criterion F1 ≥ 0.8672**: 모두 미달 → DECISIONS §5 Outcome (b): axis #15 evidence retain + axis #11 Option A retain
+- **🚀 M4 EX gain +0.0124** ★ — Wave 6 chain 첫 EX 갱신 (Backward SQL Schema Analyst 가 SQL execution 의 missing column 보충)
+- **M2 catastrophic F1=0.3703** — Confidence-Gated default-retain 정책의 design flaw (uncertain → keep)
+- **M5 R loss -0.1009** — Stage2 가 Stage1 의 R lift 효과 negate, sequential pipeline fails
+- **schema linking F1 ↔ SQL EX correlation 약함**: M2 F1 -0.4961 인데 EX sub-noise plateau (Filter Dominance dual narrative)
+
+### Inclusion bias spectrum 통합 ranking (M1 + Phase 2)
+
+| Cell | R | F1 | mechanism |
+|---|---:|---:|---|
+| anchor c01_01 | 0.8748 | 0.8664 | baseline |
+| M1-B strong ⭐ F1-max M1 | 0.9022 | 0.8655 | mild inclusive |
+| **M4 Bidirectional** | 0.9325 | 0.8370 | Forward+Backward union |
+| M1-A mild | 0.9259 | 0.8377 | medium inclusive |
+| M1-C exclusion | 0.8907 | 0.8573 | weak inclusive |
+| M3 Voting OR | 0.9408 | 0.7934 | OR voting endpoint |
+| M5 Two-Stage | 0.7739 | 0.7850 | sequential fails |
+| **M2 CoT-Gated** | 0.9745 ★ R | 0.3703 | extreme inclusive (default-retain) |
+
+### Config 주의사항
+
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- Filter class 4 변형: XiYanFilter (M2, commit `7dac875`) + MultiPromptVotingFilter / BidirectionalFilter / TwoStageFilter (M3/M4/M5, commit `88ad47e`)
+- 공통: sanitize_filter_output=True (Hallucination 방지)
+
+### 결론 — Outcome (b) confirmed + M4 EX gain 첫 evidence
+
+- 4 cells 모두 학술 agent §10 success criterion F1 미달
+- M4 EX gain +0.0124 (Wave 6 chain 첫 EX 갱신) — Filter ↔ Selector co-design EX-axis new evidence
+- DECISIONS §5 → Outcome (b) confirmed: axis #15 evidence retain (prompt-level strengthening) + axis #11 Option A retain (prompt-axis + builder-axis 별도)
+- paper §V.5.x.M.15 candidate 본문 정식 채택 candidate (M1 R-lift + M4 EX gain 통합)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 2 (a+aggressive) (2026-05-17)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (4): `configs/experiments/abl/wave6_recall_biased/w6_p2a_m2cot_strong.yaml` + `w6_p2_m{3_voting, 4_bidirectional, 5_two_stage}.yaml`
+- Module 구현: filter commits `7dac875` (CoT+Gated) + `88ad47e` (M3/M4/M5 신규 class)
+- Sweep scripts: `scripts/run_wave6_phase2a_cot.sh` + `scripts/run_wave6_phase2_aggressive.sh`
+- Wall: M2 2h31m + M3+M4+M5 ~4h (parallel) = 5h17m total
+- 비용: ~$30-50 GLM 4.7 (M2 ~$3 + M3 ~$12 + M4 ~$9 + M5 ~$9)
+- failure: 0/4
+

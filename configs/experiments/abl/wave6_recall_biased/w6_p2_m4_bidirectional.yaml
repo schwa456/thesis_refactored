@@ -1,0 +1,59 @@
+# Wave 6 Phase 2 (a+aggressive) — M4 Bidirectional (학술 agent §6)
+# DECISIONS 2026-05-16 §2 M4 spec
+# Module:Filter commit 88ad47e (BidirectionalFilter 신규 class + Forward+Backward union)
+#
+# Spec: Forward (recall_biased_mild=M1-A 재사용) + Backward (bidirectional_backward SQL Schema Analyst)
+# Cost: 2 LLM call/q × 1534q = 3068 calls, ~$7-12 GLM 4.7, ~50min wall (2-prompt parallel)
+
+experiment_name: "w6_p2_m4_bidirectional"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "BidirectionalFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    sanitize_output: true
+    forward_section: "recall_biased_mild"
+    backward_section: "bidirectional_backward"
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

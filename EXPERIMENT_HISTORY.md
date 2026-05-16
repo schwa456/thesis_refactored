@@ -4369,3 +4369,134 @@ F1 trajectory (α axis):
   - paper §V.5.x.M.x 신규 sub-section candidate (Filter prompt language axis = Recall lever evidence)
 - **Root 위임 (planner 후)**: Phase 2 (a) launch trigger (M1 best strong + M2 CoT 조합 config 작성 + 3-conc parallel)
 
+
+---
+
+## Wave 6 Phase 2 (a+aggressive) — M2 + M3 + M4 + M5 4 cells (DECISIONS 2026-05-16 §2+§3+§5, 학술 agent §3~§7+§10, 2026-05-16 ~ 2026-05-17, 🎯 Outcome (b) confirmed — axis #15 evidence retain + axis #11 Option A retain + M4 EX gain +0.0124 첫 evidence)
+
+근거: DECISIONS 2026-05-16 (Wave 6 Phase 2 a+aggressive M2~M5 동시 launch) §2~§6 + 학술 agent filter improve plan §3~§7 + §10 success criterion. Module:filters commits `7dac875` (XiYanFilter CoT + Confidence-Gated) + `88ad47e` (MultiPromptVotingFilter / BidirectionalFilter / TwoStageFilter 3 신규 class) 구현 후 동시 launch.
+
+### 운영 이력
+
+- **2026-05-16 21:30:48 M2 launch**: wrapper PID 1249922, `w6_p2a_m2cot_strong` (recall_biased_strong + CoT + Confidence-Gated 0.5 + sanitize) single cell. Wall 2h31m → 종료 ~24:01.
+- **2026-05-16 23:03:34 M3+M4+M5 launch**: wrapper PID 1381276, 3 cells parallel (M3 GPU 0 + M4 GPU 0 + M5 GPU 1). Wall ~4h → 종료 ~02:47.
+- **2026-05-17 02:47 종료**: 4/4 metrics 모두 도착. Total Phase 2 wall = ~5h17m (M2 launch → M3 종료).
+- **CronDelete `c221a430` + Monitor `b2jc8ruor` 정상 종료**.
+
+### 4 cells 결과 (R/P/F1/EX 4-decimal, anchor c01_01 F1=0.8664 / EX=0.5176)
+
+| Cell | Method | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **M2** w6_p2a_m2cot_strong | CoT + Confidence-Gated (thr=0.5) on M1 strong | **0.9745** ★ | 0.2286 | **0.3703** ★ worst | 0.5169 | +0.0997 ✅ | **-0.6296** ❌ | **-0.4961** ❌❌ | -0.0007 |
+| **M3** w6_p2_m3_voting | Multi-Prompt OR Voting (3 prompts × OR default) | 0.9408 | 0.6859 | 0.7934 | 0.5202 | +0.0660 | -0.1723 | -0.0730 | +0.0026 |
+| **M4** ⭐ w6_p2_m4_bidirectional | Forward (M1-A mild) + Backward (SQL Schema Analyst) union | 0.9325 | 0.7593 | **0.8370** ★ F1-best | **0.5300** ★ EX-max | +0.0577 | -0.0989 | -0.0294 | **+0.0124** ✅ |
+| **M5** w6_p2_m5_two_stage | Sequential Stage1 (Coarse Recall) → Stage2 (Fine Precision) | 0.7739 | 0.7964 | 0.7850 | 0.5222 | **-0.1009** ❌ | -0.0618 | -0.0814 | +0.0046 |
+
+### 🌟 핵심 finding
+
+**1. 학술 agent §10 success criterion F1 ≥ 0.8672 — 모두 미달**:
+- M4 가 가장 가까움 (F1=0.8370, ΔF1=-0.0294) but statistically robust 미달
+- DECISIONS §5 → **Outcome (b) 확정**: axis #15 evidence retain (prompt-level strengthening) + axis #11 Option A retain (prompt-axis + builder-axis 별도)
+
+**2. 🚀 M4 EX gain +0.0124 — Wave 6 chain 첫 EX 갱신**:
+- M4 EX=0.5300 > anchor 0.5176 (다른 모든 cell sub-noise 또는 미달)
+- Mechanism: Backward prompt (SQL Schema Analyst, question 관점 column generation) 가 SQL execution 의 missing column 보충
+- 학술 frame: **Filter ↔ Selector co-design 의 EX-axis new evidence** (학술 agent §6 hypothesis confirm via EX)
+- paper §V.5.x.M.13 / §3.1 Inter-Module Co-Design narrative 강화 candidate
+
+**3. M2 CoT + Confidence-Gated catastrophic failure (F1=-0.4961)**:
+- Confidence-Gated default-retain 정책의 design flaw: "uncertain → keep" 으로 LLM low-confidence majority → P=0.2286 collapse
+- EX 는 sub-noise (-0.0007) — Filter 가 schema 거의 다 keep → SQL gen 영향 거의 무
+- → **Filter Dominance dual narrative**: schema linking F1 ≠ SQL EX correlation (M2 가 F1 -0.50 인데 EX sub-noise plateau)
+
+**4. M3 Voting OR (R=0.9408) — inclusion bias spectrum endpoint**:
+- 3 prompts OR voting → mild 보다 더 inclusive (+0.0149 R), F1=0.7934 (P=0.6859, P loss 큼)
+- OR voting 의 design (≥1 vote → keep) 이 noise 까지 capture
+- voting variants (MAJORITY / AND) 의 metrics 는 output_*.jsonl 의 telemetry 에 있으나 default metrics.txt 에 OR 만 — analyzer post-proc 필요
+
+**5. M5 Two-Stage R loss -0.1009 — Sequential pipeline negate**:
+- Stage1 (M1-C 변형, Recall-First, R 가져옴) → Stage2 (Fine Precision, aggressive prune)
+- Stage2 가 Stage1 의 R lift 효과 negate → R=0.7739 (anchor 보다 lower!)
+- §V.5.x.M.3 production deployment 의 sequential candidate **fails** (학술 motivation 미달)
+
+### Inclusion bias strength axis spectrum (Phase 1 M1 + Phase 2 통합)
+
+| Cell | Method | R | F1 | mechanism |
+|---|---|---:|---:|---|
+| anchor c01_01 | default | 0.8748 | 0.8664 | balanced (baseline) |
+| M1-A mild | RELEVANT or POTENTIALLY RELEVANT | 0.9259 | 0.8377 | medium inclusive |
+| M1-B strong | Default INCLUDE + criteria | 0.9022 | 0.8655 | mild inclusive (F1-best M1) |
+| M1-C exclusion | 4-rule conjunctive | 0.8907 | 0.8573 | weak inclusive |
+| **M3 Voting OR** | 3 prompts OR | 0.9408 | 0.7934 | inclusive spectrum endpoint (OR) |
+| **M4 Bidirectional** | Forward (mild) + Backward | 0.9325 | 0.8370 | union (forward + question-driven) |
+| **M2 CoT-Gated** | strong + CoT + Confidence-Gated | 0.9745 | 0.3703 | **extreme inclusive** (uncertain → keep) |
+
+→ Inclusion bias 강도 axis: anchor → M1-C → M1-B → M4 → M1-A → M3 OR → M2 (R monotonic ↑, P monotonic ↓, F1 inverted U-shape with peak at M1-B 0.8655)
+
+### 학습 비용 + 환경
+
+- **Wall**: 5h17m (M2 21:30:48 → M3 02:47)
+- **GPU 시간**: 4 cells × 2-3h × (effective conc 3-4) = ~25 GPU-hours (GPU 0 + GPU 1)
+- **LLM API 비용**: 총 ~$30-50 GLM 4.7
+  - M2: 3068 calls (~$2-4)
+  - M3: 4602 calls (~$10-15)
+  - M4: 3068 calls (~$7-12)
+  - M5: 3068 calls (~$7-12)
+- **failure**: 0/4 (모든 metrics.txt 정상)
+- **process kill**: 0 (사용자 spec "kill 금지" 정합)
+
+### Filter ↔ Selector ↔ SQL Gen 의 dual narrative (Filter Dominance 강화)
+
+**schema linking F1 ≠ SQL EX correlation 의 4 evidence points**:
+- M2: F1=0.3703 (-0.4961) but EX=0.5169 (sub-noise) — Filter 가 schema 거의 다 keep → F1 catastrophic but SQL gen 영향 무
+- M3: F1=0.7934 (-0.0730), EX=0.5202 (+0.0026) — schema linking 손실, EX 거의 무영향
+- M4: F1=0.8370 (-0.0294), **EX=0.5300 (+0.0124)** — F1 ↓ but EX ↑ (Backward 의 SQL-aware column 가져옴 효과)
+- M5: F1=0.7850 (-0.0814), EX=0.5222 (+0.0046) — F1 큰 손실, EX sub-noise
+
+→ **schema linking F1 metric 의 ceiling 효과 + LLM SQL Gen 의 schema-tolerance** 가 Filter Dominance 의 dual axis evidence
+
+### Checkpoint + Reference (재사용)
+
+- Stack: c01_01 anchor stack 의 Filter module 만 4 variants 교체
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음)
+- Filter classes:
+  - M2: XiYanFilter (commit `7dac875`, prompt_mode=recall_biased_strong + cot_reasoning + confidence_gated + confidence_threshold)
+  - M3: MultiPromptVotingFilter (commit `88ad47e`, 3 voting strategies OR/MAJORITY/AND)
+  - M4: BidirectionalFilter (commit `88ad47e`, Forward+Backward union)
+  - M5: TwoStageFilter (commit `88ad47e`, Stage1+Stage2 sequential)
+
+### 산출물
+
+- Configs (4):
+  - `configs/experiments/abl/wave6_recall_biased/w6_p2a_m2cot_strong.yaml` (M2)
+  - `configs/experiments/abl/wave6_recall_biased/w6_p2_m3_voting.yaml` (M3)
+  - `configs/experiments/abl/wave6_recall_biased/w6_p2_m4_bidirectional.yaml` (M4)
+  - `configs/experiments/abl/wave6_recall_biased/w6_p2_m5_two_stage.yaml` (M5)
+- Sweep scripts: `scripts/run_wave6_phase2a_cot.sh` (M2 single) + `scripts/run_wave6_phase2_aggressive.sh` (M3+M4+M5 parallel)
+- Logs: `logs/wave6_phase2a/` + `logs/wave6_phase2_aggressive/` (4 cells)
+- Outputs: `outputs/experiments/abl/wave6_recall_biased/{w6_p2a_m2cot_strong,w6_p2_m3_voting,w6_p2_m4_bidirectional,w6_p2_m5_two_stage}/` (4 metrics.txt + predictions.jsonl + output_*.jsonl)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (Phase 3, primary)**: `notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md` 신규 작성
+  - 4 cells (M2/M3/M4/M5) + M1 3 cells = **7 methodology cells × 7 metrics matrix** + R_gain/P_loss/ΔF1/ΔEX trajectory
+  - **Pareto frontier R ≥ 0.90 ∧ P ≥ 0.75** 후보 (학술 agent §8.2):
+    - M4 (R=0.9325, P=0.7593) ★ 후보
+    - M3 (R=0.9408, P=0.6859) — P fails 0.75
+    - M1-A mild (R=0.9259, P=0.7648) ★ 후보
+  - **M3 voting variants** (OR/MAJORITY/AND) 의 각 metrics 분리 측정 (output_*.jsonl 의 voting_variants_metrics)
+  - **M4 backward stats** (backward_added/backward_gold_recovered/backward_precision) — Backward 의 contribution 정량
+  - **M5 stage stats** (stage1_recall/stage2_recall_loss/stage2_precision_gain) — Stage2 의 R-loss mechanism 정량
+  - Per-methodology mechanism axis 분리 (Inclusion bias / Question-driven / Sequential refinement)
+  - **schema linking F1 ↔ SQL EX dual narrative**: M2 의 catastrophic F1 + EX sub-noise plateau evidence
+  - **학술 agent §8.3 Top 2 조합 candidate**: M4 (EX best) + M1-B strong (F1 best M1) 조합 — Phase 3 후속 trigger
+  - DECISIONS §5 → Outcome (b) 정량 확정 (모든 F1 미달, axis #15 evidence retain + axis #11 Option A)
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.15 본문 정식 채택 (Filter Prompt Language Axis as Recall Lever, M1+M3 R-lift evidence + M4 EX gain new finding)
+  - paper §3.5 axis #15 candidate row 정식 채택
+  - paper §3.5 axis #11 narrative Option A retain
+  - paper §3.1 Inter-Module Co-Design 의 Filter ↔ Selector co-design 의 EX-axis new axis (M4 Bidirectional evidence)
+  - paper §V.5.x.M.3 production deployment narrative: M5 Two-Stage fails footnote
+- **Root 위임 (analyzer + planner 후)**:
+  - 학술 agent §8.3 Top 2 조합 chain (M4 + M1-B strong 등) 추가 실험 trigger
+

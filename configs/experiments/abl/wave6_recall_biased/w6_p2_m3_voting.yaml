@@ -1,0 +1,58 @@
+# Wave 6 Phase 2 (a+aggressive) — M3 Multi-Prompt OR Voting (학술 agent §5)
+# DECISIONS 2026-05-16 (Wave 6 Phase 2 a+aggressive M2~M5 동시 launch) §2 M3 spec
+# Module:Filter commit 88ad47e (MultiPromptVotingFilter 신규 class + 3 voting strategies)
+#
+# Spec: 3 prompts (recall_biased_mild + voting_prompt_b + voting_prompt_c) × 3 voting (OR/MAJORITY/AND)
+# Cost: 3 LLM call/q × 1534q = 4602 calls, ~$10-15 GLM 4.7, ~50min wall (3-prompt parallel)
+
+experiment_name: "w6_p2_m3_voting"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "MultiPromptVotingFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    sanitize_output: true
+    default_voting_strategy: "OR"
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0
