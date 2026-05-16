@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 9가지 제안
+## 이 모듈이 받아야 할 10가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -23,6 +23,98 @@
 | **RSL-C-GT** | **GRAST-SQL + Graph Transformer reranking (Hoang 2025 Option β)** (학술 Agent Phase 5, 2026-05-14) | RSL-C 의 Steiner terminal selection 전 Step 2 add-on — Relation-aware Graph Transformer (3 layer, hidden 1024, 8 head, edge types R={fk, col→fk, col→pk}×{fwd,rev}) 가 column-level relevance score 출력. 학술 frame: "Filter-Invariant 경계 확정 실험" (학술 Agent §0). | **최상** | h^0 = anchor LLM column scorer 출력 재활용 (Step 1 학습 생략, 5/22 일정 정합). Fallback to terminal_source="forward" on checkpoint 부재 / divergence (학술 Agent Q5). |
 | **COND** | **Conditional Filter call wrapper (Phase 4.2, 2026-05-16)** | TCR(q) < threshold → inner Filter 호출 voluntary skip. extractor output 그대로 final_nodes 로 반환. paper §V.5.x.M.3 production deployment + §V.5.x.M.11 Filter Short-Circuit voluntary vs involuntary mechanism 분리 narrative. | **최상** | 기존 Filter 어느 것이든 inner 로 wrapping 가능 (XiYan / RSL-A / RSL-C / RSL-C-GT / SGBE 등). 5/14 anchor 의 6.32% involuntary skip 과 별개 voluntary mechanism. |
 | **M1** | **Recall-Biased Prompt 3 variants (Wave 6 Phase 1, 2026-05-16)** | XiYanFilter 의 prompt language 만 변경 — `prompt_mode ∈ {default, recall_biased_mild, recall_biased_strong, recall_biased_exclusion_rule}`. LLM call 횟수 동일 (1×). `sanitize_filter_output()` hallucination 방지 후처리 default-on. | **최상** | XiYan 대체 candidate 의 가장 저비용 lever (prompt-only 변경). 학술 agent plan §3 정합 + 측정: R_fil/P_fil/F1_fil/FNR/FPR/Prune%/LLM_calls/hallucination_removed_count. |
+| **M2** | **CoT + Confidence-Gated mode (Wave 6 Phase 2 (a), 2026-05-16)** | M1 best (recall_biased_strong, R_fil=0.9022) + CoT step-by-step reasoning + per-column confidence ∈ {high, medium, low} + confidence-gated post-processing (include=False + conf ≤ gate_level → 강제 include). LLM call 동일 (1×). 학술 agent §4 정합. | **최상** | Phase 2 (a) trigger 발효 (M1 mild R_fil=0.9259 ≥ 0.92 ✅). 측정 메타 확장: confidence_distribution / gated_override_count / raw_filter_count / final_filter_count. |
+
+---
+
+## M2. CoT + Confidence-Gated (★ 최상, Wave 6 Phase 2 (a) 활성 2026-05-16)
+
+### 동기 (DECISIONS 2026-05-16 §2 Phase 2 (a) 활성 + 학술 agent filter improve plan §4)
+- M1 Phase 1 결과: mild R_fil=**0.9259** (≥0.92 trigger ✅) / strong R_fil=0.9022 / exclusion_rule R_fil=0.8907 → **Phase 2 (a) 분기 활성**.
+- Phase 2 (a) spec: M2 CoT + Confidence-Gated 를 **M1 best 인 recall_biased_strong 와 결합** (analyzer §5.2 — strong 이 F1 sub-noise sweet spot, F1=0.8655).
+- 학술 frame: anchor F1 갱신 lever 탐색 (paper §V.5.x.M.15 candidate marker — Filter Prompt Language Axis as Recall Lever, Phase 2 후 정식 채택).
+
+### 학술 agent §4 spec
+- **PROMPT_M2**: CoT step-by-step (6 steps) + `---JSON---` separator + per-column `{"include": bool, "confidence": "high"|"medium"|"low"}`
+- **parse_cot_output**: separator split + JSON parse (case-insensitive, markdown fence 자동 제거, malformed 시 `(reasoning, {})` recall-safe)
+- **apply_confidence_gating**: `include=False + confidence ≤ gate_level → 강제 include` (False Negative 방지)
+  - gate_level 매핑: `"none"` (gate off) / `"low"` (low만 override) / `"medium"` (low+medium) / `"high"` (모두 override = 사실상 모두 include)
+
+### Confidence: categorical vs continuous (사용자 권고 정합)
+- **학술 agent 원안: categorical {high, medium, low}** 채택. 본 모듈은 categorical 유지.
+- DECISIONS spec 의 `confidence_threshold ∈ [0, 1]` continuous 는 categorical bridge 로 매핑:
+
+| `confidence_threshold` 범위 | 매핑된 `gate_level` |
+|---|---|
+| `≤ 0.0` | `"none"` |
+| `(0.0, 0.3)` | `"high"` (모두 override) |
+| `[0.3, 0.8)` | `"medium"` (low+medium) **← DECISIONS 0.5 default** |
+| `[0.8, 1.0]` | `"low"` (low only) |
+
+- 명시적 `gate_level` parameter 도 yaml 에서 직접 지정 가능 (우선순위 > threshold-derived).
+
+### Phase 2 (a) Config Spec (DECISIONS §2 정합)
+```yaml
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    prompt_mode: "recall_biased_strong"   # M1 best (analyzer §5.2)
+    cot_reasoning: true                    # M2 CoT chain
+    confidence_gated: true                 # M2 confidence post-processing
+    confidence_threshold: 0.5              # → gate_level="medium" (low+medium override)
+    sanitize_output: true                  # 학술 agent §2.3 default
+```
+
+### 인터페이스 추가 (XiYanFilter)
+```python
+class XiYanFilter(BaseFilter):
+    def __init__(self,
+                 ...                              # 기존 args
+                 prompt_mode="default",            # Wave 6 Phase 1 (M1)
+                 sanitize_output=True,
+                 cot_reasoning=False,              # 신규 (Phase 2 (a))
+                 confidence_gated=False,           # 신규
+                 confidence_threshold=0.5,         # 신규
+                 gate_level=None,                  # 신규 (explicit override)
+                 **kwargs): ...
+
+    @staticmethod
+    def parse_cot_output(raw_text) -> (str, Dict): ...
+
+    @staticmethod
+    def apply_confidence_gating(cot_output, gate_level="low")
+        -> (Dict[str, List[str]], int, Dict[str, int]):
+        """Returns (final_dict, gated_override_count, confidence_distribution)."""
+```
+
+### 측정 메타 (filter_info 자동 노출)
+- `filter_cot_reasoning` : bool
+- `filter_confidence_gated` : bool
+- `filter_confidence_threshold` : float
+- `filter_gate_level` : str ("none"|"low"|"medium"|"high")
+- `filter_confidence_distribution` : `{"high": n, "medium": n, "low": n}` per-query 누적
+- `filter_gated_override_count` : int — confidence-gated override 된 column 수
+- `filter_raw_filter_count` : int — gate 전 raw filter output (post-sanitize 전)
+- `filter_final_filter_count` : int — gate 후 final filter output (post-sanitize 후)
+- 기존 메타 (`filter_prompt_mode`, `filter_hallucination_removed_count`, `filter_prune_pct`, `filter_llm_calls`) 그대로 유지 — non-CoT path 와 호환
+
+### Pairing 제약 (현 구현 scope)
+- `cot_reasoning=True` + `prompt_mode ∈ {default, recall_biased_strong}` 만 지원
+- 다른 mode (`recall_biased_mild`, `recall_biased_exclusion_rule`) + CoT 결합은 향후 Phase 2 (b)/(c) trigger 시 추가
+- 잘못된 pairing → ValueError (validation 단계)
+
+### 산출물 (본 모듈, 2026-05-16)
+- [`xiyan_filter.py`](xiyan_filter.py) — `cot_reasoning` / `confidence_gated` / `confidence_threshold` / `gate_level` params + `parse_cot_output()` + `apply_confidence_gating()` + CoT path branch + 측정 메타 노출
+- [`/home/hyeonjin/thesis_refactored/src/prompts/filter.md`](/home/hyeonjin/thesis_refactored/src/prompts/filter.md) — `cot_default` (PROMPT_M2 원문) + `cot_recall_biased_strong` (M2 CoT + M1-B inclusion 결합) 2 section 추가
+- [`tests/test_xiyan_cot_confidence.py`](tests/test_xiyan_cot_confidence.py) — 22-scenario smoke test (**PASSED 22/22**): threshold↔gate_level 매핑 / parse_cot_output edge cases / apply_confidence_gating boundary (none/low/medium/high) / malformed entries / refine integration (gating on/off / section 선택 / sanitize / parse 실패 recall-safe / non-CoT backward-compat / **Phase 2 (a) spec exact**)
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: `configs/experiments/abl/wave6_recall_biased/w6_p2a_m2cot_strong.yaml` 작성 (DECISIONS §2 spec exact) + `scripts/run_wave6_phase2a_cot.sh` → BIRD-Dev 1534 query (~1.7h GPU + ~$2~4 GLM 4.7). HISTORY + CATALOG + ID_MIGRATION 3종 갱신.
+- **Analyzer**: `notebooks/analysis_results/wave6_phase2a_cot_confidence_2026-05-XX.md` — R_fil / P_fil / F1_fil / gated_override rate / confidence distribution 분석 + **axis #15 정식 채택 여부 결정** (F1 > 0.8672 통계 robust 시 정식 채택; F1 sub-noise plateau 시 axis #5~#14 plateau evidence 의 prompt-level strengthening 으로 위치 부여) + **axis #11 narrative Option A retain / Option B reinterpret 결정**.
 
 ---
 
