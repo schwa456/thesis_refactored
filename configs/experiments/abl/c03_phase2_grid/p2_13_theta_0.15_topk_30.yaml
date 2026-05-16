@@ -1,0 +1,54 @@
+# Phase 2 Grid Sweep (Wave 5 Partial Reopen, DECISIONS 2026-05-16) — c03_phase2_grid
+# Cell: theta = 0.15, top_k = 30 (5x5 = 25 cells)
+# Anchor stack: QCondGAT 3-layer + bidirectional SN + MSTPCSTUnion + XiYanFilter (GLM-4.7) + SQL gen
+# Anchor 정합 (P2_02 = theta=0.1, K=20): c01_01 deterministic 일치 검증 cell (F1=0.8664)
+
+experiment_name: "p2_13_theta_0.15_topk_30"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 30
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.15
+
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

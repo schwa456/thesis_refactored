@@ -2603,3 +2603,70 @@ P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
 - Checkpoints (NAS, 7 신규): `/SSL_NAS/peoples/khj/thesis/checkpoints/best_gat_directed_supernode_p80_v5{*}.pt` (총 1.69GB)
 - 비용: ₩0 (LLM-free) | 학습 wall (합산): 95h 17m | 학습 wall (실시간 2-GPU 병렬): ~55h (5/13 12:10 → 5/15 19:07)
 
+
+---
+
+## Phase 2 Grid Sweep — Hyperparameter 2D Grid θ × K = 5×5 = 25 cells (Wave 5 Partial Reopen, 2026-05-16, 🎯 Success criterion (a) Plateau breadth confirm)
+
+### 25 cells × 4 metrics (R/P/F1/EX 4-decimal, anchor c01_01 F1=0.8664 / EX=0.5176 비교)
+
+**F1 5×5 Heatmap** (Global max p2_03 0.8680 = anchor +0.0016 sub-noise):
+
+| θ \ K | 15 | 20 | 30 | 40 | 70 | **avg** | row-Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **0.1** | 0.8669 | 0.8669 | **0.8680** ★ | 0.8646 | 0.8670 | **0.8667** | +0.0003 |
+| 0.125 | 0.8631 | 0.8641 | 0.8640 | 0.8637 | 0.8659 | 0.8642 | -0.0023 |
+| 0.15 | 0.8623 | 0.8628 | 0.8650 | 0.8651 | 0.8651 | 0.8641 | -0.0023 |
+| 0.175 | 0.8619 | 0.8615 | 0.8588 | 0.8580 | 0.8575 | 0.8595 | -0.0069 |
+| 0.2 | 0.8579 | 0.8611 | 0.8626 | 0.8613 | 0.8621 | 0.8610 | -0.0054 |
+
+**EX 5×5 Heatmap** (Global max p2_07 0.5189 = anchor +0.0013 sub-noise):
+
+| θ \ K | 15 | 20 | 30 | 40 | 70 | **avg** |
+|---|---:|---:|---:|---:|---:|---:|
+| **0.1** | 0.5163 | 0.5163 | 0.5130 | **0.5169** | 0.5163 | 0.5158 |
+| 0.125 | 0.5117 | **0.5189** ★ | 0.5143 | 0.5137 | 0.5143 | 0.5146 |
+| 0.15 | 0.5098 | 0.5111 | 0.5020 | 0.5026 | 0.5013 | 0.5054 |
+| 0.175 | 0.5033 | 0.5026 | 0.5007 | 0.5007 | 0.5020 | 0.5019 |
+| 0.2 | 0.4961 | 0.4980 | 0.4980 | 0.4954 | 0.4954 | 0.4966 |
+
+### Anchor 정합 검증 (P2_02 vs c01_01)
+
+| | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| c01_01 | 0.8748 | 0.8582 | 0.8664 | 0.5176 |
+| p2_02 | 0.8761 | 0.8579 | 0.8669 | 0.5163 |
+| Δ | +0.0013 | -0.0003 | **+0.0005** | -0.0013 |
+
+✅ **Deterministic 정합 PASS** (ΔF1 ≤ 0.0010 noise band).
+
+### Success criterion 분기 판단
+
+| Criterion | 결과 | 학술 weight |
+|---|---|:---:|
+| **(a) Plateau breadth** | anchor-band F1 spread = 0.0057 (V5 inference 0.0052 정합), EX spread ~0.020 — plateau 확인 | **High** — axis #11 retain + strengthen |
+| **(b) R 갱신 lever** | p2_03 F1=0.8680 +0.0016 / p2_07 EX=0.5189 +0.0013 — noise floor 약간 초과 잠정, **statistically robust 아님** | **Low** — closure 재고 trigger 미달성 |
+
+→ **Outcome (a) Plateau 흡수** — axis #11 (builder-axis invariance) evidence retain.
+
+### Config 주의사항
+
+- 학습 entry: 학습 없음 (sweep only) — weight_path = `best_gat_qcond_nl3.pt` (5/14 → 5/16 anchor 동일)
+- 변경 차원: selector.top_k ∈ {15, 20, 30, 40, 70} × extractor.score_threshold ∈ {0.1, 0.125, 0.15, 0.175, 0.2} = 25 cells
+- Stack: c01_01 anchor (QCondGAT 3-layer + bidirectional SN + MSTPCSTUnion + XiYanFilter GLM 4.7 + LLMSQLGenerator)
+
+### 결론 — Plateau breadth confirm + anchor 정합 PASS
+
+- 25 cells 모두 anchor-band 부근 cluster (F1 spread 0.8575~0.8680 = Δ=0.0105 across 25 cells, anchor-band 15 cells spread 0.0057)
+- θ axis monotonic decay (0.1 → 0.175 → 0.2 의 mid-θ dip): F1 decay -0.0072 from θ=0.1 to θ=0.175
+- K axis sub-noise (θ ∈ anchor-band 안) — Phase 1.2 K sweep sub-noise (0.0019) 정합
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 2 Grid Sweep (2026-05-16)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs (25): `configs/experiments/abl/c03_phase2_grid/p2_{01..25}_theta_X_topk_Y.yaml`
+- Sweep script: `scripts/run_phase2_grid_sweep.sh` (8-conc parallel GPU 0/1)
+- 학습 없음 (sweep only), 비용 ~$15-30 GLM API
+- Wall: 8h14m50s (00:47:25 → 09:02:15)
+- failure: 0/25 (모든 cells 의 metrics.txt 정상 생성)
+

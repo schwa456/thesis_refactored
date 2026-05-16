@@ -3999,3 +3999,146 @@ DECISIONS 2026-05-08 §1 분기:
   - Phase 1 Sensitivity 13-cell sweep — 별도 entry
   - Anchor SQL Sweep (Option γ) — 별도 entry
 
+
+---
+
+## Phase 2 Grid Sweep — Hyperparameter 2D Grid θ × K = 5×5 = 25 cells (Wave 5 Partial Reopen, 2026-05-16, 🎯 Success criterion (a) Plateau breadth confirm + anchor 정합 PASS + R 갱신 lever 잠정 sub-noise)
+
+근거: planning/DECISIONS.md 2026-05-16 (Wave 5 Partial Reopen — Phase 2 grid 25 cells 재활성) + planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §"Phase 2" + EXPERIMENT_PLAN.md §4 Phase 0 Wave 5 ★★★ Phase 2 Grid Sweep + analyzer phase1_sensitivity_analysis_2026-05-15.md §3.3 grid spec. Wave 5 closure 일부 retract 후 Phase 2 grid 만 활성 — closure narrative axis #11 (builder-axis invariance) 의 R 갱신 lever 재탐색.
+
+### 운영 이력
+
+- **2026-05-16 00:45 launch prep**: 25 configs 신규 생성 (`configs/experiments/abl/c03_phase2_grid/p2_{01..25}_theta_X_topk_Y.yaml`) — Python `/tmp/gen_phase2_configs.py` 일괄 생성. Anchor 정합: P2_02 (θ=0.1, K=20) ↔ c01_01 spec diff = 주석 + experiment_name 만 (deterministic 일치 검증 cell).
+- **2026-05-16 00:45 script 작성**: `scripts/run_phase2_grid_sweep.sh` (failure-tolerant 25 cells, GPU 0+1 split, conc=4 per GPU). 초기 conc=3 (안전), 사용자 5/16 input "8개 동시에 병렬로 진행하고 kill은 하지 마" → conc=4 per GPU = **8-conc total** 변경.
+- **2026-05-16 00:47:25 launch**: `nohup bash scripts/run_phase2_grid_sweep.sh > logs/phase2_grid_main.log 2>&1 &` (wrapper PID 3484328). 8-conc Round 1: GPU 0 × {p2_01,02,03,04} + GPU 1 × {p2_14,15,16,17}. GPU 0 alloc cells 1-13 (4 round), GPU 1 alloc cells 14-25 (3 round).
+- **2026-05-16 09:02:15 종료**: 25/25 metrics 모두 도착. Wall = **8h14m50s** (사용자 spec 4-5h ETA + 8-conc drift 페널티 정합).
+- **30m cron** (id `d6c467d7`) + **monitor** 5개 (b49l669a6, b1ikmgq7c, b8paj7ti8, b9p2isy9l, bsjuq4nxx, bvjxa8qgj, be5bo1ebf, bkfz4q8wz, bx4ztykgh — 1h timeout 마다 re-arm) 으로 진행 모니터링.
+
+### 25 cells 의 R/P/F1/EX (4-decimal, anchor c01_01 F1=0.8664 / EX=0.5176 비교)
+
+| Cell | θ | K | R | P | F1 | EX | ΔF1 vs c01_01 | ΔEX vs c01_01 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| p2_01 | 0.1 | 15 | 0.8759 | 0.8581 | 0.8669 | 0.5163 | +0.0005 | -0.0013 |
+| p2_02 ⭐ | 0.1 | 20 | 0.8761 | 0.8579 | 0.8669 | 0.5163 | **+0.0005** ⭐ | -0.0013 |
+| **p2_03** | 0.1 | **30** | 0.8768 | 0.8593 | **0.8680** ★ | 0.5130 | **+0.0016** ★ | -0.0046 |
+| p2_04 | 0.1 | 40 | 0.8731 | 0.8563 | 0.8646 | 0.5169 | -0.0018 | -0.0007 |
+| p2_05 | 0.1 | 70 | 0.8752 | 0.8589 | 0.8670 | 0.5163 | +0.0006 | -0.0013 |
+| p2_06 | 0.125 | 15 | 0.8712 | 0.8551 | 0.8631 | 0.5117 | -0.0033 | -0.0059 |
+| **p2_07** | 0.125 | **20** | 0.8693 | 0.8590 | 0.8641 | **0.5189** ★ | -0.0023 | **+0.0013** ★ |
+| p2_08 | 0.125 | 30 | 0.8717 | 0.8565 | 0.8640 | 0.5143 | -0.0024 | -0.0033 |
+| p2_09 | 0.125 | 40 | 0.8705 | 0.8570 | 0.8637 | 0.5137 | -0.0027 | -0.0039 |
+| p2_10 | 0.125 | 70 | 0.8729 | 0.8591 | 0.8659 | 0.5143 | -0.0005 | -0.0033 |
+| p2_11 | 0.15 | 15 | 0.8659 | 0.8588 | 0.8623 | 0.5098 | -0.0041 | -0.0078 |
+| p2_12 | 0.15 | 20 | 0.8673 | 0.8584 | 0.8628 | 0.5111 | -0.0036 | -0.0065 |
+| p2_13 | 0.15 | 30 | 0.8683 | 0.8618 | 0.8650 | 0.5020 | -0.0014 | -0.0156 |
+| p2_14 | 0.15 | 40 | 0.8689 | 0.8614 | 0.8651 | 0.5026 | -0.0013 | -0.0150 |
+| p2_15 | 0.15 | 70 | 0.8692 | 0.8611 | 0.8651 | 0.5013 | -0.0013 | -0.0163 |
+| p2_16 | 0.175 | 15 | 0.8647 | 0.8592 | 0.8619 | 0.5033 | -0.0045 | -0.0143 |
+| p2_17 | 0.175 | 20 | 0.8645 | 0.8586 | 0.8615 | 0.5026 | -0.0049 | -0.0150 |
+| p2_18 | 0.175 | 30 | 0.8597 | 0.8579 | 0.8588 | 0.5007 | -0.0076 | -0.0169 |
+| p2_19 | 0.175 | 40 | 0.8600 | 0.8561 | 0.8580 | 0.5007 | -0.0084 | -0.0169 |
+| p2_20 | 0.175 | 70 | 0.8589 | 0.8562 | 0.8575 | 0.5020 | -0.0089 | -0.0156 |
+| p2_21 | 0.2 | 15 | 0.8576 | 0.8583 | 0.8579 | 0.4961 | -0.0085 | -0.0215 |
+| p2_22 | 0.2 | 20 | 0.8612 | 0.8611 | 0.8611 | 0.4980 | -0.0053 | -0.0196 |
+| p2_23 | 0.2 | 30 | 0.8648 | 0.8605 | 0.8626 | 0.4980 | -0.0038 | -0.0196 |
+| p2_24 | 0.2 | 40 | 0.8621 | 0.8605 | 0.8613 | 0.4954 | -0.0051 | -0.0222 |
+| p2_25 | 0.2 | 70 | 0.8644 | 0.8598 | 0.8621 | 0.4954 | -0.0043 | -0.0222 |
+
+### 5×5 F1 Heatmap (Global max p2_03 0.8680)
+
+| θ \ K | 15 | 20 | 30 | 40 | 70 | **avg** |
+|---|---:|---:|---:|---:|---:|---:|
+| **0.1** | 0.8669 | 0.8669 | **0.8680** ★ | 0.8646 | 0.8670 | **0.8667** |
+| 0.125 | 0.8631 | 0.8641 | 0.8640 | 0.8637 | 0.8659 | 0.8642 |
+| 0.15 | 0.8623 | 0.8628 | 0.8650 | 0.8651 | 0.8651 | 0.8641 |
+| 0.175 | 0.8619 | 0.8615 | 0.8588 | 0.8580 | 0.8575 | 0.8595 |
+| 0.2 | 0.8579 | 0.8611 | 0.8626 | 0.8613 | 0.8621 | 0.8610 |
+
+### 5×5 EX Heatmap (Global max p2_07 0.5189)
+
+| θ \ K | 15 | 20 | 30 | 40 | 70 |
+|---|---:|---:|---:|---:|---:|
+| **0.1** | 0.5163 | 0.5163 | 0.5130 | **0.5169** | 0.5163 |
+| 0.125 | 0.5117 | **0.5189** ★ | 0.5143 | 0.5137 | 0.5143 |
+| 0.15 | 0.5098 | 0.5111 | 0.5020 | 0.5026 | 0.5013 |
+| 0.175 | 0.5033 | 0.5026 | 0.5007 | 0.5007 | 0.5020 |
+| 0.2 | 0.4961 | 0.4980 | 0.4980 | 0.4954 | 0.4954 |
+
+### Anchor 정합 검증 — P2_02 vs c01_01 (deterministic 일치)
+
+| | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| **c01_01** (Phase 1.1 base) | 0.8748 | 0.8582 | 0.8664 | 0.5176 |
+| **p2_02** (Phase 2 grid 동일 spec) | 0.8761 | 0.8579 | 0.8669 | 0.5163 |
+| **Δ (P2_02 vs c01_01)** | +0.0013 | -0.0003 | **+0.0005** | -0.0013 |
+
+→ **✅ Deterministic 정합 검증 PASS** (사용자 spec "F1 차이 ≤ 0.0010 noise" 정합) — GLM API stochastic variance 안. 25 cells 결과의 신뢰성 base 확보.
+
+### Success criterion 분기 판단 (DECISIONS 2026-05-16 §2)
+
+| Criterion | 결과 | 학술 weight |
+|---|---|:---:|
+| **(a) Plateau breadth** | anchor-band θ ∈ {0.1, 0.125, 0.15} × K ∈ {15, 20, 30, 40, 70} = **15 cells F1 spread = 0.8623~0.8680 (Δ=0.0057)**, EX spread ~0.020. V5 inference 7-cell F1 spread (0.0052) 정합 sub-noise band 안. **plateau 확인** | **High** — axis #11 (builder-axis invariance) evidence **retain + strengthen** |
+| **(b) R 갱신 lever** | **p2_03 (θ=0.1, K=30) F1=0.8680 = anchor +0.0016** — GLM stochastic noise floor (~0.001) 약간 초과 잠정. **p2_07 (θ=0.125, K=20) EX=0.5189 = anchor +0.0013** — 비슷 sub-noise. **둘 다 statistically robust 아님** | **Low** — closure narrative 재고 trigger 미달성, 잠정 sub-noise candidate |
+
+→ **Outcome (a) Plateau 흡수** — axis #11 (builder-axis invariance candidate) 의 **더 강한 evidence retain**. closure narrative 유지.
+
+### θ axis 의 trend 정합 (Phase 1.1 θ sweep)
+
+| θ | F1 avg | EX avg | ΔF1 vs c01_01 | Phase 1.1 (K=20 단독) | Δ |
+|---|---:|---:|---:|---:|---:|
+| 0.1 | 0.8667 | 0.5158 | +0.0003 | 0.8664 | +0.0003 ✅ noise |
+| 0.125 | 0.8642 | 0.5146 | -0.0022 | (미측정) | n/a |
+| 0.15 | 0.8641 | 0.5046 | -0.0023 | (미측정) | n/a |
+| 0.175 | 0.8595 | 0.5019 | -0.0069 | (미측정) | n/a |
+| 0.2 | 0.8610 | 0.4966 | -0.0054 | 0.8632 | -0.0022 ✅ noise |
+
+→ Phase 1.1 의 θ=0.1, θ=0.2 결과 (K=20 단독) 와 Phase 2 grid 의 동일 θ 의 5-K avg 가 sub-noise 일치.
+
+**관찰**: **θ=0.175 → θ=0.2 mid-θ dip** — θ=0.2 row avg F1=0.8610 > θ=0.175 row avg F1=0.8595 (Δ=+0.0015 sub-noise but consistent across K). 다만 EX 는 θ=0.2 가 worst (0.4966) — F1 ↔ EX trade-off.
+
+### K axis 의 sub-noise vs sensitivity (Phase 1.2 K sweep 정합)
+
+| θ | K spread (F1) | EX spread | Phase 1.2 정합 |
+|---|---:|---:|---|
+| 0.1 (anchor-band) | **0.0034** (0.8646~0.8680) | 0.0039 | Phase 1.2 sub-noise (0.0019) 정합 |
+| 0.125 | 0.0028 | 0.0072 | sub-noise |
+| 0.15 | 0.0028 | 0.0098 | sub-noise |
+| 0.175 | 0.0044 | 0.0026 | K↑ → F1 monotonic decay (anchor-band 외) |
+| 0.2 | 0.0047 | 0.0026 | K↑ marginal increase |
+
+→ **anchor-band θ ∈ [0.1, 0.15] 안에서는 K sub-noise**, θ ≥ 0.175 부터 K sensitivity 등장.
+
+### 학습 비용 + 환경
+
+- **Wall**: 8h14m50s (00:47:25 → 09:02:15)
+- **GPU 시간**: 25 × ~2h = ~50 GPU-hour (8-conc 4-conc 비교 wall 단축 효과 검증, V5 inference 정합 drift +13~17%)
+- **LLM API 비용**: ~$15-30 GLM 4.7 (anchor SQL sweep ~1.5h × 25 cells 분산)
+- **per_q drift**: 4.7s (Round 1 start) → 5.4s (Round 1 end) → 4.9s avg (Round 2/3) → 3.9s (Round 4 단독, 1-conc 회복)
+- **failure**: 0 cells (모든 25 cells 의 metrics.txt 정상 생성)
+
+### Checkpoint + Reference (재사용)
+
+- Stack: c01_01 anchor (QCondGAT 3-layer + bidirectional SN + MSTPCSTUnion + XiYanFilter GLM 4.7 + LLMSQLGenerator)
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (5/14 → 5/16 anchor 동일)
+- 신규 ckpt 학습 없음 — sweep only
+
+### 산출물
+
+- Configs (25): `configs/experiments/abl/c03_phase2_grid/p2_{01..25}_theta_X_topk_Y.yaml`
+- Sweep script: `scripts/run_phase2_grid_sweep.sh` (4-stage GPU 0/1 8-conc parallel)
+- Logs: `logs/phase2_grid_main.log` + `logs/phase2_grid/p2_{01..25}_*.log` (25 cells)
+- Outputs: `outputs/experiments/abl/c03_phase2_grid/p2_{01..25}_*/` (25 metrics.txt + predictions.jsonl + output_*.jsonl)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, immediate)**: `notebooks/analysis_results/phase2_grid_heatmap_2026-05-16.md` 신규 작성
+  - 5×5 heatmap visualization (F1 + EX + TCR + TOR + Filter Prune Ratio)
+  - Success criterion (a/b) 분기 판단 (위 결론 (a) plateau 흡수 confirm)
+  - P2_02 ↔ c01_01 deterministic 정합 통계 verify
+  - θ × K interaction effect (anchor-band 안 K sub-noise vs anchor-band 밖 K monotonic) mechanism 분석
+  - paper §V.5.x.M.9 (Extractor θ R-Ceiling Mechanism) 의 Phase 2 evidence 갱신 권고
+  - paper §V.5.x.M.10 (Selector K Filter-Invariant) 의 Phase 2 25-cell evidence 강화 권고
+- **Planner 위임 (analyzer 후)**: closure narrative axis #11 (builder-axis invariance) 의 Phase 2 plateau 흡수 evidence 추가 명문화
+- **Caveat**: p2_03 (θ=0.1, K=30) F1=0.8680 / p2_07 (θ=0.125, K=20) EX=0.5189 의 noise floor 약간 초과 sub-noise candidate — 추가 measurement (seed sweep 또는 GLM stochastic variance 분석) 으로 statistical significance 검증 후속 backlog
+

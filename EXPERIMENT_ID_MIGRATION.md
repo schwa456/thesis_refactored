@@ -1593,3 +1593,55 @@ V-3-ext 단계 8 의 architectural intervention. 직전 단계 7 v3 GIN 의 명�
 - mech(ii-b) **softmax × weighted-mean propagation combo** 가 5 architectural axis (V4-A LN, V4-B Softplus, V5-A Conservation Law, V5-B Identity Mapping, V5-C Hop+Cum Attention) 모두 invariant → fundamental architectural limitation 격상 candidate
 - paper §3.5 Filter Dominance 6번째 축 (training-pathology-invariant) **17-trial evidence 누적** + paper §V.5.4 mech(ii-b) DOMINANT 7/7 absolute confirm 격상 candidate
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md DSN Mitigation V5 7-Trial Sweep 학습 완료 (V-3-ext 단계 9, 2026-05-13 → 05-15)](EXPERIMENT_HISTORY.md).
+
+
+---
+
+## Phase 2 Grid Sweep — θ × K = 5×5 = 25 cells (Wave 5 Partial Reopen, 2026-05-16, 25 신규 ID — 🎯 Success criterion (a) plateau confirm + axis #11 evidence retain)
+
+### 명명 규칙 — `p2_{NN}_theta_{X}_topk_{Y}.yaml`
+
+| # | Cell ID | θ | K | F1 | EX | Δ vs c01_01 (F1=0.8664 / EX=0.5176) |
+|---|---|---:|---:|---:|---:|---|
+| 1 | p2_01_theta_0.1_topk_15 | 0.1 | 15 | 0.8669 | 0.5163 | +0.0005 / -0.0013 |
+| 2 | **p2_02_theta_0.1_topk_20 ⭐** | 0.1 | 20 | 0.8669 | 0.5163 | **+0.0005 / -0.0013** (anchor 일치 검증 PASS) |
+| 3 | **p2_03_theta_0.1_topk_30 ★** | 0.1 | 30 | **0.8680** | 0.5130 | **+0.0016** (F1 max) / -0.0046 |
+| 4 | p2_04_theta_0.1_topk_40 | 0.1 | 40 | 0.8646 | 0.5169 | -0.0018 / -0.0007 |
+| 5 | p2_05_theta_0.1_topk_70 | 0.1 | 70 | 0.8670 | 0.5163 | +0.0006 / -0.0013 |
+| 6 | p2_06_theta_0.125_topk_15 | 0.125 | 15 | 0.8631 | 0.5117 | -0.0033 / -0.0059 |
+| 7 | **p2_07_theta_0.125_topk_20 ★** | 0.125 | 20 | 0.8641 | **0.5189** | -0.0023 / **+0.0013** (EX max) |
+| 8 | p2_08_theta_0.125_topk_30 | 0.125 | 30 | 0.8640 | 0.5143 | -0.0024 / -0.0033 |
+| 9 | p2_09_theta_0.125_topk_40 | 0.125 | 40 | 0.8637 | 0.5137 | -0.0027 / -0.0039 |
+| 10 | p2_10_theta_0.125_topk_70 | 0.125 | 70 | 0.8659 | 0.5143 | -0.0005 / -0.0033 |
+| 11 | p2_11_theta_0.15_topk_15 | 0.15 | 15 | 0.8623 | 0.5098 | -0.0041 / -0.0078 |
+| 12 | p2_12_theta_0.15_topk_20 | 0.15 | 20 | 0.8628 | 0.5111 | -0.0036 / -0.0065 |
+| 13 | p2_13_theta_0.15_topk_30 | 0.15 | 30 | 0.8650 | 0.5020 | -0.0014 / -0.0156 |
+| 14 | p2_14_theta_0.15_topk_40 | 0.15 | 40 | 0.8651 | 0.5026 | -0.0013 / -0.0150 |
+| 15 | p2_15_theta_0.15_topk_70 | 0.15 | 70 | 0.8651 | 0.5013 | -0.0013 / -0.0163 |
+| 16 | p2_16_theta_0.175_topk_15 | 0.175 | 15 | 0.8619 | 0.5033 | -0.0045 / -0.0143 |
+| 17 | p2_17_theta_0.175_topk_20 | 0.175 | 20 | 0.8615 | 0.5026 | -0.0049 / -0.0150 |
+| 18 | p2_18_theta_0.175_topk_30 | 0.175 | 30 | 0.8588 | 0.5007 | -0.0076 / -0.0169 |
+| 19 | p2_19_theta_0.175_topk_40 | 0.175 | 40 | 0.8580 | 0.5007 | -0.0084 / -0.0169 |
+| 20 | p2_20_theta_0.175_topk_70 | 0.175 | 70 | 0.8575 | 0.5020 | -0.0089 / -0.0156 |
+| 21 | p2_21_theta_0.2_topk_15 | 0.2 | 15 | 0.8579 | 0.4961 | -0.0085 / -0.0215 |
+| 22 | p2_22_theta_0.2_topk_20 | 0.2 | 20 | 0.8611 | 0.4980 | -0.0053 / -0.0196 |
+| 23 | p2_23_theta_0.2_topk_30 | 0.2 | 30 | 0.8626 | 0.4980 | -0.0038 / -0.0196 |
+| 24 | p2_24_theta_0.2_topk_40 | 0.2 | 40 | 0.8613 | 0.4954 | -0.0051 / -0.0222 |
+| 25 | p2_25_theta_0.2_topk_70 | 0.2 | 70 | 0.8621 | 0.4954 | -0.0043 / -0.0222 |
+
+### Config 주의사항
+
+- 위치: `configs/experiments/abl/c03_phase2_grid/`
+- Stack: c01_01 anchor stack 의 selector.top_k + extractor.score_threshold 만 sweep
+- Anchor 정합 cell: P2_02 (θ=0.1, K=20) ↔ c01_01 deterministic 일치 검증 (F1 차이 +0.0005 sub-noise PASS)
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음, anchor ckpt 재사용)
+- LLM: glm-4.7 (XiYanFilter + LLMSQLGenerator) GLM API
+
+### 결론 — Success criterion (a) Plateau breadth confirm
+
+- 25 cells F1 spread 0.0105 (anchor-band θ ∈ {0.1, 0.125, 0.15} 15 cells F1 spread 0.0057) — V5 inference 0.0052 정합 sub-noise
+- F1 max p2_03 (θ=0.1, K=30) 0.8680 = anchor +0.0016 — GLM noise floor (~0.001) 약간 초과 잠정 sub-noise
+- EX max p2_07 (θ=0.125, K=20) 0.5189 = anchor +0.0013 — 비슷 sub-noise
+- θ axis monotonic decay (Phase 1.1 정합), K axis anchor-band 안 sub-noise (Phase 1.2 정합)
+- → axis #11 (builder-axis invariance) plateau evidence retain + strengthen
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Phase 2 Grid Sweep (2026-05-16)](EXPERIMENT_HISTORY.md).
