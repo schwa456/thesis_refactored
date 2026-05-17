@@ -2845,3 +2845,60 @@ P@15 / F1@15 학습 시점 미측정 — analyzer 후속 평가 dispatch.
 - 비용: ~$30-50 GLM 4.7 (M2 ~$3 + M3 ~$12 + M4 ~$9 + M5 ~$9)
 - failure: 0/4
 
+
+---
+
+## Wave 6 Phase 4 Top 2 C1 — M4 + M1-B strong Forward (DECISIONS 2026-05-17 §4, 학술 agent §8.3, 2026-05-17, 🎯 Partial Degrade — Forward Dominance + Backward Effect Reduction, Pareto frontier 진입)
+
+### Single cell × 4 metrics (anchor c01_01 R=0.8748 / P=0.8582 / F1=0.8664 / EX=0.5176)
+
+| Cell | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| **w6_p4_c1_m4_strong** | **0.9177** | 0.8109 | **0.8610** | 0.5150 |
+
+### vs 3 baselines
+
+| baseline | F1 | ΔF1 vs C1 | EX | ΔEX vs C1 |
+|---|---:|---:|---:|---:|
+| anchor c01_01 | 0.8664 | C1 -0.0054 sub-noise | 0.5176 | C1 -0.0026 sub-noise |
+| M4 baseline (mild Forward) | 0.8370 | **C1 +0.0240** ✅ | **0.5300** ★ | **C1 -0.0150** ❌ EX loss |
+| M1-B strong (Forward only) | **0.8655** ★ | C1 -0.0045 sub-noise | 0.5130 | C1 +0.0020 sub-noise |
+
+### Synergy / Additive / Degrade 분기 — Partial Degrade 확정
+
+- Synergy ❌ (F1 < M1-B AND EX < M4)
+- Additive (full) ⚠ 부분 (F1 ≈ M1-B sub-noise ✅, EX 가 M1-B 에 가까움 NOT M4)
+- **Partial Degrade ✅ 확정** — F1 < M1-B sub-noise + EX < M4 큰 손실 (-0.0150)
+
+### 🌟 New Finding — Backward mechanism Forward-prompt-dependent
+
+M4 EX gain (+0.0124) 의 source = Forward (mild) inclusive base 위에 Backward 가 SQL-aware column 보충. C1 (strong Forward) 시 Backward 보충 column space 줄어듦 → **EX gain 사라짐 (-0.0150 from M4)**.
+
+→ **DECISIONS §3.1 Forward/Backward orthogonality hypothesis 부분 부정** — Forward prompt 가 Backward effect size 결정 (entanglement evidence)
+
+### Pareto Frontier 5번째 cell 진입
+
+C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-A + M1-B + M3 MAJORITY + M4 + C1 = 5 cells)
+
+### Config 주의사항
+
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- 변경 차원: BidirectionalFilter 의 `bidirectional_forward_prompt_mode="recall_biased_strong"` (commit `60b6988`)
+- Backward retain: `bidirectional_backward` (M4 baseline 동일)
+- 공통: sanitize_filter_output=True
+
+### 결론 — Partial Degrade + Forward Dominance + Pareto entrance
+
+- F1 학술 agent §10 미달 (-0.0062 sub-noise) — DECISIONS §5 Outcome (b) retain
+- 새 finding: Backward mechanism Forward-prompt-dependent (entanglement)
+- C2 (M4 + M3 MAJORITY Forward) launch 학술 motivation 강화
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 4 Top 2 C1 (2026-05-17)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Config: `configs/experiments/abl/wave6_recall_biased/w6_p4_c1_m4_strong.yaml`
+- Module 구현: filter commit `60b6988` (BidirectionalFilter `bidirectional_forward_prompt_mode` flag)
+- Sweep script: `scripts/run_wave6_phase4_c1.sh`
+- Wall: 2h33m (10:31 → 13:04), 비용 ~$2-4 GLM API
+- failure: 0/1
+

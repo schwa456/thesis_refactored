@@ -1801,3 +1801,56 @@ EX-max:  M4 0.5300 ★ > M5 0.5222 > M3 0.5202 > anchor 0.5176 > M1-A mild 0.516
 - paper §V.5.x.M.15 본문 정식 채택 candidate (M1 R-lift + M4 EX gain 통합)
 - paper §3.1 Inter-Module Co-Design 의 Filter ↔ Selector EX-axis new axis (M4 evidence)
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 2 (a+aggressive) (2026-05-17)](EXPERIMENT_HISTORY.md).
+
+
+---
+
+## Wave 6 Phase 4 Top 2 C1 — M4 + M1-B strong Forward (DECISIONS 2026-05-17 §4, 학술 agent §8.3, 2026-05-17, 1 신규 ID — 🎯 Partial Degrade + Forward Dominance + Pareto frontier 진입)
+
+### 명명 규칙 — `w6_p4_c1_m4_strong.yaml` (`configs/experiments/abl/wave6_recall_biased/`)
+
+| # | Cell ID | Method | Filter class | R | P | F1 | EX |
+|---|---|---|---|---:|---:|---:|---:|
+| 1 | **w6_p4_c1_m4_strong** | M4 + M1-B strong Forward (Forward=recall_biased_strong + Backward=bidirectional_backward) | BidirectionalFilter (commit `60b6988`) | **0.9177** | 0.8109 | **0.8610** | 0.5150 |
+
+### Δ vs 3 baselines
+
+| baseline | F1 baseline | C1 ΔF1 | EX baseline | C1 ΔEX |
+|---|---:|---:|---:|---:|
+| anchor c01_01 | 0.8664 | -0.0054 sub-noise | 0.5176 | -0.0026 sub-noise |
+| M4 baseline (mild Forward) | 0.8370 | **+0.0240** ✅ | **0.5300** ★ | **-0.0150** ❌ EX loss |
+| M1-B strong (Forward only) | **0.8655** ★ | -0.0045 sub-noise | 0.5130 | +0.0020 sub-noise |
+
+### Config 주의사항
+
+- 위치: `configs/experiments/abl/wave6_recall_biased/`
+- Stack: c01_01 anchor stack + BidirectionalFilter 의 `bidirectional_forward_prompt_mode` 만 변경
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음)
+- LLM: glm-4.7 (2 calls/q = Forward + Backward, total 3068 calls)
+- Filter spec:
+  - `bidirectional_forward_prompt_mode: "recall_biased_strong"` (commit `60b6988`)
+  - `backward_section: "bidirectional_backward"` (M4 default retain)
+  - `sanitize_output: true`
+
+### Synergy / Additive / Partial Degrade 분기 — **Partial Degrade 확정**
+
+| 분기 | 조건 | 결과 |
+|---|---|:---:|
+| Synergy | F1 > 0.8655 (M1-B) OR EX > 0.5300 (M4) | ❌ |
+| Additive (full) | F1 ≈ M1-B sub-noise + EX ≈ M4 | ⚠ 부분 (EX 는 M1-B 에 가까움) |
+| **Partial Degrade** | F1 < M1-B sub-noise + EX < M4 큰 손실 | ✅ |
+
+### 🌟 New Finding — Backward mechanism Forward-prompt-dependent
+
+- M4 (mild Forward) EX=0.5300 (anchor +0.0124) → C1 (strong Forward) EX=0.5150 (anchor -0.0026)
+- **Δ EX = -0.0150** ← Forward prompt 변경 시 Backward 의 EX gain 효과 거의 소멸
+- **Mechanism**: mild Forward → inclusive base → Backward SQL-aware column space 큼 → EX gain. strong Forward → less inclusive → Backward space 줄어듦 → EX gain 사라짐
+- → **DECISIONS §3.1 Forward/Backward orthogonality hypothesis 부분 부정** — Forward prompt 가 Backward effect size 결정 (entanglement evidence)
+
+### 결론 — Outcome (b) retain + Forward Dominance new evidence + Pareto frontier 5번째 cell
+
+- F1 학술 agent §10 ≥ 0.8672 미달 (-0.0062 sub-noise) — DECISIONS §5 Outcome (b) retain
+- Pareto frontier R≥0.90 ∧ P≥0.75: ✅ 5번째 cell 진입 (M1-A + M1-B + M3 MAJORITY + M4 + C1)
+- Backward mechanism Forward-prompt-dependent 새 evidence → paper §3.1 Inter-Module Co-Design narrative 추가 dimension
+- C2 (M4 + M3 MAJORITY Forward) launch 학술 motivation 강화 — Forward 가 voting strategy 인 경우 Backward effect 변동 추가 평가
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 4 Top 2 C1 (2026-05-17)](EXPERIMENT_HISTORY.md).

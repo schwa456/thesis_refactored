@@ -1,0 +1,70 @@
+# Wave 6 Phase 4 Top 2 C1 — M4 BidirectionalFilter + M1-B strong forward
+#
+# DECISIONS 2026-05-17 (Wave 6 Phase 3 통합 채택 + Top 2 C1 launch) §4 정합.
+# Base: w6_p2_m4_bidirectional.yaml. 변경: Forward prompt 만 mild → strong 교체,
+# Backward prompt (bidirectional_backward, SQL Schema Analyst) 는 그대로 retain.
+#
+# Expected outcomes (DECISIONS §4):
+#   F1 sweet spot   : 0.85~0.87 (M1-B strong F1=0.8655 + M4 Backward EX gain)
+#   EX gain         : +0.01~0.02 (M4 EX +0.0124 와 동등 또는 추가)
+#   Pareto frontier : R ≥ 0.90 ∧ P ≥ 0.75 (M4 frontier 진입 retain)
+#
+# Cost: 2 LLM call/q × 1534 = 3068 calls, ~1.5h, ~$2~4 GLM 4.7
+#
+# Caveat: M4 Forward prompt 가 mild → strong 으로 변경 시 backward_added mechanism
+# 변동 가능성 (strong 이 mild 보다 inclusive 약함, backward 가 더 많은 column 추가).
+# post-paper backlog candidate.
+
+experiment_name: "w6_p4_c1_m4_strong"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "BidirectionalFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    # Top 2 C1 핵심 변경: Forward prompt mild → strong (M1-B)
+    bidirectional_forward_prompt_mode: "recall_biased_strong"
+    # Backward prompt 그대로 retain (DECISIONS §4)
+    backward_section: "bidirectional_backward"
+    sanitize_output: true
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0
