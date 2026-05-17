@@ -95,6 +95,13 @@ filter:
 - 명시 시 priority > legacy `forward_section`. 미명시 시 backward-compat 으로 `forward_section` 그대로 사용
 - Top 2 C1 spec: `bidirectional_forward_prompt_mode="recall_biased_strong"` + Backward 그대로
 
+### Wave 6 Phase 5 (Top 2 C2, 2026-05-17) — voting_multi_prompt Forward integration
+- `bidirectional_forward_prompt_mode` 에 신규 옵션 `"voting_multi_prompt"` 추가
+- 신규 param: `bidirectional_forward_voting_strategy ∈ {"OR", "MAJORITY", "AND"}` (default `"MAJORITY"`)
+- voting_multi_prompt 모드 시 Forward 부분은 M3 의 3 prompts (recall_biased_mild + voting_prompt_b + voting_prompt_c) × voting (composition with `MultiPromptVotingFilter.multi_prompt_voting()`)
+- Backward 그대로 retain → 총 LLM call/q = 3 (voting Forward) + 1 (Backward) = **4**
+- Top 2 C2 spec: `bidirectional_forward_prompt_mode="voting_multi_prompt"` + `bidirectional_forward_voting_strategy="MAJORITY"` + Backward 그대로
+
 ### 인터페이스
 ```python
 @register("filter", "BidirectionalFilter")
@@ -102,10 +109,12 @@ class BidirectionalFilter(BaseFilter):
     def __init__(self, model_name, ...,
                  forward_section="recall_biased_mild",       # legacy backward-compat
                  backward_section="bidirectional_backward",
-                 bidirectional_forward_prompt_mode=None,     # Wave 6 Phase 4 신규
+                 bidirectional_forward_prompt_mode=None,     # Wave 6 Phase 4
+                 bidirectional_forward_voting_strategy="MAJORITY",  # Wave 6 Phase 5
                  sanitize_output=True, **kwargs): ...
     # refine(query, subgraph, db_id, gold=None, **kwargs)
     # gold kwarg 가 들어오면 backward_gold_recovered + backward_precision 계산
+    # voting_multi_prompt 모드 시 _call_forward 가 3 LLM call + voting (M3 composition)
 ```
 
 ### 측정 메타 (filter_info)
@@ -147,6 +156,35 @@ filter:
 - Cost: 2 LLM call/q × 1534 = 3068 calls, ~1.5h, ~$2~4
 
 **Caveat**: Forward prompt mild → strong 으로 변경 시 backward_added mechanism 변동 가능성 (strong 이 mild 보다 inclusive 약함 — backward 가 더 많은 column 추가할 여지). post-paper backlog candidate.
+
+### Wave 6 Phase 5 Top 2 C2 Config (★ 2026-05-17 launch)
+```yaml
+# configs/experiments/abl/wave6_recall_biased/w6_p5_c2_m4_majority.yaml
+filter:
+  name: "BidirectionalFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    bidirectional_forward_prompt_mode: "voting_multi_prompt"
+    bidirectional_forward_voting_strategy: "MAJORITY"   # ≥2 of 3 votes
+    backward_section: "bidirectional_backward"          # 그대로 retain
+    sanitize_output: true
+```
+
+**3 hypothesis 검증 (DECISIONS 2026-05-17 §6):**
+- **H1 — Forward inclusiveness dominant**: C2 EX ≈ M4 EX (0.5300) → C1 Backward Effect Reduction = Forward inclusiveness 감소 단독 효과 입증
+- **H2 — Forward mechanism (single vs voting) dominant**: C2 EX ≈ C1 (0.5150) → voting noise pruning 이 Backward base 변경
+- **H3 — Partial entanglement**: C2 EX intermediate (0.52~0.53) → inclusiveness + voting 양쪽 영향
+
+**Cost**: 4 LLM call/q × 1534 = 6136 calls, ~3h parallel (3-conc), ~$10-15 GLM 4.7. 학술적 ROI 충분 (paper §V.5.x.M.15 narrative 의 mechanism axis 추가 dimension — Forward Dominance 3-cell complete coverage).
+
+**측정 메타 (filter_info 신규)**:
+- `filter_forward_voting_strategy` : voting_multi_prompt 모드일 때 'OR'|'MAJORITY'|'AND', 아니면 None
+- `filter_forward_llm_calls` : voting 모드 3, single 모드 1
+- `filter_forward_raw_counts` : `{"A": n, "B": n, "C": n}` (sanitize 후 per-prompt count, voting 모드일 때만)
+- `filter_forward_voted_counts` : `{"MAJORITY": n}` (선택한 strategy 의 voted count)
+- `filter_hallucination_removed_forward` : voting 모드 시 3 prompt 합계
 
 ## M5. Two-Stage Filter (★ 최상)
 

@@ -33,11 +33,16 @@ logger = get_logger(__name__)
 # Wave 6 Phase 4 (Top 2 C1 launch, 2026-05-17): Forward prompt mode → section 매핑.
 # 1-to-1 매핑 (prompts/filter.md 의 section name 과 동일) 단 explicit param 으로
 # validation 강화 + 의미론적 명명.
+# Wave 6 Phase 5 (Top 2 C2 launch, 2026-05-17): "voting_multi_prompt" mode 추가 —
+# Forward 부분을 M3 multi-prompt voting (3 LLM call + OR/MAJORITY/AND) 으로 대체.
 _BIDIRECTIONAL_FORWARD_MODES: Dict[str, str] = {
     "recall_biased_mild": "recall_biased_mild",        # M1-A (default, Phase 2 (a+aggressive))
     "recall_biased_strong": "recall_biased_strong",    # M1-B (Top 2 C1)
     "recall_biased_exclusion_rule": "recall_biased_exclusion_rule",  # M1-C
+    "voting_multi_prompt": "__voting__",               # Top 2 C2 (composition with M3)
 }
+
+_VALID_BIDIRECTIONAL_VOTING_STRATEGIES: Tuple[str, ...] = ("OR", "MAJORITY", "AND")
 
 
 @register("filter", "BidirectionalFilter")
@@ -55,6 +60,7 @@ class BidirectionalFilter(BaseFilter):
         forward_section: str = "recall_biased_mild",   # PROMPT_M4_FORWARD = M1-A (backward compat)
         backward_section: str = "bidirectional_backward",
         bidirectional_forward_prompt_mode: Optional[str] = None,  # Wave 6 Phase 4 (5/17)
+        bidirectional_forward_voting_strategy: str = "MAJORITY",   # Wave 6 Phase 5 (5/17 C2)
         provider: Optional[str] = "glm",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -62,6 +68,8 @@ class BidirectionalFilter(BaseFilter):
     ):
         # Wave 6 Phase 4 (Top 2 C1, 2026-05-17): bidirectional_forward_prompt_mode
         # 우선 사용 (의미론적 + validation 강화). 미명시 시 기존 forward_section 그대로.
+        # Wave 6 Phase 5 (Top 2 C2, 2026-05-17): "voting_multi_prompt" mode 추가 —
+        # Forward 부분을 M3 multi-prompt voting (composition) 으로 대체.
         if bidirectional_forward_prompt_mode is not None:
             if bidirectional_forward_prompt_mode not in _BIDIRECTIONAL_FORWARD_MODES:
                 raise ValueError(
@@ -75,6 +83,15 @@ class BidirectionalFilter(BaseFilter):
         else:
             resolved_forward_section = forward_section
 
+        # Voting strategy validation — voting_multi_prompt mode 에서만 의미. 다른 mode 일
+        # 경우 stored 만 (logger 에서 indicate).
+        if bidirectional_forward_voting_strategy not in _VALID_BIDIRECTIONAL_VOTING_STRATEGIES:
+            raise ValueError(
+                f"bidirectional_forward_voting_strategy="
+                f"'{bidirectional_forward_voting_strategy}' invalid. "
+                f"Expected one of {_VALID_BIDIRECTIONAL_VOTING_STRATEGIES}."
+            )
+
         self.model_name = model_name
         self.max_iteration = max_iteration
         self.temperature = float(temperature)
@@ -84,15 +101,24 @@ class BidirectionalFilter(BaseFilter):
         self.forward_section = resolved_forward_section
         self.backward_section = backward_section
         self.bidirectional_forward_prompt_mode = bidirectional_forward_prompt_mode
+        self.bidirectional_forward_voting_strategy = bidirectional_forward_voting_strategy
+        self._forward_is_voting = (
+            bidirectional_forward_prompt_mode == "voting_multi_prompt"
+        )
         self.prompt_manager = PromptManager()
         self.client = self._make_llm_client(
             api_key=api_key, base_url=base_url, provider=provider,
+        )
+        voting_note = (
+            f", voting_strategy={bidirectional_forward_voting_strategy}"
+            if self._forward_is_voting else ""
         )
         logger.info(
             "Initialized BidirectionalFilter "
             f"(model={model_name}, forward={resolved_forward_section}, "
             f"forward_prompt_mode={bidirectional_forward_prompt_mode or 'legacy(forward_section)'}, "
-            f"backward={backward_section}, sanitize={self.sanitize_output})"
+            f"backward={backward_section}, sanitize={self.sanitize_output}"
+            f"{voting_note})"
         )
 
     # ------------------------------------------------------------------
@@ -120,6 +146,82 @@ class BidirectionalFilter(BaseFilter):
         return self.client.generate_text(
             prompt=prompt, model=self.model_name, temperature=self.temperature,
         )
+
+    def _call_forward(
+        self,
+        query: str,
+        schema_str: str,
+        example_json_str: str,
+        subgraph: Dict[str, List[str]],
+    ) -> Tuple[Dict[str, List[str]], int, Dict[str, Any]]:
+        """Forward LLM call — single mode 또는 M3 voting (composition).
+
+        Returns:
+            (forward_clean_dict, total_hallucination_removed, forward_diag)
+              - forward_clean_dict: voting 시 voted result, single 시 sanitized JSON
+              - total_hallucination_removed: 합계 (voting 시 3-prompt 합)
+              - forward_diag: llm_calls, voting mode 시 raw_counts/voted_counts
+        """
+        diag: Dict[str, Any] = {"llm_calls": 0}
+
+        # Single LLM call path (legacy 또는 explicit 3 mild/strong/exclusion_rule)
+        if not self._forward_is_voting:
+            try:
+                raw_fwd = self._call_prompt(
+                    self.forward_section, query, schema_str, example_json_str,
+                )
+            except Exception as e:
+                logger.warning(f"[M4 forward] LLM call failed: {e}")
+                raw_fwd = ""
+            diag["llm_calls"] = 1
+            parsed = self._parse_json_dict(raw_fwd)
+            if self.sanitize_output:
+                fwd_clean, halluc = XiYanFilter.sanitize_filter_output(parsed, subgraph)
+            else:
+                fwd_clean = parsed
+                halluc = 0
+            return fwd_clean, halluc, diag
+
+        # Voting path (Wave 6 Phase 5 Top 2 C2, 5/17) — M3 composition
+        # local import 로 circular 회피 + scope 제한
+        from modules.filters.multi_prompt_voting_filter import (
+            MultiPromptVotingFilter,
+            _VOTING_PROMPT_SECTIONS,
+        )
+
+        per_prompt_clean: Dict[str, Dict[str, List[str]]] = {}
+        per_prompt_halluc: Dict[str, int] = {}
+        for letter, section in _VOTING_PROMPT_SECTIONS.items():
+            try:
+                resp = self._call_prompt(section, query, schema_str, example_json_str)
+            except Exception as e:
+                logger.warning(f"[M4 forward voting {letter}] LLM call failed: {e}")
+                resp = ""
+            diag["llm_calls"] += 1
+            parsed = self._parse_json_dict(resp)
+            if self.sanitize_output:
+                clean, removed = XiYanFilter.sanitize_filter_output(parsed, subgraph)
+            else:
+                clean = parsed
+                removed = 0
+            per_prompt_clean[letter] = clean
+            per_prompt_halluc[letter] = int(removed)
+
+        voted = MultiPromptVotingFilter.multi_prompt_voting(
+            per_prompt_clean,
+            strategy=self.bidirectional_forward_voting_strategy,
+        )
+        total_halluc = sum(per_prompt_halluc.values())
+        diag["raw_counts"] = {
+            k: sum(len(v) for v in (per_prompt_clean[k] or {}).values())
+            for k in per_prompt_clean
+        }
+        diag["voted_counts"] = {
+            self.bidirectional_forward_voting_strategy:
+                sum(len(v) for v in voted.values())
+        }
+        diag["per_prompt_hallucination_removed"] = per_prompt_halluc
+        return voted, total_halluc, diag
 
     @staticmethod
     def _parse_json_dict(response: str) -> Dict[str, List[str]]:
@@ -235,15 +337,11 @@ class BidirectionalFilter(BaseFilter):
             example_obj[t] = (subgraph[t] or [])[: (2 if idx == 0 else 1)]
         example_json_str = json.dumps(example_obj)
 
-        # Forward
-        try:
-            raw_fwd = self._call_prompt(
-                self.forward_section, query, schema_str, example_json_str,
-            )
-        except Exception as e:
-            logger.warning(f"[M4 forward] LLM call failed: {e}")
-            raw_fwd = ""
-        fwd_parsed = self._parse_json_dict(raw_fwd)
+        # Forward — mode-aware (single LLM or voting 3 LLM)
+        fwd_clean, halluc_fwd, fwd_diag = self._call_forward(
+            query=query, schema_str=schema_str, example_json_str=example_json_str,
+            subgraph=subgraph,
+        )
 
         # Backward (note: backward prompt 은 example_json_str 안 받음 — schema_str + query 만)
         try:
@@ -253,14 +351,11 @@ class BidirectionalFilter(BaseFilter):
             raw_bwd = ""
         bwd_parsed = self._parse_json_dict(raw_bwd)
 
-        # Sanitize (학술 agent §2.3) — extractor output 에 없는 entry 제거
-        halluc_fwd = 0
+        # Sanitize backward (학술 agent §2.3)
         halluc_bwd = 0
         if self.sanitize_output:
-            fwd_clean, halluc_fwd = XiYanFilter.sanitize_filter_output(fwd_parsed, subgraph)
             bwd_clean, halluc_bwd = XiYanFilter.sanitize_filter_output(bwd_parsed, subgraph)
         else:
-            fwd_clean = fwd_parsed
             bwd_clean = bwd_parsed
 
         # Union
@@ -279,6 +374,12 @@ class BidirectionalFilter(BaseFilter):
             model=self.model_name,
             forward_section=self.forward_section,
             forward_prompt_mode=self.bidirectional_forward_prompt_mode,
+            forward_voting_strategy=(
+                self.bidirectional_forward_voting_strategy if self._forward_is_voting else None
+            ),
+            forward_llm_calls=int(fwd_diag.get("llm_calls", 0)),
+            forward_raw_counts=fwd_diag.get("raw_counts"),
+            forward_voted_counts=fwd_diag.get("voted_counts"),
             backward_section=self.backward_section,
             sanitize_output=self.sanitize_output,
             forward_count=contrib["forward_count"],

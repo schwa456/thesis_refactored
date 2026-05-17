@@ -391,6 +391,165 @@ def test_m4_top_2_c1_spec_yaml_build():
 
 
 # ============================================================
+# Wave 6 Phase 5 (Top 2 C2) — voting_multi_prompt Forward mode
+# ============================================================
+def test_m4_voting_mode_calls_3_forward_prompts_plus_1_backward():
+    print("\n[test] voting_multi_prompt Forward → 3 LLM call + 1 Backward = 4 total")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="voting_multi_prompt",
+        bidirectional_forward_voting_strategy="MAJORITY",
+    )
+    # 3 forward (A/B/C) + 1 backward = 4 sequential responses
+    resp_fwd_A = json.dumps({"users": ["id", "name"]})
+    resp_fwd_B = json.dumps({"users": ["id", "name", "email"]})
+    resp_fwd_C = json.dumps({"users": ["id"]})
+    resp_bwd = json.dumps({"orders": ["total"]})
+    flt.client = _SequentialMock([resp_fwd_A, resp_fwd_B, resp_fwd_C, resp_bwd])
+    result = flt.refine(
+        query="q",
+        subgraph={"users": ["id", "name", "email"], "orders": ["total"]},
+        db_id=None,
+    )
+    _assert(len(flt.client.calls) == 4, f"4 LLM calls (3 voting + 1 backward), got {len(flt.client.calls)}")
+    info = result["filter_info"]
+    _assert(info["filter_forward_llm_calls"] == 3, "forward_llm_calls=3")
+    _assert(info["filter_forward_voting_strategy"] == "MAJORITY", "MAJORITY recorded")
+    # MAJORITY: id (3 votes), name (2 votes) keep; email (1 vote) drop
+    # Forward voted = {users: [id, name]}, Backward = {orders: [total]} → union
+    final = set(result["final_nodes"])
+    _assert(
+        {"users.id", "users.name", "orders.total"}.issubset(final),
+        f"voting+union, got {sorted(final)}",
+    )
+    _assert("users.email" not in final, "email below MAJORITY threshold dropped")
+
+
+def test_m4_voting_or_strategy_keeps_any_vote():
+    print("\n[test] voting_multi_prompt + OR strategy keeps any column with ≥1 vote")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="voting_multi_prompt",
+        bidirectional_forward_voting_strategy="OR",
+    )
+    resp_A = json.dumps({"users": ["id"]})
+    resp_B = json.dumps({"users": ["name"]})
+    resp_C = json.dumps({"users": ["email"]})
+    resp_bwd = json.dumps({})
+    flt.client = _SequentialMock([resp_A, resp_B, resp_C, resp_bwd])
+    result = flt.refine(
+        query="q", subgraph={"users": ["id", "name", "email"]}, db_id=None,
+    )
+    final = set(result["final_nodes"])
+    _assert(final == {"users.id", "users.name", "users.email"},
+            f"OR union all 3, got {sorted(final)}")
+
+
+def test_m4_voting_and_strategy_requires_unanimous():
+    print("\n[test] voting_multi_prompt + AND strategy requires all 3 prompts to agree")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="voting_multi_prompt",
+        bidirectional_forward_voting_strategy="AND",
+    )
+    resp_A = json.dumps({"users": ["id", "name"]})
+    resp_B = json.dumps({"users": ["id", "name"]})
+    resp_C = json.dumps({"users": ["id"]})
+    resp_bwd = json.dumps({})
+    flt.client = _SequentialMock([resp_A, resp_B, resp_C, resp_bwd])
+    result = flt.refine(
+        query="q", subgraph={"users": ["id", "name"]}, db_id=None,
+    )
+    final = set(result["final_nodes"])
+    _assert(final == {"users.id"}, f"AND only unanimous 'id', got {sorted(final)}")
+
+
+def test_m4_voting_invalid_strategy_raises():
+    print("\n[test] invalid voting strategy → ValueError")
+    try:
+        BidirectionalFilter(
+            model_name="mock", provider=None, db_dir="/x", num_examples=0,
+            bidirectional_forward_prompt_mode="voting_multi_prompt",
+            bidirectional_forward_voting_strategy="bogus",
+        )
+        _assert(False, "expected ValueError")
+    except ValueError:
+        _assert(True, "ValueError raised")
+
+
+def test_m4_voting_diagnostics_in_filter_info():
+    print("\n[test] voting mode records raw_counts + voted_counts + per-prompt halluc")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="voting_multi_prompt",
+        bidirectional_forward_voting_strategy="MAJORITY",
+    )
+    resp_A = json.dumps({"users": ["id"], "ghost": ["x"]})  # halluc table
+    resp_B = json.dumps({"users": ["id", "name"]})
+    resp_C = json.dumps({"users": ["id", "fake"]})           # halluc col
+    resp_bwd = json.dumps({})
+    flt.client = _SequentialMock([resp_A, resp_B, resp_C, resp_bwd])
+    result = flt.refine(
+        query="q", subgraph={"users": ["id", "name"]}, db_id=None,
+    )
+    info = result["filter_info"]
+    _assert(info["filter_forward_raw_counts"] == {"A": 1, "B": 2, "C": 1},
+            f"raw counts after sanitize per-prompt, got {info['filter_forward_raw_counts']}")
+    _assert(
+        info["filter_forward_voted_counts"]["MAJORITY"] == 1,
+        f"MAJORITY voted=1 (id has 3 votes, name has 1), got "
+        f"{info['filter_forward_voted_counts']}",
+    )
+    # forward halluc total = ghost.x + users.fake = 2
+    _assert(
+        info["filter_hallucination_removed_forward"] == 2,
+        f"forward halluc summed across 3 prompts, got "
+        f"{info['filter_hallucination_removed_forward']}",
+    )
+
+
+def test_m4_non_voting_mode_has_no_voting_diag():
+    print("\n[test] non-voting mode (e.g., strong) → voting diag fields are None")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="recall_biased_strong",
+    )
+    flt.client = _SequentialMock([json.dumps({"users": ["id"]}), json.dumps({})])
+    result = flt.refine(query="q", subgraph={"users": ["id"]}, db_id=None)
+    info = result["filter_info"]
+    _assert(info["filter_forward_voting_strategy"] is None,
+            "voting_strategy None in non-voting mode")
+    _assert(info["filter_forward_llm_calls"] == 1, "1 LLM call (single forward)")
+    _assert(info["filter_forward_raw_counts"] is None, "raw_counts None")
+
+
+def test_m4_c2_spec_yaml_build():
+    print("\n[test] Top 2 C2 yaml-style build (DECISIONS 2026-05-17 §6 spec exact)")
+    from modules.registry import build
+    inst = build("filter", {
+        "name": "BidirectionalFilter",
+        "params": {
+            "model_name": "zai-org/glm-4.7",
+            "provider": None,
+            "db_dir": "/x",
+            "num_examples": 0,
+            "bidirectional_forward_prompt_mode": "voting_multi_prompt",
+            "bidirectional_forward_voting_strategy": "MAJORITY",
+            "backward_section": "bidirectional_backward",
+            "sanitize_output": True,
+        },
+    })
+    _assert(isinstance(inst, BidirectionalFilter), "instance type")
+    _assert(inst.bidirectional_forward_prompt_mode == "voting_multi_prompt",
+            "C2 mode persisted")
+    _assert(inst.bidirectional_forward_voting_strategy == "MAJORITY",
+            "C2 voting strategy = MAJORITY")
+    _assert(inst._forward_is_voting is True, "voting flag True")
+    _assert(inst.backward_section == "bidirectional_backward",
+            "Backward retain (DECISIONS §6)")
+
+
+# ============================================================
 # M5 integration
 # ============================================================
 def _make_m5(responses_s1_s2: List[str]) -> TwoStageFilter:
@@ -520,6 +679,14 @@ def run_all():
         test_m4_forward_mode_none_keeps_legacy_forward_section,
         test_m4_forward_mode_takes_priority_over_forward_section,
         test_m4_top_2_c1_spec_yaml_build,
+        # Wave 6 Phase 5 (Top 2 C2) — voting_multi_prompt Forward mode
+        test_m4_voting_mode_calls_3_forward_prompts_plus_1_backward,
+        test_m4_voting_or_strategy_keeps_any_vote,
+        test_m4_voting_and_strategy_requires_unanimous,
+        test_m4_voting_invalid_strategy_raises,
+        test_m4_voting_diagnostics_in_filter_info,
+        test_m4_non_voting_mode_has_no_voting_diag,
+        test_m4_c2_spec_yaml_build,
         test_m5_refine_sequential_stages,
         test_m5_stage2_sanitize_relative_to_stage1,
         test_m5_stage1_empty_skips_stage2,
