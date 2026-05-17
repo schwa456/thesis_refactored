@@ -153,6 +153,20 @@ def main():
             elif not os.path.exists(db_path):
                 logger.warning(f"DB file not found for EX evaluation: {db_path}")
 
+            # Wave 7 Option A patch (DECISIONS 2026-05-18 §3): additional EX for
+            # Selector-only + Extractor-only stage-wise SQL.
+            def _compute_ex_extra(_sql: str) -> int:
+                if not _sql or not gold_sql or not os.path.exists(db_path):
+                    return 0
+                try:
+                    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as _ex:
+                        _f = _ex.submit(evaluate_ex, pred_sql=_sql, gold_sql=gold_sql, db_path=db_path)
+                        return _f.result(timeout=15.0)
+                except Exception:
+                    return 0
+            ex_score_selector_only = _compute_ex_extra(result.get("generated_sql_selector_only", ""))
+            ex_score_extractor_only = _compute_ex_extra(result.get("generated_sql_extractor_only", ""))
+
             #gold_tables, gold_cols = parse_sql_elements(gold_sql)
             #pred_tables, pred_cols = parse_sql_elements(pred_sql)
 
@@ -193,6 +207,11 @@ def main():
                 "reasoning": result.get("reasoning", ""),
                 "generated_sql": pred_sql,
                 "ex_score": ex_score,
+                # Wave 7 Option A patch: stage-wise SQL + EX
+                "generated_sql_selector_only": result.get("generated_sql_selector_only", ""),
+                "ex_score_selector_only": ex_score_selector_only,
+                "generated_sql_extractor_only": result.get("generated_sql_extractor_only", ""),
+                "ex_score_extractor_only": ex_score_extractor_only,
             }
             for k in (
                 "adaptive_route", "adaptive_confidence",

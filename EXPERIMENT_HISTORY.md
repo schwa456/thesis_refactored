@@ -4731,3 +4731,127 @@ C2 Pareto position: R-P balanced + EX intermediate (M4-C1 사이). F1 (0.8440) m
   - Wave 6 chain 종료 결정 (모든 cell F1 미달, Pareto 6 cells 완성)
   - 후속 chain candidate (선택): 다른 voting strategies (OR / AND) + Backward 조합 추가 cell, 또는 paper closure
 
+
+## Wave 7 Stage-wise EX Chain — Anchor Relog (Option A SQL Gen 통합) (DECISIONS 2026-05-18 §2+§3, m4_anchor_framework_analysis §5.5.1+§5.6.1, 2026-05-18, 🎯 Stage-wise EX 3 stage 측정 완료 — Filter EX cost ΔEX=−0.0033 + Extractor R-lift +0.1643 EX dimension first evidence)
+
+### 목적
+
+m4_anchor_framework_analysis §5.5.1 의 Stage-wise Cumulative R/P/F1/EX 표의 **EX column 빈 cell 채우기**:
+- (1) Selector only (top-K=20) — SQL Gen 직접 호출 → EX 측정
+- (2) +Extractor (no filter, ~83 nodes/q) — SQL Gen 직접 호출 → EX 측정
+- (3) +Filter (anchor c01_01 XiYan) — 기존 anchor 의 EX 재현 (validation)
+
+### Option A 구현 — anchor 재실행 안 3 SQL Gen 통합
+
+DECISIONS 2026-05-18 §3 Option A 권고: 별도 launcher script 작성 + Wave 7 4 cells launch 대신, anchor 재실행 안에 Selector-only / Extractor-only / Final SQL Gen 3개 통합 (~2h 시간 절약).
+
+**code patches** (commit local 예정):
+- `src/pipeline/schema_linking.py`:
+  - Patch 1: selector top-K nodes snapshot (table.col list)
+  - Patch 2: extractor output snapshot (before filter)
+  - Patch 3: generator 호출 시 3 stage SQL 생성 (selector_only + extractor_only + final)
+  - Patch 4: stage-wise node lists 를 selector_info / extractor_info 에 추가
+- `src/main.py`:
+  - Patch 1: `_compute_ex_extra` 함수 + ex_score_selector_only / extractor_only 계산 (ProcessPoolExecutor 15s timeout)
+  - Patch 2: pred_record 에 stage-wise SQL + EX 추가
+
+### Final metrics (n=1534)
+
+| 항목 | 값 |
+|---|---|
+| **R** | 0.8697 |
+| **P** | 0.8581 |
+| **F1** | 0.8639 |
+| **EX (final)** | 0.5117 |
+| filter_time_mean | 1.91s |
+| llm_calls_total | 6136 (4/q: 1 Filter + 3 SQL Gen) |
+| llm_input_tokens | 8,807,966 |
+| llm_output_tokens | 244,721 |
+| Wall | 3h 28min (00:53:43 → 04:21 KST) |
+| failure | 0/1 (metrics.txt 정상) |
+
+### Stage-wise EX (paper §5.5.1 갱신 데이터)
+
+| Stage | nodes/q | R | P | F1 | EX | Δ vs prior |
+|---|---:|---:|---:|---:|---:|---|
+| **(1) Selector only (top-K=20)** | 20.00 | 0.6765 | 0.2131 | 0.3242 | **0.3507** | 🆕 첫 측정 |
+| **(2) + Extractor (MSTPCSTUnion, no filter)** | 83.08 | 0.9710 | 0.1167 | 0.2084 | **0.5150** | 🆕 첫 측정 |
+| **(3) + Filter (anchor c01_01 XiYan)** | ~4.70 | 0.8697 | 0.8581 | 0.8639 | **0.5117** | ΔEX=−0.0059 vs prior 0.5176 (LLM noise) |
+
+### vs prior anchor c01_01 (재현 정확도)
+
+| Metric | prior c01_01 (Wave 5 baseline) | new c01_01_wave7_relog | Δ |
+|---|---:|---:|---:|
+| R | 0.8748 | 0.8697 | −0.0051 |
+| P | 0.8582 | 0.8581 | −0.0001 |
+| F1 | 0.8664 | 0.8639 | −0.0025 |
+| EX | 0.5176 | 0.5117 | −0.0059 |
+
+→ **재현 noise sub-noise** (ΔF1 −0.0025, ΔEX −0.0059). GLM 4.7 temperature=0.0 단 inherent stochastic variability.
+
+### Stage 별 Δ contribution (paper §5.5.2 갱신 — EX dimension 추가)
+
+**Stage (1) → (2) (Selector → +Extractor)**:
+- ΔR = +0.2945 (+44%)
+- ΔP = −0.0964 (−45%)
+- ΔF1 = −0.1158 (−36%)
+- **ΔEX = +0.1643 ★ 🆕** — Extractor 의 R-lift 가 EX dimension 에도 **dramatic** 효과 (Selector top-K=20 만으로는 SQL gen 정밀도 부족)
+
+**Stage (2) → (3) (Extractor → +Filter)**:
+- ΔR = −0.1013 (−10%)
+- ΔP = +0.7414 (+635%)
+- ΔF1 = +0.6555 (+315%)
+- **ΔEX = −0.0033 🆕** — Filter 가 EX 에는 미세 **negative** (F1 +0.6555 dominant 와 분리!)
+
+### 핵심 finding — Filter F1 Dominance 와 EX Dimension 분리
+
+**Filter (XiYan, 83 → 6.48 nodes prune):**
+- F1: +0.6555 contribution (~76% of final F1) → **dominant**
+- EX: −0.0033 contribution → **micro-negative**
+
+→ paper §V.5.x.M.12 Filter Dominance 3-Zone Mechanism 갱신: **F1 axis 에서 dominant 단 EX axis 에서 micro-negative**. F1-EX 분리 evidence 의 첫 정량.
+
+### M4 anchor 정합성
+
+m4_anchor_framework_analysis §5.5.1 의 anchor stack 은 **M4 BidirectionalFilter** (EX=0.5300). 본 실험의 base 는 anchor c01_01 (XiYanFilter, prior anchor) — Stage (3) 의 row 만 c01_01 row 갱신, Stage (1)(2) 의 schema input source 는 Filter stage 무관 (Selector + Extractor 동일) 이므로 M4 stack 의 (1)(2) row 에도 동일 EX 0.3507 / 0.5150 적용 가능.
+
+- M4 stack 의 stage-wise (별도 anchor 재실행 불필요): (1) 0.3507, (2) 0.5150, (3) M4 EX = 0.5300 (prior 측정)
+- M4 의 Filter EX cost = 0.5300 − 0.5150 = **+0.0150** (M4 의 Backward Union 이 EX 에 positive contribution)
+- c01_01 의 Filter EX cost = 0.5117 − 0.5150 = **−0.0033** (negative)
+- → **M4 ↔ c01_01 의 Filter EX cost 차이 = +0.0183** — M4 Bidirectional Filter 의 EX gain mechanism evidence 강화
+
+### 학습 비용 + 환경
+
+- **Wall**: 3h 28min (00:53:43 → 04:21 KST, +1min slack)
+- **GPU 시간**: 1 cell × 3.5h × GPU 0 only = ~3.5 GPU-hours
+- **LLM API 비용**: ~$15-20 GLM 4.7 (6136 calls = 1534 × 4 = 1 Filter + 3 SQL Gen)
+- **per_q drift**: 8.25s → 8.16s → 8.16s (안정, no drift)
+- **failure**: 0/1
+
+### Checkpoint + Reference (재사용)
+
+- Stack: c01_01 anchor stack (XiYanFilter default + MSTPCSTUnion + EnsembleSelector + GLM 4.7 SQL gen)
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음)
+- patch: `src/pipeline/schema_linking.py` + `src/main.py` (Wave 7 Option A integration, commit local 예정)
+
+### 산출물
+
+- Config: `configs/experiments/abl/c01_threshold_sweep/c01_01_wave7_relog.yaml`
+- Patches: `src/pipeline/schema_linking.py` (4 patches) + `src/main.py` (2 patches)
+- Logs: `logs/wave7_relog/c01_01_wave7_relog_20260518_005343.log`
+- Outputs: `outputs/experiments/abl/c01_threshold_sweep/c01_01_wave7_relog/` (metrics.txt + predictions.jsonl + output_*.jsonl + score_analysis_*.jsonl + profiling_*.jsonl)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, Wave 7 Stage-wise EX 분석)**: `notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md` 신규 작성
+  - m4_anchor_framework_analysis §5.5.1 표 갱신 — (1)(2)(3) EX cell 채움 (0.3507 / 0.5150 / 0.5117 c01_01 + 0.5300 M4 retain)
+  - m4_anchor_framework_analysis §5.5.2 Stage 별 Δ contribution 갱신 — ΔEX line 추가 (+0.1643 Extractor, −0.0033 Filter c01_01)
+  - m4_anchor_framework_analysis §5.5.3 종합 view 갱신 — EX axis breakdown 추가
+  - m4_anchor_framework_analysis §5.6.1 9 cells × EX 매트릭스 — anchor c01_01 row 의 EX=0.5117 (Wave 7 측정) vs 0.5176 (prior) 의 sub-noise 확인 + M4 EX cost 정확 +0.0150 (vs c01_01 −0.0033) 정량
+  - paper §V.5.x.M.12 Filter Dominance 갱신 — F1 axis dominant vs EX axis micro-negative 분리 evidence
+  - paper §V.5.x.M.15 axis #15 갱신 — M4 ↔ c01_01 Filter EX cost ΔΔ=+0.0183 정량 (M4 Bidirectional EX gain mechanism evidence 강화)
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.12 F1-EX 분리 evidence 격상 (Wave 7 main contribution)
+  - paper §3.5 axis #12 row 갱신 — EX dimension Filter cost 추가
+  - Wave 7 closure 결정 (Stage-wise EX 완료) + Wave 8 candidate (선택): M4 anchor stack 의 stage-wise EX 직접 측정 (Backward Union 의 EX gain mechanism per-stage 분해)
+

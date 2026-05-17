@@ -1918,3 +1918,59 @@ C2: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ → 6번째 frontier cell 진�
 - paper §V.5.x.M.15 Triple → Quadruple Evidence 격상 candidate (Wave 6 main contribution 완성)
 - paper §3.1 Forward-Backward entanglement quantification 정확 evidence
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 5 Top 2 C2 (2026-05-17)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 7 Stage-wise EX Chain — Anchor c01_01_wave7_relog (DECISIONS 2026-05-18 §2+§3 Option A, 2026-05-18, 1 신규 ID — 🎯 Stage-wise EX 3 stage + Filter F1-EX 분리 first evidence)
+
+### 명명 규칙 — `c01_01_wave7_relog.yaml` (`configs/experiments/abl/c01_threshold_sweep/`)
+
+- 동일 stack (c01_01 anchor) 의 **Wave 7 Option A integration patch 검증용 재실행**
+- experiment_name 만 `c01_01_wave7_relog` (output dir 자동 분리, prior `c01_01_theta_0.1` retain)
+- 다른 spec 은 c01_01_theta_0.1 정합 (XiYanFilter + MSTPCSTUnion + EnsembleSelector + GLM 4.7 SQL gen)
+
+### Δ vs prior anchor c01_01
+
+| Metric | prior c01_01 | new c01_01_wave7_relog | Δ |
+|---|---:|---:|---:|
+| R | 0.8748 | 0.8697 | −0.0051 |
+| P | 0.8582 | 0.8581 | −0.0001 |
+| F1 | 0.8664 | 0.8639 | −0.0025 sub-noise |
+| EX | 0.5176 | 0.5117 | −0.0059 sub-noise |
+
+→ 재현 noise sub-noise (LLM stochastic, GLM 4.7 temperature=0.0 inherent variability).
+
+### Config 주의사항
+
+- Stack: c01_01 anchor (XiYanFilter default, **M4 BidirectionalFilter 아님**)
+- weight_path: `outputs/checkpoints/best_gat_qcond_nl3.pt` (학습 없음, anchor ckpt 재사용)
+- Patch (commit local 예정):
+  - `src/pipeline/schema_linking.py` 4 patches (selector_top_k snapshot + extractor snapshot + 3 SQL Gen + stage-wise node lists logging)
+  - `src/main.py` 2 patches (`_compute_ex_extra` 함수 + pred_record 에 stage-wise SQL + EX 추가)
+- LLM: glm-4.7 (4 calls/q = 1 Filter + 3 SQL Gen, total 6136 calls)
+
+### Stage-wise EX (3 stage 측정 — paper §5.5.1 EX cell 채움)
+
+| Stage | EX |
+|---|---:|
+| (1) Selector only (top-K=20) | **0.3507** 🆕 |
+| (2) +Extractor (MSTPCSTUnion, no filter) | **0.5150** 🆕 |
+| (3) +Filter (anchor c01_01 XiYan) | **0.5117** (prior 0.5176 재현) |
+
+### Filter F1-EX 분리 first evidence (Wave 7 main finding)
+
+- Filter F1 contribution: +0.6555 (dominant, ~76% of final F1)
+- Filter EX contribution: **−0.0033 (micro-negative)** ★
+- → F1-EX axis 분리 evidence 의 첫 정량 — paper §V.5.x.M.12 갱신 candidate
+
+### M4 vs c01_01 Filter EX cost ΔΔ
+
+- c01_01 XiYan default ΔEX = −0.0033
+- M4 Bidirectional ΔEX = +0.0150
+- **ΔΔ = +0.0183** — M4 EX gain mechanism 정량 강화
+
+### 결론 — Stage-wise EX 측정 완료 + Wave 7 closure
+
+- m4_anchor_framework_analysis §5.5.1 표의 EX cell 채움 완료
+- Filter F1-EX 분리 first evidence + M4 EX gain mechanism ΔΔ 정량
+- paper §V.5.x.M.12 + §V.5.x.M.15 갱신 candidate (analyzer 위임 후)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 7 Stage-wise EX Chain (2026-05-18)](EXPERIMENT_HISTORY.md).

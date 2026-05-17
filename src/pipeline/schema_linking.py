@@ -168,12 +168,25 @@ class SchemaLinkingPipeline:
             candidates_idx = list(range(len(metadata.get('node_metadata', {}))))
         
         seeds = self.selector.select(
-            scores=node_scores if 'node_scores' in locals() else None, 
-            candidates=candidates_idx, 
+            scores=node_scores if 'node_scores' in locals() else None,
+            candidates=candidates_idx,
             question=query,
             graph_data=graph_data,
             metadata=metadata
         )
+
+        # Wave 7 patch (DECISIONS 2026-05-18 §3): selector top-K snapshot
+        # (named table.col) for downstream Selector-only EX cell (w7_s1).
+        selector_top_k_nodes_named: List[str] = []
+        for _s_id in (seeds or []):
+            _s_key = (
+                int(_s_id)
+                if isinstance(_s_id, (int, float))
+                or (isinstance(_s_id, str) and str(_s_id).isdigit())
+                else _s_id
+            )
+            _s_name = metadata['node_metadata'].get(_s_key, str(_s_key))
+            selector_top_k_nodes_named.append(_s_name)
 
         if hasattr(self.selector, 'latest_scores') and self.selector.latest_scores:
             scores_list = self.selector.latest_scores
@@ -242,6 +255,12 @@ class SchemaLinkingPipeline:
 
         logger.debug("Subgraph Extracted")
         logger.debug(f"subgraph_dict: {subgraph_dict}")
+
+        # Wave 7 patch (DECISIONS 2026-05-18 §3): extractor output snapshot
+        # (before filter) for downstream Extractor-only EX cell (w7_s2).
+        extractor_output_snapshot: Dict[str, List[str]] = {
+            k: list(v) for k, v in subgraph_dict.items()
+        }
         execution_times["subgraph_extraction"] = time.perf_counter() - t_start
 
         # Stage 6: Agent Filtering
@@ -402,6 +421,29 @@ class SchemaLinkingPipeline:
         execution_times["sql_generation"] = time.perf_counter() - t_start
 
         final_result["generated_sql"] = generated_sql
+
+        # Wave 7 Option A patch (DECISIONS 2026-05-18 §3): additional SQL Gen for
+        # Selector-only + Extractor-only EX cells (1 SQL Gen / q × 2 stages).
+        if self.generator is not None:
+            sel_subgraph: Dict[str, List[str]] = {}
+            for _name in selector_top_k_nodes_named:
+                if "." in _name:
+                    _tbl, _col = _name.split(".", 1)
+                    sel_subgraph.setdefault(_tbl, []).append(_col)
+                else:
+                    sel_subgraph.setdefault(_name, [])
+            final_result["generated_sql_selector_only"] = (
+                self.generator.generate(query=query, subgraph=sel_subgraph, evidence=evidence)
+                if sel_subgraph else ""
+            )
+            final_result["generated_sql_extractor_only"] = (
+                self.generator.generate(query=query, subgraph=extractor_output_snapshot, evidence=evidence)
+                if extractor_output_snapshot else ""
+            )
+        else:
+            final_result["generated_sql_selector_only"] = ""
+            final_result["generated_sql_extractor_only"] = ""
+
         final_result["execution_time"] = execution_times
 
         final_result["raw_scores"] = scores_list
@@ -416,6 +458,15 @@ class SchemaLinkingPipeline:
         extractor_info = getattr(self.extractor, 'last_info', None)
         if extractor_info:
             final_result["extractor_info"] = dict(extractor_info)
+
+        # Wave 7 patch (DECISIONS 2026-05-18 §3): add stage-wise node lists for
+        # downstream SQL-only EX cells (w7_s1 Selector only / w7_s2 Extractor only).
+        if "selector_info" not in final_result:
+            final_result["selector_info"] = {}
+        final_result["selector_info"]["selected_nodes_top_k"] = selector_top_k_nodes_named
+        if "extractor_info" not in final_result:
+            final_result["extractor_info"] = {}
+        final_result["extractor_info"]["extractor_selected_nodes"] = extractor_output_snapshot
 
         filter_info = getattr(self.filter, 'last_info', None) or final_result.get("filter_info")
         if filter_info:

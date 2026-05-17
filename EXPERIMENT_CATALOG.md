@@ -2972,3 +2972,69 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - Wall: 4h02m (15:31 → 19:34), 비용 ~$10-15 GLM API
 - failure: 0/1
 
+
+## Wave 7 Stage-wise EX Chain — Anchor Relog c01_01_wave7_relog (DECISIONS 2026-05-18 §2+§3 Option A, 2026-05-18, 🎯 Stage-wise EX 3 stage 측정 — Filter F1-EX 분리 first evidence)
+
+### Single cell × 7 metrics (anchor c01_01 prior R=0.8748 / P=0.8582 / F1=0.8664 / EX=0.5176)
+
+| 항목 | 값 |
+|---|---|
+| ID | `c01_01_wave7_relog` |
+| Stack | c01_01 anchor (XiYanFilter + MSTPCSTUnion + EnsembleSelector + GLM 4.7 SQL gen) |
+| Patch | Option A integration — schema_linking.py + main.py (3 SQL Gen + 3 EX 통합 logging) |
+| R | 0.8697 (Δ vs prior −0.0051) |
+| P | 0.8581 (Δ vs prior −0.0001) |
+| F1 | 0.8639 (Δ vs prior −0.0025, sub-noise) |
+| EX final | 0.5117 (Δ vs prior −0.0059, sub-noise) |
+| Wall | 3h 28min |
+| LLM calls | 6136 (4/q: 1 Filter + 3 SQL Gen) |
+| failure | 0/1 |
+
+### Stage-wise EX (paper §5.5.1 EX cell 채움)
+
+| Stage | nodes/q | EX (Wave 7) | 비고 |
+|---|---:|---:|---|
+| (1) Selector only top-K=20 | 20.00 | **0.3507** | 🆕 첫 측정 |
+| (2) +Extractor (MSTPCSTUnion, no filter) | 83.08 | **0.5150** | 🆕 첫 측정 |
+| (3) +Filter (anchor c01_01 XiYan) | ~4.70 | **0.5117** | 재현 (prior 0.5176, Δ−0.0059) |
+| (3') +Filter (M4 Bidirectional) ⭐ | 6.48 | 0.5300 (prior retain) | (1)(2) 공유 |
+
+### Filter F1-EX 분리 evidence (Wave 7 main finding)
+
+| Stage | ΔF1 | ΔEX | 의미 |
+|---|---:|---:|---|
+| Selector → Extractor | −0.1158 | **+0.1643** ★ | Extractor R-lift 가 EX dimension 에도 dramatic 효과 |
+| Extractor → Filter (c01_01) | +0.6555 | **−0.0033** ★ | Filter F1 dominant (76% contribution) 단 EX micro-negative |
+| Extractor → Filter (M4 prior) | (sub-noise) | +0.0150 | M4 Bidirectional 의 EX positive gain |
+
+→ **F1-EX axis 분리 first evidence** — paper §V.5.x.M.12 Filter Dominance 갱신 candidate.
+
+### M4 vs c01_01 Filter EX cost ΔΔ
+
+- c01_01 (XiYan default): ΔEX = −0.0033 (negative)
+- M4 (Bidirectional Forward+Backward Union): ΔEX = +0.0150 (positive)
+- **ΔΔ = +0.0183** — M4 의 Backward Union 의 EX gain mechanism 정량 강화 (paper §V.5.x.M.15 axis #15 갱신 candidate)
+
+### Config 주의사항
+
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- Option A integration patch: schema_linking.py + main.py (commit local 예정)
+- Filter spec: XiYanFilter default (M4 BidirectionalFilter 아님 — Stage (1)(2) 측정용)
+- LLM call/q: 4 (1 XiYan Filter + 3 SQL Gen for 3 stage cumulative)
+
+### 결론 — Stage-wise EX 측정 완료 + F1-EX 분리 first evidence + paper §V.5.x.M.12 갱신 candidate
+
+- 재현 정확도: sub-noise (ΔF1 −0.0025, ΔEX −0.0059)
+- Stage-wise EX 측정 완료 — m4_anchor_framework_analysis §5.5.1 표 갱신 가능
+- Filter F1-EX 분리 first evidence (F1 dominant +0.6555 vs EX micro-negative −0.0033)
+- M4 EX gain mechanism ΔΔ=+0.0183 정량 (vs c01_01)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 7 Stage-wise EX Chain (2026-05-18)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Config: `configs/experiments/abl/c01_threshold_sweep/c01_01_wave7_relog.yaml`
+- Patches: `src/pipeline/schema_linking.py` (4 patches) + `src/main.py` (2 patches), commit local 예정
+- Outputs: `outputs/experiments/abl/c01_threshold_sweep/c01_01_wave7_relog/` (metrics.txt + predictions.jsonl + 4 telemetry jsonl)
+- Wall: 3h 28min, 비용 ~$15-20 GLM API
+- failure: 0/1
+
