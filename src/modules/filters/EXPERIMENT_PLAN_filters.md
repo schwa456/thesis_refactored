@@ -85,18 +85,24 @@ filter:
 ## M4. Bidirectional Filter (★ 최상)
 
 ### 학술 agent §6 spec
-- **PROMPT_M4_FORWARD** = M1-A mild (재사용)
+- **PROMPT_M4_FORWARD** = M1-A mild (재사용, default) — Wave 6 Phase 4 (5/17) 부터 config flag 로 교체 가능
 - **PROMPT_M4_BACKWARD** = `bidirectional_backward` (SQL Schema Analyst — question 관점 column 목록 generation, `{table: [col, ...]}` JSON)
 - Union: Forward ∪ Backward (sanitize 양쪽 모두 적용)
 - `analyze_backward_contribution`: backward 가 forward 에서 놓친 gold 회복 정량
+
+### Wave 6 Phase 4 (Top 2 C1, 2026-05-17) — Forward prompt config 교체
+- 신규 param: `bidirectional_forward_prompt_mode ∈ {"recall_biased_mild", "recall_biased_strong", "recall_biased_exclusion_rule"}`
+- 명시 시 priority > legacy `forward_section`. 미명시 시 backward-compat 으로 `forward_section` 그대로 사용
+- Top 2 C1 spec: `bidirectional_forward_prompt_mode="recall_biased_strong"` + Backward 그대로
 
 ### 인터페이스
 ```python
 @register("filter", "BidirectionalFilter")
 class BidirectionalFilter(BaseFilter):
     def __init__(self, model_name, ...,
-                 forward_section="recall_biased_mild",
+                 forward_section="recall_biased_mild",       # legacy backward-compat
                  backward_section="bidirectional_backward",
+                 bidirectional_forward_prompt_mode=None,     # Wave 6 Phase 4 신규
                  sanitize_output=True, **kwargs): ...
     # refine(query, subgraph, db_id, gold=None, **kwargs)
     # gold kwarg 가 들어오면 backward_gold_recovered + backward_precision 계산
@@ -108,17 +114,39 @@ class BidirectionalFilter(BaseFilter):
 - `filter_backward_gold_recovered` / `filter_backward_precision` (gold 있을 때만)
 - `filter_hallucination_removed_forward` / `_backward`
 
-### Config 권장
+### Config 권장 (default Phase 2 aggressive)
 ```yaml
 filter:
   name: "BidirectionalFilter"
   params:
     model_name: "zai-org/glm-4.7"
     provider: "glm"
-    forward_section: "recall_biased_mild"
+    bidirectional_forward_prompt_mode: "recall_biased_mild"  # default
     backward_section: "bidirectional_backward"
     sanitize_output: true
 ```
+
+### Wave 6 Phase 4 Top 2 C1 Config (★ 2026-05-17 launch)
+```yaml
+# configs/experiments/abl/wave6_recall_biased/w6_p4_c1_m4_strong.yaml
+filter:
+  name: "BidirectionalFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    bidirectional_forward_prompt_mode: "recall_biased_strong"  # M1-A → M1-B
+    backward_section: "bidirectional_backward"                  # 그대로 retain
+    sanitize_output: true
+```
+
+**Expected outcomes (DECISIONS 2026-05-17 §4):**
+- F1 sweet spot: 0.85~0.87 (M1-B strong F1=0.8655 + M4 Backward EX gain)
+- EX gain: +0.01~0.02 (M4 EX +0.0124 와 동등 또는 추가)
+- Pareto frontier: R ≥ 0.90 ∧ P ≥ 0.75 (M4 frontier 진입 retain)
+- Cost: 2 LLM call/q × 1534 = 3068 calls, ~1.5h, ~$2~4
+
+**Caveat**: Forward prompt mild → strong 으로 변경 시 backward_added mechanism 변동 가능성 (strong 이 mild 보다 inclusive 약함 — backward 가 더 많은 column 추가할 여지). post-paper backlog candidate.
 
 ## M5. Two-Stage Filter (★ 최상)
 

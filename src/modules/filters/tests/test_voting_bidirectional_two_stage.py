@@ -278,6 +278,119 @@ def test_m4_empty_subgraph_short_circuit():
 
 
 # ============================================================
+# M4 Wave 6 Phase 4 — bidirectional_forward_prompt_mode (Top 2 C1)
+# ============================================================
+def test_m4_forward_mode_strong_overrides_default():
+    print("\n[test] bidirectional_forward_prompt_mode='recall_biased_strong' (Top 2 C1)")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        sanitize_output=True,
+        bidirectional_forward_prompt_mode="recall_biased_strong",
+    )
+    fwd_resp = json.dumps({"users": ["id"]})
+    bwd_resp = json.dumps({"users": ["name"]})
+    flt.client = _SequentialMock([fwd_resp, bwd_resp])
+    result = flt.refine(query="q", subgraph={"users": ["id", "name"]}, db_id=None)
+    _assert(flt.forward_section == "recall_biased_strong",
+            f"forward_section resolved to strong, got {flt.forward_section}")
+    _assert(flt.bidirectional_forward_prompt_mode == "recall_biased_strong",
+            "mode persisted")
+    # 첫 LLM call 의 prompt 가 M1-B strong signature 포함 확인
+    fwd_prompt = flt.client.calls[0]["prompt"]
+    _assert("Your default decision is INCLUDE" in fwd_prompt,
+            "M1-B strong signature present in forward prompt")
+    info = result["filter_info"]
+    _assert(info["filter_forward_prompt_mode"] == "recall_biased_strong",
+            "mode recorded in filter_info")
+
+
+def test_m4_forward_mode_mild_explicit():
+    print("\n[test] explicit 'recall_biased_mild' loads M1-A signature")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="recall_biased_mild",
+    )
+    flt.client = _SequentialMock([json.dumps({"users": ["id"]}), json.dumps({})])
+    flt.refine(query="q", subgraph={"users": ["id"]}, db_id=None)
+    fwd_prompt = flt.client.calls[0]["prompt"]
+    _assert("WHEN IN DOUBT, INCLUDE THE COLUMN" in fwd_prompt,
+            "M1-A mild signature present")
+
+
+def test_m4_forward_mode_exclusion_rule():
+    print("\n[test] explicit 'recall_biased_exclusion_rule' loads M1-C 4-rule")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        bidirectional_forward_prompt_mode="recall_biased_exclusion_rule",
+    )
+    flt.client = _SequentialMock([json.dumps({"users": ["id"]}), json.dumps({})])
+    flt.refine(query="q", subgraph={"users": ["id"]}, db_id=None)
+    fwd_prompt = flt.client.calls[0]["prompt"]
+    _assert("If you are UNSURE about any of the four rules" in fwd_prompt,
+            "M1-C 4-rule UNSURE → KEEP present")
+
+
+def test_m4_forward_mode_invalid_raises():
+    print("\n[test] invalid bidirectional_forward_prompt_mode → ValueError")
+    try:
+        BidirectionalFilter(
+            model_name="mock", provider=None, db_dir="/x", num_examples=0,
+            bidirectional_forward_prompt_mode="bogus",
+        )
+        _assert(False, "expected ValueError")
+    except ValueError:
+        _assert(True, "ValueError raised")
+
+
+def test_m4_forward_mode_none_keeps_legacy_forward_section():
+    print("\n[test] mode=None falls back to legacy forward_section param (backward compat)")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        forward_section="recall_biased_strong",   # legacy path
+        # bidirectional_forward_prompt_mode omitted
+    )
+    _assert(flt.forward_section == "recall_biased_strong",
+            "legacy forward_section retained")
+    _assert(flt.bidirectional_forward_prompt_mode is None,
+            "mode flag stays None")
+
+
+def test_m4_forward_mode_takes_priority_over_forward_section():
+    print("\n[test] mode arg overrides legacy forward_section (priority)")
+    flt = BidirectionalFilter(
+        model_name="mock", provider=None, db_dir="/x", num_examples=0,
+        forward_section="recall_biased_mild",
+        bidirectional_forward_prompt_mode="recall_biased_strong",
+    )
+    _assert(flt.forward_section == "recall_biased_strong",
+            "mode arg wins over forward_section legacy")
+
+
+def test_m4_top_2_c1_spec_yaml_build():
+    print("\n[test] Top 2 C1 yaml-style build (DECISIONS 2026-05-17 §4 spec exact)")
+    from modules.registry import build
+    inst = build("filter", {
+        "name": "BidirectionalFilter",
+        "params": {
+            "model_name": "zai-org/glm-4.7",
+            "provider": None,
+            "db_dir": "/x",
+            "num_examples": 0,
+            "bidirectional_forward_prompt_mode": "recall_biased_strong",
+            "backward_section": "bidirectional_backward",
+            "sanitize_output": True,
+        },
+    })
+    _assert(isinstance(inst, BidirectionalFilter), "instance type")
+    _assert(inst.forward_section == "recall_biased_strong",
+            "C1 forward resolved to strong")
+    _assert(inst.backward_section == "bidirectional_backward",
+            "Backward unchanged (DECISIONS §4 retain)")
+    _assert(inst.bidirectional_forward_prompt_mode == "recall_biased_strong",
+            "C1 mode flag recorded")
+
+
+# ============================================================
 # M5 integration
 # ============================================================
 def _make_m5(responses_s1_s2: List[str]) -> TwoStageFilter:
@@ -399,6 +512,14 @@ def run_all():
         test_m4_with_gold_kwarg_records_precision,
         test_m4_sanitizes_both_sides,
         test_m4_empty_subgraph_short_circuit,
+        # Wave 6 Phase 4 (Top 2 C1) — bidirectional_forward_prompt_mode
+        test_m4_forward_mode_strong_overrides_default,
+        test_m4_forward_mode_mild_explicit,
+        test_m4_forward_mode_exclusion_rule,
+        test_m4_forward_mode_invalid_raises,
+        test_m4_forward_mode_none_keeps_legacy_forward_section,
+        test_m4_forward_mode_takes_priority_over_forward_section,
+        test_m4_top_2_c1_spec_yaml_build,
         test_m5_refine_sequential_stages,
         test_m5_stage2_sanitize_relative_to_stage1,
         test_m5_stage1_empty_skips_stage2,

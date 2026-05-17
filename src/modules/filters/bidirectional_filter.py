@@ -1,15 +1,22 @@
 """M4 Bidirectional Filter (학술 agent §6, Wave 6 Phase 2 (a+aggressive)).
 
 DECISIONS 2026-05-16 (a+aggressive) launch entry §2 정합:
-  - Forward prompt = recall_biased_mild (M1-A 재사용)
+  - Forward prompt = recall_biased_mild (M1-A 재사용, default)
   - Backward prompt = bidirectional_backward (SQL Schema Analyst, question 관점
     column 목록 generation)
   - 2 LLM call/query → union (학술 agent §6.2)
   - 측정: backward_added / backward_gold_recovered / backward_precision
     (gold 가 kwargs 로 들어올 때만 — runtime evaluate 시점)
 
+Wave 6 Phase 4 (DECISIONS 2026-05-17 §4 Top 2 C1 launch) 갱신:
+  - Forward prompt 를 config flag `bidirectional_forward_prompt_mode` 로 교체 가능
+    {"recall_biased_mild" | "recall_biased_strong" | "recall_biased_exclusion_rule"}
+  - Top 2 C1 (M4 + M1-B strong) — Forward 만 strong 으로 교체, Backward 그대로
+  - 기존 `forward_section` param 도 backward compat 으로 retain (priority:
+    bidirectional_forward_prompt_mode > forward_section)
+
 학술 frame: Filter ↔ Selector co-design 의 추가 axis. paper §3 Inter-Module
-Co-Design 의 Filter ↔ Selector 새 axis (paper §3.1 갱신 candidate).
+Co-Design 의 Filter ↔ Selector 새 axis (paper §3.1 갱신 bullet 정식 채택 5/17).
 """
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -22,6 +29,15 @@ from prompts.prompt_manager import PromptManager
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Wave 6 Phase 4 (Top 2 C1 launch, 2026-05-17): Forward prompt mode → section 매핑.
+# 1-to-1 매핑 (prompts/filter.md 의 section name 과 동일) 단 explicit param 으로
+# validation 강화 + 의미론적 명명.
+_BIDIRECTIONAL_FORWARD_MODES: Dict[str, str] = {
+    "recall_biased_mild": "recall_biased_mild",        # M1-A (default, Phase 2 (a+aggressive))
+    "recall_biased_strong": "recall_biased_strong",    # M1-B (Top 2 C1)
+    "recall_biased_exclusion_rule": "recall_biased_exclusion_rule",  # M1-C
+}
 
 
 @register("filter", "BidirectionalFilter")
@@ -36,28 +52,46 @@ class BidirectionalFilter(BaseFilter):
         db_dir: str = "./data/raw/BIRD_dev/dev_databases",
         num_examples: int = 3,
         sanitize_output: bool = True,
-        forward_section: str = "recall_biased_mild",   # PROMPT_M4_FORWARD = M1-A
+        forward_section: str = "recall_biased_mild",   # PROMPT_M4_FORWARD = M1-A (backward compat)
         backward_section: str = "bidirectional_backward",
+        bidirectional_forward_prompt_mode: Optional[str] = None,  # Wave 6 Phase 4 (5/17)
         provider: Optional[str] = "glm",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         **kwargs,
     ):
+        # Wave 6 Phase 4 (Top 2 C1, 2026-05-17): bidirectional_forward_prompt_mode
+        # 우선 사용 (의미론적 + validation 강화). 미명시 시 기존 forward_section 그대로.
+        if bidirectional_forward_prompt_mode is not None:
+            if bidirectional_forward_prompt_mode not in _BIDIRECTIONAL_FORWARD_MODES:
+                raise ValueError(
+                    f"bidirectional_forward_prompt_mode='{bidirectional_forward_prompt_mode}' "
+                    f"invalid. Expected one of "
+                    f"{sorted(_BIDIRECTIONAL_FORWARD_MODES.keys())}."
+                )
+            resolved_forward_section = _BIDIRECTIONAL_FORWARD_MODES[
+                bidirectional_forward_prompt_mode
+            ]
+        else:
+            resolved_forward_section = forward_section
+
         self.model_name = model_name
         self.max_iteration = max_iteration
         self.temperature = float(temperature)
         self.db_dir = db_dir
         self.num_examples = max(0, int(num_examples))
         self.sanitize_output = bool(sanitize_output)
-        self.forward_section = forward_section
+        self.forward_section = resolved_forward_section
         self.backward_section = backward_section
+        self.bidirectional_forward_prompt_mode = bidirectional_forward_prompt_mode
         self.prompt_manager = PromptManager()
         self.client = self._make_llm_client(
             api_key=api_key, base_url=base_url, provider=provider,
         )
         logger.info(
             "Initialized BidirectionalFilter "
-            f"(model={model_name}, forward={forward_section}, "
+            f"(model={model_name}, forward={resolved_forward_section}, "
+            f"forward_prompt_mode={bidirectional_forward_prompt_mode or 'legacy(forward_section)'}, "
             f"backward={backward_section}, sanitize={self.sanitize_output})"
         )
 
@@ -182,6 +216,7 @@ class BidirectionalFilter(BaseFilter):
                 token_before=empty_tok, token_after=empty_tok, t_start=t_start,
                 model=self.model_name,
                 forward_section=self.forward_section,
+                forward_prompt_mode=self.bidirectional_forward_prompt_mode,
                 backward_section=self.backward_section,
                 forward_count=0, backward_count=0, union_count=0,
                 backward_added=0,
@@ -243,6 +278,7 @@ class BidirectionalFilter(BaseFilter):
             token_before=token_before, token_after=token_after, t_start=t_start,
             model=self.model_name,
             forward_section=self.forward_section,
+            forward_prompt_mode=self.bidirectional_forward_prompt_mode,
             backward_section=self.backward_section,
             sanitize_output=self.sanitize_output,
             forward_count=contrib["forward_count"],
