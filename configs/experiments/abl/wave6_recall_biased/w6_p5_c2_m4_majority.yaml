@@ -1,0 +1,74 @@
+# Wave 6 Phase 5 Top 2 C2 — M4 BidirectionalFilter + M3 MAJORITY voting Forward
+#
+# DECISIONS 2026-05-17 (Wave 6 Phase 4 C1 결과 + C2 launch 결정) §6 spec 정합.
+# Base: w6_p4_c1_m4_strong.yaml. 변경:
+#   - Forward prompt 만 single (M1-B strong) → M3 voting (3 prompts × MAJORITY)
+#   - Backward prompt (bidirectional_backward, SQL Schema Analyst) 그대로 retain
+#
+# 3 hypothesis 검증 (DECISIONS §6):
+#   H1 — Forward inclusiveness dominant : C2 EX ≈ M4 EX (0.5300) 시 C1 Backward
+#                                           Effect Reduction = Forward inclusiveness
+#                                           감소 단독 효과 입증
+#   H2 — Forward mechanism dominant    : C2 EX ≈ C1 (0.5150) 시 voting noise
+#                                           pruning 이 Backward base 변경
+#   H3 — Partial entanglement          : C2 EX intermediate (0.52~0.53) 시 양쪽 영향
+#
+# Cost: 4 LLM call/q × 1534 = 6136 calls, ~3h parallel (3-conc), ~$10-15 GLM 4.7
+#
+# 학술적 ROI: paper §V.5.x.M.15 narrative 의 mechanism axis 추가 dimension
+# (Forward Dominance 3-cell complete coverage).
+
+experiment_name: "w6_p5_c2_m4_majority"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "BidirectionalFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    # Top 2 C2 핵심: Forward = M3 voting (composition with MultiPromptVotingFilter)
+    bidirectional_forward_prompt_mode: "voting_multi_prompt"
+    bidirectional_forward_voting_strategy: "MAJORITY"   # ≥2 of 3 votes (analyzer §5)
+    # Backward prompt 그대로 retain (DECISIONS §6)
+    backward_section: "bidirectional_backward"
+    sanitize_output: true
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

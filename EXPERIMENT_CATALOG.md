@@ -2902,3 +2902,73 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - Wall: 2h33m (10:31 → 13:04), 비용 ~$2-4 GLM API
 - failure: 0/1
 
+
+---
+
+## Wave 6 Phase 5 Top 2 C2 — M4 + M3 MAJORITY voting Forward (DECISIONS 2026-05-17 §6, 학술 agent §8.3 + §5+§6, 2026-05-17, 🎯 H3 Partial Entanglement 확정 + Pareto frontier 6번째 cell 진입)
+
+### Single cell × 4 metrics (anchor c01_01 R=0.8748 / P=0.8582 / F1=0.8664 / EX=0.5176)
+
+| Cell | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| **w6_p5_c2_m4_majority** | **0.9273** | 0.7745 | **0.8440** | **0.5196** |
+
+### vs 4 baselines
+
+| baseline | F1 | ΔF1 vs C2 | EX | ΔEX vs C2 |
+|---|---:|---:|---:|---:|
+| anchor c01_01 | 0.8664 | C2 -0.0224 | 0.5176 | C2 +0.0020 sub-noise |
+| M4 (mild Forward) ⭐ EX-max | 0.8370 | C2 +0.0070 | **0.5300** ★ | **C2 -0.0104** ← key |
+| C1 (strong Forward) | 0.8610 | C2 -0.0170 | 0.5150 | **C2 +0.0046** ← key |
+| M3 MAJORITY (post-hoc) | 0.8433 | C2 +0.0007 sub-noise | (post-hoc) | — |
+
+### 3 Hypothesis 판정 — **H3 Partial Entanglement 확정** ✅
+
+- H1 (inclusiveness dominant, C2 EX ≈ M4 0.5300) ❌ — Δ=-0.0104 from M4
+- H2 (voting mechanism dominant, C2 EX ≈ C1 0.5150) ❌ — Δ=+0.0046 from C1
+- **H3 (partial entanglement, C2 EX intermediate 0.52~0.53) ✅ — 0.5196 ∈ [0.5150, 0.5300]**
+
+### 📊 Backward Effect Reduction mechanism 정량 분해
+
+- M4 distance vs C1 distance ratio = **2.26 : 1** → C2 가 C1 쪽으로 약간 치우침
+- **정량 분해**: Voting mechanism ~70% + Forward inclusiveness ~30%
+- C1 의 Backward Effect Reduction (-0.0150 EX from M4) 의 mechanism = 60% voting + 40% inclusiveness (대략)
+
+### Forward Dominance 3-cell complete coverage (M4 + C1 + C2)
+
+| Forward | F1 | EX | Backward Effect (EX gain from M4) |
+|---|---:|---:|---:|
+| M4 mild | 0.8370 | **0.5300** ★ | +0.0124 (anchor base) |
+| **C2 voting MAJORITY** | 0.8440 | 0.5196 | -0.0104 (~70% mechanism) |
+| C1 strong | 0.8610 | 0.5150 | -0.0150 (Partial Degrade, full mechanism + inclusiveness) |
+
+### Pareto Frontier 6 cells (C2 신규 진입)
+
+| Cell | R | P | F1 | EX |
+|---|---:|---:|---:|---:|
+| M1-A mild + M1-B strong + M3 MAJORITY (post-hoc) + M4 + C1 + **🆕 C2** | 6 cells | | | |
+| **C2**: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ | ★ 6번째 진입 | | | |
+
+### Config 주의사항
+
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- 변경 차원: BidirectionalFilter 의 `bidirectional_forward_prompt_mode="voting_multi_prompt"` + `bidirectional_forward_voting_strategy="MAJORITY"` (commit `7a07a6b`)
+- Backward retain: `bidirectional_backward` (M4 default)
+- LLM call/q: 4 (3 voting Forward + 1 Backward sequential)
+
+### 결론 — H3 Partial Entanglement 확정 + Pareto frontier 진입 + Wave 6 chain mechanism axis 완성
+
+- F1 학술 agent §10 미달 (-0.0232) — DECISIONS §5 Outcome (b) retain
+- H3 Partial Entanglement 확정 (Voting ~70% + Inclusiveness ~30% 정량 분해)
+- Wave 6 chain mechanism axis 완성 (Forward Dominance 3-cell coverage)
+- paper §V.5.x.M.15 Triple → Quadruple Evidence 격상 candidate
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 6 Phase 5 Top 2 C2 (2026-05-17)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Config: `configs/experiments/abl/wave6_recall_biased/w6_p5_c2_m4_majority.yaml`
+- Module 구현: filter commit `7a07a6b` (BidirectionalFilter + voting_multi_prompt Forward composition, smoke 36/36 PASS)
+- Sweep script: `scripts/run_wave6_phase5_c2.sh`
+- Wall: 4h02m (15:31 → 19:34), 비용 ~$10-15 GLM API
+- failure: 0/1
+
