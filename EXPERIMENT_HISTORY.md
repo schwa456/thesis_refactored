@@ -4976,3 +4976,113 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
   - paper main contribution baseline 우위 narrative 정합 정확화
   - paper §V.5.x.M.2 narrative retain 확인
 
+
+## Wave 8 M4 Bidirectional 발전 — D1 + D2 + D3 + D4 8 cells (DECISIONS 2026-05-18 §2+§5, 학술 agent improving_m4_plan §1~§4, 2026-05-18 ~ 2026-05-19, 🎯 multi-axis Pareto frontier 확장 + EX > M4 미달 (Case 1 ❌) + Top 2 조합 candidate D4 v1 + D3 v2)
+
+### 목적
+
+학술 agent improving_m4_plan_scholar_agent_2026-05-18.md §1~§4 의 4 direction 독립 컴포넌트 launch — M4 Bidirectional Filter (anchor, R=0.9325 / P=0.7593 / F1=0.8370 / **EX=0.5300 ★**) 위 D1/D2/D3/D4 4 direction × 2 variants = 8 cells 독립 측정.
+
+### Cells × Final Metrics
+
+| Cell | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX | Note |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| **D1 v1** multi_backward | 0.9458 | 0.6914 | 0.7988 | 0.5111 | +0.0133 | −0.0679 | **−0.0382** | −0.0189 | R up + P drop |
+| **D1 v2** full_decompose | **0.9601** ★ R-best | 0.5500 | 0.6994 ❌ | 0.5163 | **+0.0276** ★ | **−0.2093** ❌ | **−0.1376** ❌ | −0.0137 | R-best 단 P collapse |
+| **D2 v1** direct_fk | 0.9351 | 0.7416 | 0.8272 | 0.5104 | +0.0026 | −0.0177 | −0.0098 | −0.0196 | sub-noise |
+| **D2 v2** 1hop_bridge | 0.9373 | 0.7405 | 0.8274 | 0.5085 | +0.0048 | −0.0188 | −0.0096 | −0.0215 | sub-noise |
+| **D3 v1** verify1round | 0.9328 | 0.7534 | 0.8336 | 0.5169 | +0.0003 | −0.0059 | −0.0034 | −0.0131 | EX-3rd |
+| **D3 v2** verify2round ⭐ | 0.9304 | 0.7579 | 0.8353 | **0.5215** ⭐ | −0.0021 | −0.0014 | −0.0017 sub-noise | **−0.0085** | **EX-2nd-best** (M4 sub-noise 안) |
+| **D4 v1** value_hint ★ | 0.9336 | **0.7623** ★ | **0.8393** ★ F1-best | 0.5111 | +0.0011 | **+0.0030** ✓ | **+0.0023** ✓ | −0.0189 | **F1-best marginal +** |
+| **D4 v3** forced_include | 0.9364 | 0.7215 | 0.8150 | 0.5091 | +0.0039 | −0.0378 | −0.0220 | −0.0209 | F1 drop |
+
+→ **M4 anchor 정합 정확**: M4 EX=0.5300 retain (8 cells 중 그 어떤 cell 도 EX > M4 미달) ❌.
+
+### 학술 agent §8 5 Cases 판정
+
+| Case | 조건 | Wave 8 결과 | 판정 |
+|---|---|---|:---:|
+| Case 1 — Success (R retain + Prune retain + EX > M4) | EX > 0.5300 | 0 cells | **❌ 미달** |
+| Case 2 — Partial (R retain + EX similar M4) | sub-noise band | D3 v1/v2 (EX 0.51~0.52 sub-noise) | ✅ D3 정합 |
+| Case 3 — R-bias trade (R up + P drop) | F1 cost 큼 | D1 v1 (-0.0679 P) + D1 v2 (-0.2093 P collapse) | ✅ D1 정합 |
+| Case 4 — Pareto F1 candidate | F1 marginal + | D4 v1 (F1 +0.0023) | ✅ D4 v1 정합 |
+| Case 5 — Fail sub-noise drift | F1/EX 둘 다 sub-noise drop | D2 v1/v2 + D4 v3 | ✅ |
+
+→ **Wave 8 outcome: multi-axis Pareto frontier 확장** 단 EX-best lever 부재. paper main contribution narrative 정합 retain (M4 EX-best dominant evidence).
+
+### Pareto Frontier 갱신 (Wave 6 + Wave 8 통합)
+
+| Axis | Pareto Cell | 값 |
+|---|---|---:|
+| **R-best** ★ Wave 8 신규 | **D1 v2** full_decompose | R=0.9601 |
+| **F1-best** Wave 6 retain | M1-B strong | F1=0.8655 |
+| **F1-best Wave 8 marginal** | D4 v1 value_hint | F1=0.8393 (+0.0023 vs M4) |
+| **EX-best** ★ M4 retain | M4 Bidirectional | EX=0.5300 |
+| **EX-2nd-best** ★ Wave 8 신규 | **D3 v2** verify2round | EX=0.5215 (M4 −0.0085 sub-noise) |
+
+### paper §V.5.x.M.16~19 candidate sub-section map
+
+| Direction | paper sub-section candidate | Wave 8 evidence |
+|---|---|---|
+| D1 (Multi-Backward) | §V.5.x.M.15 axis #15 evidence #5 (R-axis lever) | D1 v2 R +0.0276 marginal (vs RoSL +25.1%) — evidence 약함 |
+| D2 (FK Steiner Closure) | §V.5.x.M.16 신규 (DB-aware Schema Connectivity) | D2 v1/v2 sub-noise — **evidence 약함**, paper sub-section 격하 candidate |
+| **D3 (Self-Verification Loop)** ⭐ | §V.5.x.M.17 신규 (Execution Feedback Loop) | **D3 v2 EX=0.5215 (M4 sub-noise 안)** — paper sub-section retain candidate, EX retain mechanism evidence |
+| **D4 (Value Hint Forward)** ★ | §V.5.x.M.18 신규 (Value Evidence Enhancement) | **D4 v1 F1 +0.0023 marginal positive** — paper sub-section retain candidate |
+
+### Top 2 조합 candidate (DECISIONS §3)
+
+| Combination | Mechanism | 정합 |
+|---|---|---|
+| **Comb-A**: **D4 v1 + D3 v2** | F1-axis (value hint) + EX-axis (verify loop) 직교 mechanism | **권고 ⭐** |
+| Comb-B: D1 + D3 v2 | R-axis (multi-backward) + EX-axis (verify) — P-cost 우려 | candidate |
+| Comb-C: D2 + D4 v1 + D3 | 3-axis (구조 + 값 + 검증) | LLM cost 큼 |
+
+→ **권고 Comb-A** — D4 v1 의 F1 +0.0023 + D3 v2 의 EX retain mechanism 직교, EX > M4 candidate.
+
+### 학습 비용 + 환경
+
+- **Wall**: ~10h 33min (15:47:45 → 02:21 KST) — D1 v2 dominant bottleneck (rate 2.49 q/min × 1534 q)
+- **GPU 시간**: ~10h × GPU 0 only (8 cells × 0~10MB GAT inference, dominant LLM API wait)
+- **LLM API 비용**: ~$25~40 GLM 4.7 (8 cells × 1534 q × 다양 LLM/q = ~44k calls total)
+- **per_q rate 분포**: D1 v2 가장 무거움 (2.49 q/min, 7 LLM/q avg), D2 v1/v2 가벼움 (5 q/min, 2 LLM/q)
+- **failure**: 0/8 (D3 v1/v2 config fix 후 fresh restart 1회 — `BidirectionalVerifyFilter` → `BidirectionalVerifyLoopFilter` correction)
+
+### Configs + Module + Script
+
+- **Configs 8** (모든 `configs/experiments/abl/wave8_m4_extensions/`):
+  - `d1_decompose/abl_wave8_d1v1_multi_backward.yaml` + `d1v2_full_decompose.yaml`
+  - `d2_steiner/abl_wave8_d2v1_direct_fk.yaml` + `d2v2_bridge_1hop.yaml`
+  - `d3_verify/abl_wave8_d3v1_verify1round.yaml` + `d3v2_verify2round.yaml`
+  - `d4_value_hint/abl_wave8_d4v1_value_hint_forward.yaml` + `d4v3_forced_include.yaml`
+- **Module 구현** (commit `c44b15a` + `2cc8b93`):
+  - `src/modules/filters/bidirectional_decompose_filter.py` (D1, BidirectionalDecomposeFilter)
+  - `src/modules/filters/bidirectional_verify_filter.py` (D3, BidirectionalVerifyLoopFilter)
+  - `src/modules/filters/bidirectional_value_hint_filter.py` (D4, BidirectionalValueHintFilter)
+  - `src/modules/filters/d2_steiner_filter.py` + `steiner_closure.py` + `src/modules/builders/db_fk_extractor.py` (D2, D2SteinerFilter, LLM 0×)
+- **Launch script**: `scripts/run_wave8_m4_extensions.sh` (4+4 batch sequential 정합 단 사용자 결정 후 8 streams parallel 전환)
+- **Burst test (rate limit 측정)**: 8 threads × 40 requests → **318 RPM confirmed** (Elice ML API)
+
+### 산출물
+
+- Outputs: `outputs/experiments/abl/wave8_m4_extensions/{d1_decompose,d2_steiner,d3_verify,d4_value_hint}/`
+- Logs: `logs/wave8_m4_extensions/`
+- predictions.jsonl + metrics.txt + output_*.jsonl + score_analysis_*.jsonl + profiling_*.jsonl per cell
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, Wave 8 분석)**: `notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md` 신규 작성
+  - 8 cells × R/P/F1/EX + ΔR/ΔP/ΔF1/ΔEX vs M4 anchor 통합 표
+  - 학술 agent §8 5 Cases 판정 정합 (Case 4 D4 v1 + Case 2 D3 정합)
+  - paper §V.5.x.M.16~19 sub-section candidate evidence 정합 (D2 격하 candidate vs D3 v2/D4 v1 retain candidate)
+  - direction-specific telemetry 분석 (D1 의 sub_q 평균, D2 의 fk_added_count, D3 의 verify_success_rate / avg_rounds_used, D4 의 evidence_size / forced_count)
+  - per-difficulty (simple/moderate/challenging) 별 R_fil + EX (학술 agent §0.3 results_difficulty_breakdown.csv 정합)
+  - D1 v1 vs D1 v2 의 sub-q-only vs full-decompose 비교 (Question Decomposition lever 분해)
+  - D3 v1 vs D3 v2 의 verify rounds diminishing analysis (1 round vs 2 rounds 의 EX +0.0046 gain)
+  - D4 v1 vs D4 v3 의 forced-include vs hint-only 비교 (P-cost 분해)
+  - Top 2 조합 candidate 정합 (Comb-A D4 v1 + D3 v2 권고 정량 base)
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.16 (D2) 격하 결정 (sub-noise evidence)
+  - paper §V.5.x.M.17 (D3) + §V.5.x.M.18 (D4) sub-section retain 결정 + narrative 작성
+  - paper §V.5.x.M.15 axis #15 evidence #5 (D1) 격하 결정 (R 갱신 +0.0276 marginal, P-cost dominant)
+  - Top 2 조합 candidate 결정 (Comb-A D4 v1 + D3 v2 launch trigger or paper closure)
+

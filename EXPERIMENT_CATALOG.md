@@ -3111,3 +3111,75 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - Wall: 1h02m, 비용 ~$5~10 GLM API
 - failure: 0/3 (relaunch 후)
 
+
+## Wave 8 M4 Bidirectional 발전 — D1 + D2 + D3 + D4 8 cells (DECISIONS 2026-05-18 §2+§5, 학술 agent improving_m4_plan §1~§4, 2026-05-18 ~ 2026-05-19, 🎯 multi-axis Pareto frontier 확장 + EX > M4 미달)
+
+### 8 cells × R/P/F1/EX (M4 anchor R=0.9325 / P=0.7593 / F1=0.8370 / EX=**0.5300** ★ 정합)
+
+| ID | Cell | R | P | F1 | EX |
+|---|---|---:|---:|---:|---:|
+| abl_wave8_d1v1_multi_backward | D1 v1 Multi-Backward | 0.9458 | 0.6914 | 0.7988 | 0.5111 |
+| abl_wave8_d1v2_full_decompose | D1 v2 Full Decompose ★ R-best | **0.9601** | 0.5500 | 0.6994 | 0.5163 |
+| abl_wave8_d2v1_direct_fk | D2 v1 직접 FK | 0.9351 | 0.7416 | 0.8272 | 0.5104 |
+| abl_wave8_d2v2_bridge_1hop | D2 v2 1-hop Bridge | 0.9373 | 0.7405 | 0.8274 | 0.5085 |
+| abl_wave8_d3v1_verify1round | D3 v1 1 Round | 0.9328 | 0.7534 | 0.8336 | 0.5169 |
+| **abl_wave8_d3v2_verify2round** ⭐ | D3 v2 2 Rounds (EX-2nd) | 0.9304 | 0.7579 | 0.8353 | **0.5215** |
+| **abl_wave8_d4v1_value_hint_forward** ★ | D4 v1 Value-Hint (F1-best) | 0.9336 | **0.7623** | **0.8393** | 0.5111 |
+| abl_wave8_d4v3_forced_include | D4 v3 Forced Include | 0.9364 | 0.7215 | 0.8150 | 0.5091 |
+
+→ **EX > M4 미달 (8/8 cells)** — primary success criterion (학술 agent §8 Case 1) 미달 ❌.
+
+### Pareto Frontier 갱신 (Wave 6 + Wave 8 통합)
+
+| Axis | Pareto Cell | 값 |
+|---|---|---:|
+| **R-best** ★ Wave 8 신규 | D1 v2 full_decompose | R=0.9601 |
+| **F1-best (overall)** Wave 6 retain | M1-B strong | F1=0.8655 |
+| F1-best (Wave 8 marginal) | D4 v1 value_hint | F1=0.8393 (+0.0023 vs M4) |
+| **EX-best** ★ M4 retain | M4 Bidirectional | **EX=0.5300** |
+| **EX-2nd-best** ★ Wave 8 신규 | **D3 v2 verify2round** | EX=**0.5215** (M4 −0.0085 sub-noise) |
+
+### Top 2 조합 candidate
+
+- **Comb-A 권고 ⭐**: **D4 v1 + D3 v2** — F1-axis (value hint) + EX-axis (verify loop) 직교 mechanism, EX > M4 candidate
+- Comb-B: D1 + D3 v2 — R-axis + EX-axis 단 P-cost 우려
+- Comb-C: D2 + D4 + D3 — 3-axis 통합 단 LLM cost 큼
+
+### paper §V.5.x.M.16~19 candidate sub-section map
+
+| Direction | paper sub-section | Wave 8 evidence | 판정 |
+|---|---|---|:---:|
+| D1 (Multi-Backward) | §V.5.x.M.15 evidence #5 R-axis | D1 v2 R +0.0276 marginal (vs RoSL +25.1%) | 격하 candidate |
+| D2 (FK Steiner Closure) | §V.5.x.M.16 신규 (DB-aware Schema Connectivity) | D2 v1/v2 sub-noise | 격하 candidate |
+| **D3 (Self-Verification Loop)** ⭐ | §V.5.x.M.17 신규 (Execution Feedback Loop) | D3 v2 EX=0.5215 (EX-2nd-best, M4 sub-noise 안) | **retain candidate** |
+| **D4 (Value Hint Forward)** ★ | §V.5.x.M.18 신규 (Value Evidence Enhancement) | D4 v1 F1=0.8393 (F1 +0.0023 marginal positive) | **retain candidate** |
+
+### Config 주의사항
+
+- M4 anchor (BidirectionalFilter Forward `recall_biased_mild` + Backward `bidirectional_backward` Union) 변경 없이 wrapper composition pattern
+- LLM 입력 = Extractor 출력 후보 (subgraph) 만 (Full Schema 입력 금지, sanitize_filter_output default-on)
+- D3 의 DB 실행 timeout 5s + sandbox 정합 (SQL probe 위험 격리)
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+
+### 학습 비용 + 환경
+
+- Wall: ~10h 33min (D1 v2 bottleneck), 8 streams parallel (4 streams initial → 8 streams 전환)
+- 비용: ~$25~40 GLM 4.7 (~44k LLM calls 총)
+- failure: 0/8 (D3 v1/v2 config fix 후 fresh restart 1회)
+
+### 결론 — Wave 8 multi-axis Pareto frontier 확장 + paper §V.5.x.M.17 + §V.5.x.M.18 retain candidate + Top 2 Comb-A 권고
+
+- M4 EX-best retain 정합 — paper main contribution narrative 정합 retain
+- D3 v2 EX-2nd + D4 v1 F1-best marginal = paper main contribution 의 **multi-axis evidence 확장**
+- D1 R-axis + D2 sub-noise = 격하 candidate (paper sub-section retain 부재)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 M4 Bidirectional 발전 (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs 8: `configs/experiments/abl/wave8_m4_extensions/{d1_decompose,d2_steiner,d3_verify,d4_value_hint}/`
+- Module 구현: filter commits `c44b15a` (D1+D3+D4 wrappers) + `2cc8b93` (D2 Steiner Closure + db_fk_extractor)
+- Launch script: `scripts/run_wave8_m4_extensions.sh`
+- Outputs: `outputs/experiments/abl/wave8_m4_extensions/`
+- Logs: `logs/wave8_m4_extensions/`
+- failure: 0/8
+

@@ -2040,3 +2040,69 @@ C2: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ → 6번째 frontier cell 진�
 - ΔΔ (anchor +0.1780 vs baseline 평균 +0.1206) ~+0.057 = 본 framework 의 schema linking effect 정량 evidence
 - paper §V.5.x.M.2 EX-Friendly Property narrative retain 정합 확인
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 9 Baseline Relog (2026-05-18)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 8 M4 Bidirectional 발전 — D1 + D2 + D3 + D4 8 cells (DECISIONS 2026-05-18 §2+§5, 학술 agent improving_m4_plan §1~§4, 2026-05-18 ~ 2026-05-19, 8 신규 ID — 🎯 multi-axis Pareto frontier 확장 + EX > M4 미달)
+
+### 명명 규칙 — `abl_wave8_d{1,2,3,4}_v{1,2,3}_*` (M4 anchor 위 4 direction × variant)
+
+| ID | Direction | Variant | 위치 |
+|---|---|---|---|
+| **abl_wave8_d1v1_multi_backward** | D1 Question Decomposition | v1 Backward-only sub-q | `configs/experiments/abl/wave8_m4_extensions/d1_decompose/` |
+| **abl_wave8_d1v2_full_decompose** | D1 Question Decomposition | v2 Full Decompose (Forward+Backward sub-q) | 위 동일 |
+| **abl_wave8_d2v1_direct_fk** | D2 FK Steiner Closure | v1 직접 FK | `configs/experiments/abl/wave8_m4_extensions/d2_steiner/` |
+| **abl_wave8_d2v2_bridge_1hop** | D2 FK Steiner Closure | v2 1-hop Bridge | 위 동일 |
+| **abl_wave8_d3v1_verify1round** | D3 Self-Verification Loop | v1 1 Round | `configs/experiments/abl/wave8_m4_extensions/d3_verify/` |
+| **abl_wave8_d3v2_verify2round** ⭐ | D3 Self-Verification Loop | v2 2 Rounds (EX-2nd-best) | 위 동일 |
+| **abl_wave8_d4v1_value_hint_forward** ★ | D4 Value Hint Forward | v1 Enhanced Forward (F1-best) | `configs/experiments/abl/wave8_m4_extensions/d4_value_hint/` |
+| **abl_wave8_d4v3_forced_include** | D4 Value Hint Forward | v3 Forced Include | 위 동일 |
+
+### Module Class Name 정합
+
+| Direction | filter.name | Module file (commit) |
+|---|---|---|
+| D1 | `BidirectionalDecomposeFilter` | `bidirectional_decompose_filter.py` (commit `c44b15a`) |
+| D2 | `D2SteinerFilter` | `d2_steiner_filter.py` + `steiner_closure.py` + `db_fk_extractor.py` (commit `2cc8b93`) |
+| **D3** | `BidirectionalVerifyLoopFilter` ⚠ | `bidirectional_verify_filter.py` (commit `c44b15a`, class name 주의 — config 첫 launch fail 했음) |
+| D4 | `BidirectionalValueHintFilter` | `bidirectional_value_hint_filter.py` (commit `c44b15a`) |
+
+### Δ vs M4 anchor (R=0.9325 / P=0.7593 / F1=0.8370 / EX=0.5300)
+
+| Cell | EX | ΔF1 | ΔEX | Pareto Axis |
+|---|---:|---:|---:|---|
+| D1 v1 multi_backward | 0.5111 | −0.0382 | −0.0189 | (R-bias trade) |
+| **D1 v2 full_decompose** | 0.5163 | **−0.1376** ❌ | −0.0137 | **R-best (R=0.9601)** |
+| D2 v1 direct_fk | 0.5104 | −0.0098 | −0.0196 | sub-noise |
+| D2 v2 1hop_bridge | 0.5085 | −0.0096 | −0.0215 | sub-noise |
+| D3 v1 verify1round | 0.5169 | −0.0034 | −0.0131 | EX-3rd |
+| **D3 v2 verify2round** ⭐ | **0.5215** | −0.0017 sub-noise | **−0.0085** | **EX-2nd-best** |
+| **D4 v1 value_hint** ★ | 0.5111 | **+0.0023** ✓ | −0.0189 | **F1-best marginal +** |
+| D4 v3 forced_include | 0.5091 | −0.0220 | −0.0209 | F1 drop |
+
+### Config 주의사항
+
+- M4 anchor (BidirectionalFilter) 변경 없이 wrapper composition pattern
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+- LLM 입력 = Extractor 출력 후보 (subgraph) 만 (Full Schema 입력 금지)
+- D3 v1/v2 config 의 `filter.name` 첫 launch 시 `BidirectionalVerifyFilter` 잘못 → `BidirectionalVerifyLoopFilter` 정정 (commit fix 후 fresh restart)
+- D2 의 db_fk_metadata cache: `data/processed/db_fk_metadata.json` (11 BIRD-Dev DBs)
+
+### paper sub-section candidate map (§V.5.x.M.16~19)
+
+| Direction | candidate | 판정 |
+|---|---|:---:|
+| D1 | §V.5.x.M.15 evidence #5 R-axis | **격하 candidate** (R +0.0276 marginal vs RoSL +25.1%) |
+| D2 | §V.5.x.M.16 (DB-aware Schema Connectivity) | **격하 candidate** (sub-noise) |
+| **D3** ⭐ | §V.5.x.M.17 (Execution Feedback Loop) | **retain candidate** (EX-2nd-best mechanism) |
+| **D4** ★ | §V.5.x.M.18 (Value Evidence Enhancement) | **retain candidate** (F1 marginal positive) |
+
+### Top 2 조합 candidate
+
+**Comb-A 권고 ⭐**: D4 v1 + D3 v2 — F1-axis (value hint) + EX-axis (verify loop) 직교 mechanism, EX > M4 candidate.
+
+### 결론 — multi-axis Pareto frontier 확장 + paper §V.5.x.M.17 + §V.5.x.M.18 retain candidate + Top 2 Comb-A 권고
+
+- M4 EX-best retain 정합 — paper main contribution narrative 정합 retain
+- D3 v2 EX-2nd + D4 v1 F1-best marginal = multi-axis evidence 확장
+- D1 + D2 격하 candidate (sub-section retain 부재)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 M4 Bidirectional 발전 (2026-05-19)](EXPERIMENT_HISTORY.md).
