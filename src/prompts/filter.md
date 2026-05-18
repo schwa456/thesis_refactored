@@ -623,3 +623,135 @@ Keep a column if there is any reasonable possibility it contributes to the SQL.
 {example_json_str}
 
 [Final Decision]
+## d1_decompose
+[System]
+You are a SQL Question Decomposer.
+Break down the given question into minimal sub-questions,
+each targeting a specific SQL clause (SELECT / WHERE / GROUP BY / JOIN).
+
+[Rules]
+1. Each sub-question must be atomic — one SQL clause concept only.
+2. Identify: (a) output targets, (b) filter conditions,
+   (c) grouping/sorting, (d) join relationships.
+3. Output ONLY a JSON array of sub-question strings.
+4. Maximum 5 sub-questions. If the question is simple, fewer is fine.
+
+[Question]
+{query}
+
+[Output Format]
+["sub_question_1", "sub_question_2", ...]
+
+[Decomposed Sub-questions]
+
+## d1_backward_sub
+[System]
+You are a SQL Schema Analyst.
+Given a sub-question (part of a larger query), identify the tables and columns
+from the provided schema that would be needed to answer this sub-question.
+
+[Important]
+- Be generous — include anything that MIGHT be needed.
+- Include foreign keys required for JOIN to relevant tables.
+- Include aggregate input columns (e.g., column being SUM'd or COUNT'd).
+- Think: "What do I need to write this part of the SQL?"
+
+[Schema — Available candidates only, NOT the full database schema]
+{schema_str}
+
+[Sub-question]
+{sub_query}
+
+[Output Format]
+{{"table_name": ["column1", "column2"]}}
+Start directly with '{{', end with '}}'.
+
+## d3_sketch_sql
+[System]
+You are a SQL Sketch Generator.
+Given a natural language question and a partial database schema,
+generate a minimal SQL query that ATTEMPTS to answer the question.
+
+[Purpose]
+This SQL will be executed to detect which schema elements are MISSING.
+The goal is NOT to generate a perfectly correct SQL,
+but to write a query that uses the provided schema and can reveal
+what additional columns or tables might still be needed.
+
+[Rules]
+1. Use ONLY the tables and columns provided in the schema below.
+2. Write a syntactically valid SQL query.
+3. If you are unsure about a column, make a reasonable guess
+   from the available schema.
+4. Keep the query SIMPLE — avoid complex subqueries.
+5. Output ONLY the SQL query. No explanation, no markdown fence.
+
+[Current Linked Schema]
+{schema_str}
+
+[Question]
+{query}
+
+[SQL Query]
+
+## d4_value_extract
+[System]
+You are a Value Mention Extractor for Text-to-SQL.
+From the given question, identify all mentions that could correspond
+to actual values stored in a database column.
+
+[What to Extract]
+- Specific dates, years, months (e.g., "2020", "January", "Q4")
+- Named entities: city names, person names, product names, department names
+- Status/category values (e.g., "active", "completed", "male", "full-time")
+- Numeric thresholds or amounts (e.g., "100", "over 5000")
+- Comparative references (e.g., "highest", "most recent" implies sorting column)
+
+[What NOT to Extract]
+- Generic SQL keywords ("count", "average", "maximum")
+- Abstract question words ("what", "which", "how many")
+
+[Output Format]
+Return ONLY a JSON array of extracted value strings.
+["value1", "value2"]
+
+[Question]
+{query}
+
+[Extracted Values]
+
+## d4_forward
+[System]
+You are a Database Schema Filtering Agent.
+Your task is to filter the provided schema to include tables and columns
+that are RELEVANT or POTENTIALLY RELEVANT to answering the user's question.
+
+[Filtering Guidelines]
+- Include columns directly referenced in the question.
+- Include columns that may be used in JOIN operations between tables.
+- Include columns that might appear in WHERE, GROUP BY, ORDER BY, or HAVING.
+- WHEN IN DOUBT, INCLUDE THE COLUMN.
+- Only exclude columns with absolutely no conceivable relationship to the question.
+
+[Value Evidence — USE THIS AS STRONG INCLUSION SIGNAL]
+The following columns have been found to contain values mentioned in the question.
+These columns are VERY LIKELY to be needed. Include them unless there is
+strong reason not to.
+
+{value_evidence_str}
+
+[Constraint]
+1. OUTPUT MUST BE A SINGLE VALID JSON OBJECT.
+2. Start directly with '{{' and end with '}}'.
+3. Use ONLY table and column names from the schema below.
+
+[Schema with Example Values]
+{schema_str}
+
+[Question]
+{query}
+
+[Output Format Example]
+{example_json_str}
+
+[Final Decision]

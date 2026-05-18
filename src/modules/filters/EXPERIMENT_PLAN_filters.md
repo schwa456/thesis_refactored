@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 13가지 제안
+## 이 모듈이 받아야 할 16가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -27,6 +27,134 @@
 | **M3** | **Multi-Prompt OR Voting (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | 3 prompt (M1-A 재사용 + voting_prompt_b SQL clause decomposition + voting_prompt_c 3-rule exclusion) × OR/MAJORITY/AND voting. 3 LLM call/q. 단일 refine() 에서 3 strategies 결과 모두 측정. | **최상** | Inclusion bias axis spectrum extreme — R-P trade-off endpoint 정량. paper §V.5.x.M.15 강화 + Filter Dominance narrative. |
 | **M4** | **Bidirectional Filter (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | Forward (M1-A 재사용) + Backward (bidirectional_backward SQL Schema Analyst) → union. 2 LLM call/q. backward_added / backward_gold_recovered / backward_precision 측정. | **최상** | Filter ↔ Selector co-design 의 추가 axis — backward question-driven mechanism. paper §3 Inter-Module Co-Design + §3.1 갱신 candidate. |
 | **M5** | **Two-Stage Filter (Wave 6 Phase 2 (a+aggressive), 2026-05-16)** | Stage 1 Recall-First Coarse (4-rule conjunctive exclusion) → Stage 2 Precision-Second Fine (Stage 1 output 을 schema input 으로). 2 sequential LLM call/q. stage1_only / two_stage final + stage2_recall_loss / stage2_precision_gain. | **최상** | Sequential Recall→Precision mechanism — §V.5.x.M.3 production deployment 추가 narrative. |
+| **D1** | **Question Decomposition → Multi-Backward (Wave 8, 2026-05-18)** | M4 위 wrapper — Question Decomposer + N sub-q × Backward (∪ option Forward) → M4 baseline 에 Union. v1 (Backward sub-q union) / v2 (Forward + Backward 모두 sub-q 별). 학술 agent §1 정합. | **최상** | M4 anchor 변경 없음. LLM/q = M4(2) + decomposer(1) + sub-q × 1~2. paper §V.5.x.M.16 candidate. |
+| **D3** | **Self-Verification Loop (Wave 8, 2026-05-18)** | M4 위 wrapper — Sketch SQL 생성 + SQLite 실행 (5s timeout) + 오류 parse + Extractor 후보에서만 column recover. max_rounds=1 또는 2. 학술 agent §3 정합 (AutoLink Wang 2025). | **최상** | DB 실행 필요. Hallucination 방지: recover_from_extractor 는 subgraph 안의 column 만 추가. paper §V.5.x.M.17 candidate. |
+| **D4** | **Value Hint 기반 Forward 강화 (Wave 8, 2026-05-18)** | M4 위 wrapper — Value extract + match_values_to_columns (DB sample values) + Value-Hint Enhanced Forward (v1) 또는 Forced-Include high-confidence (v3). 학술 agent §4 정합 (Ma 2026). | **최상** | LLM/q: v1=4, v3=3. v3 forced-include 는 LLM 판단 생략 (값 정확 매칭만으로 retain). paper §V.5.x.M.18 candidate. |
+
+---
+
+## D1 / D3 / D4. Wave 8 M4 Bidirectional 발전 (★ 최상, 2026-05-18)
+
+### 동기 (DECISIONS 2026-05-18 §2 + 학술 agent improving_m4_plan §1/§3/§4)
+- Wave 6 (Phase 1~5) 완료 — M1~M5 + Top 2 C1/C2 평가 closure.
+- 학술 agent improving_m4_plan: M4 Bidirectional (anchor F1=0.8370, EX=0.5300) 위에 **추가 발전** 의 4 direction 제시. 본 module 은 D2 제외 (Selector/Builder 책임 영역) + D1/D3/D4 wrapper 구현.
+
+### 공통 설계 결정
+- **M4 anchor 변경 금지** — `BidirectionalFilter` 그대로 composition.
+- 각 direction 의 wrapper 가 내부에서 `BidirectionalFilter` 인스턴스 보유. M4 의 Forward/Backward 호출 흐름은 그대로.
+- **LLM 입력에 Full Schema 포함 금지** — Extractor 후보 (subgraph) 만 schema_str 로.
+- **`XiYanFilter.sanitize_filter_output()` default-on** — extractor_output (subgraph) 에 없는 hallucination 제거. 모든 wrapper 에서 강제 적용.
+
+## D1. Question Decomposition → Multi-Backward (★ 최상)
+
+### 학술 agent §1 spec
+- **PROMPT_D1_DECOMPOSE** (`d1_decompose`): Question Decomposer — 원 질문을 SQL clause 관점 sub-question 으로 분해 (max 5)
+- **PROMPT_D1_BACKWARD_SUB** (`d1_backward_sub`): per sub-q Backward — M4 Backward 의 sub_query 변형
+- Variants: **v1** (Backward sub-q union to M4, default) / **v2** (`d1_forward_per_sub_q=True` — Forward 도 sub-q 별)
+
+### 인터페이스
+```python
+@register("filter", "BidirectionalDecomposeFilter")
+class BidirectionalDecomposeFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 d1_max_sub_questions=5,
+                 d1_forward_per_sub_q=False,  # v2 mode
+                 m4_bidirectional_forward_prompt_mode=None,
+                 m4_bidirectional_forward_voting_strategy="MAJORITY",
+                 m4_backward_section="bidirectional_backward",
+                 sanitize_output=True, **kwargs): ...
+```
+
+### 측정 메타 (filter_info 신규)
+- `filter_num_sub_questions` / `filter_decompose_failed`
+- `filter_added_by_multi_backward` (M4 baseline 대비 추가 column 수)
+- `filter_d1_llm_calls` (decomposer + sub-q backward 합)
+- `filter_sub_questions_preview` (analyzer 분석 용)
+- `filter_m4_baseline_count`
+
+### Fallback
+- Decomposition parse 실패 (empty list) → M4 baseline 그대로 반환 (학술 agent §1.4 주의 1)
+
+## D3. Self-Verification Loop (★ 최상)
+
+### 학술 agent §3 spec
+- **PROMPT_D3_SKETCH_SQL** (`d3_sketch_sql`): Sketch SQL Generator — 실행 가능한 최소 SQL
+- DB 실행 (SQLite, **5s hard timeout** via `progress_handler`)
+- `parse_missing_from_error()` — "no such column" / "no such table" 패턴
+- `recover_from_extractor()` — **Extractor 후보 (subgraph) 안에서만 검색** (학술 agent §3.5 정합, hallucination 방지)
+- Loop max_rounds=1 또는 2
+
+### 인터페이스
+```python
+@register("filter", "BidirectionalVerifyLoopFilter")
+class BidirectionalVerifyLoopFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 d3_max_rounds=2,
+                 d3_db_timeout_s=5.0,
+                 sketch_section="d3_sketch_sql",
+                 m4_* params,
+                 sanitize_output=True, **kwargs): ...
+```
+
+### 측정 메타
+- `filter_verify_success_rate` (sketch SQL 실행 성공 비율)
+- `filter_avg_rounds_used` / `filter_recovered_count` / `filter_d3_llm_calls`
+- `filter_verify_log` : per-round sketch_sql_preview / success / error
+
+### Caveat
+- DB 실행 불가능 환경 (예: `db_dir` 미존재) → 모든 round 실패 처리. recover 없음.
+- Sketch SQL 의 False Error (LLM 이 잘못된 column 사용) → recover_from_extractor 가 subgraph 만 참조하므로 hallucination 자동 차단.
+
+## D4. Value Hint 기반 Forward 강화 (★ 최상)
+
+### 학술 agent §4 spec
+- **PROMPT_D4_VALUE_EXTRACT** (`d4_value_extract`): Value Mention Extractor — 질문에서 DB value 후보 추출
+- **PROMPT_D4_FORWARD** (`d4_forward`): Value-Hint Enhanced Forward — Forward 프롬프트에 `[Value Evidence]` 섹션 inject
+- `match_values_to_columns(values, col_samples)`: exact (high) / partial (medium) / numeric_hint (medium) 매칭
+- Variants: **v1** (Value-Hint Enhanced Forward + M4 Backward Union) / **v3** (`d4_forced_include=True` — high-confidence 강제 retain + M4 baseline)
+
+### 인터페이스
+```python
+@register("filter", "BidirectionalValueHintFilter")
+class BidirectionalValueHintFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 d4_forced_include=False,
+                 d4_value_extract_section="d4_value_extract",
+                 d4_forward_section="d4_forward",
+                 d4_value_sample_limit=20,  # match 용 DB sample count
+                 m4_backward_section="bidirectional_backward",
+                 sanitize_output=True, **kwargs): ...
+```
+
+### 측정 메타
+- `filter_evidence_size` / `filter_evidence_high_count` / `filter_value_mentions_count`
+- `filter_evidence_gold_precision` (gold kwarg 있을 때만)
+- `filter_forced_count` (v3 모드, high-conf 강제 retain count)
+- `filter_d4_llm_calls` (v1=2, v3=1)
+
+### Caveat
+- DB sample value fetch 가 필요 — `db_dir`/`db_id`/`{db_id}.sqlite` 존재 시만 실행
+- v3 forced-include 는 LLM 판단 생략 — 정확 매칭만으로 retain. risky DB (toxicology 등) 에서는 P drop 가능 (학술 agent §4.5 정합).
+
+## Wave 8 Config 권장
+- `configs/experiments/abl/wave8_m4_directions/w8_d1_v1_multi_backward.yaml`
+- `configs/experiments/abl/wave8_m4_directions/w8_d1_v2_full_decompose.yaml` (d1_forward_per_sub_q=True)
+- `configs/experiments/abl/wave8_m4_directions/w8_d3_v1_verify_round1.yaml`
+- `configs/experiments/abl/wave8_m4_directions/w8_d3_v2_verify_round2.yaml`
+- `configs/experiments/abl/wave8_m4_directions/w8_d4_v1_value_hint.yaml`
+- `configs/experiments/abl/wave8_m4_directions/w8_d4_v3_forced_include.yaml`
+
+### 산출물 (본 모듈, 2026-05-18)
+- [`bidirectional_decompose_filter.py`](bidirectional_decompose_filter.py) — D1
+- [`bidirectional_verify_filter.py`](bidirectional_verify_filter.py) — D3 (sqlite execute + parse + recover helpers)
+- [`bidirectional_value_hint_filter.py`](bidirectional_value_hint_filter.py) — D4 (match_values_to_columns + format_value_evidence helpers)
+- [`tests/test_bidirectional_directions_d1_d3_d4.py`](tests/test_bidirectional_directions_d1_d3_d4.py) — 26-scenario smoke test (PASSED 26/26): D1 parse + decompose-fail fallback + multi-backward union + v2 forward_per_sub_q + cap + invalid arg + empty short-circuit + D3 parse helpers + recover from extractor only + invalid args + real sqlite valid SQL + real sqlite error → no halluc recover + empty short-circuit + D4 match boundaries (exact/partial/no-match) + format + v1 enhanced forward + v3 forced-include + v3 subgraph-skip + gold kwarg evidence_gold_precision + empty short-circuit + YAML build all 3
+- `src/prompts/filter.md` — 5 신규 section (`d1_decompose` / `d1_backward_sub` / `d3_sketch_sql` / `d4_value_extract` / `d4_forward`)
+- [`__init__.py`](__init__.py) — 3 신규 export
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: 6 yaml 작성 + `scripts/run_wave8_m4_directions.sh` (학술 agent §10 권장 — Option C Hybrid 정합: D2 + D4 먼저, D1 + D3 후속). cost ~$11~33 + ~5h parallel
+- **Analyzer**: `notebooks/analysis_results/wave8_m4_directions_2026-05-XX.md` — direction 별 R/P/F1/EX + paper §V.5.x.M.16/17/18/19 candidate evidence + 조합 (Comb-A: D2+D4-v3 등) 가치 정량
 
 ---
 

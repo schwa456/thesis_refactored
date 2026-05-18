@@ -14,6 +14,9 @@ from .conditional_filter_wrapper import ConditionalFilterWrapper
 from .multi_prompt_voting_filter import MultiPromptVotingFilter
 from .bidirectional_filter import BidirectionalFilter
 from .two_stage_filter import TwoStageFilter
+from .bidirectional_decompose_filter import BidirectionalDecomposeFilter
+from .bidirectional_verify_filter import BidirectionalVerifyLoopFilter
+from .bidirectional_value_hint_filter import BidirectionalValueHintFilter
 
 __all__ = [
     "SingleAgentFilter",
@@ -34,4 +37,7 @@ __all__ = [
     "MultiPromptVotingFilter",
     "BidirectionalFilter",
     "TwoStageFilter",
+    "BidirectionalDecomposeFilter",
+    "BidirectionalVerifyLoopFilter",
+    "BidirectionalValueHintFilter",
 ]
