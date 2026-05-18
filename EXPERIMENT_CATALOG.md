@@ -3073,8 +3073,29 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 
 - Pattern: Wave 7 Option A 정합 — 기존 final_nodes 보존 + SQL Gen 만 재실행 (Builder/Selector/Extractor/Filter 재실행 X)
 - main.py 변경 없이 stand-alone Python script (`scripts/wave9_sql_regen.py`)
-- Cost: 4,602 calls + ~$5~10 + 1h02m parallel (3 streams)
+- Cost: 4,602 calls + ~$5~10 + **~67분 parallel** (3 streams, 18:28 → 19:35 KST)
 - **첫 launch fail** (18:19 KST): dotenv 누락 → API 401 → EX=0.0000. Fix (load_dotenv 추가) 후 relaunch (18:28 KST) 정상.
+- final_nodes 평균 cols/q (analyzer 측정 정확): G-Retriever **mean 49, median 44** / LinkAlign **mean 15, median 16** / XiYan-SQL **mean 3, median 3 (extreme sparse)**
+
+### prompt-axis Confounder ΔΔ 정밀 정량
+
+| Reference | anchor ΔEX | baseline 평균 ΔEX | **ΔΔ** |
+|---|---:|---:|---:|
+| Anchor c01_01 (5/1 → Wave 5 baseline 0.5176) | +0.1780 | +0.1206 | **+0.0574** ⭐ |
+| Anchor c01_01 (5/1 → Wave 7 relog 0.5117) | +0.1721 | +0.1206 | **+0.0515** |
+
+→ ΔΔ **+0.0515~+0.0574** = 본 framework 의 schema linking effect 의 정량 evidence (prompt confounder 분리 후 retain).
+
+### per-difficulty schema sparse penalty mechanism (analyzer §1.1+§7)
+
+- **simple/moderate**: schema sparse 가 dominant penalty (XiYan-SQL 3 col/q → simple 0.3092 vs G-Retriever 5114 의 -0.2022 gap)
+- **challenging**: LinkAlign vs XiYan-SQL gap **shrink to +0.0207** — schema quality less critical, 다른 lever dominant
+
+### final_nodes size 별 EX mechanism (analyzer §0)
+
+- G-Retriever (mean 49): sweet spot 16-30 cols (EX=0.5138, anchor 0.5117 정합), 61+ 에서 noise EX=0.3919
+- LinkAlign (mean 15): bimodal 6-15 EX=0.4093 vs 16-30 EX=0.2709 (난이도 confound)
+- XiYan-SQL (mean 3): extreme sparse plateau, 94% query 0-5 cols, EX flat 0.24
 
 ### 결론 — prompt-axis confounder 분리 evidence + paper §10 표 갱신 + baseline 우위 narrative 정량 정확화
 

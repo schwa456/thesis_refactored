@@ -1976,15 +1976,17 @@ C2: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ → 6번째 frontier cell 진�
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 7 Stage-wise EX Chain (2026-05-18)](EXPERIMENT_HISTORY.md).
 
 
-## Wave 9 Baseline Relog — w9_b{1,2,3}_relog (DECISIONS 2026-05-18 Wave 9, 2026-05-18, 3 신규 ID — 🎯 baseline 3 cells SQL Gen prompt 재측정 + prompt-axis confounder 정량 분리)
+## Wave 9 Baseline Relog — w9_b{1,2,3}_relog (DECISIONS 2026-05-18 Wave 9 + 분석 결과 채택, 2026-05-18, 3 신규 ID — 🎯 baseline 3 cells SQL Gen prompt 재측정 + prompt-axis confounder 정량 분리)
 
-### 명명 규칙
+### 명명 규칙 — `*_relog` suffix 정합 (Wave 7 Option A pattern 동일)
 
-| ID | Baseline | 위치 |
-|---|---|---|
-| w9_b1_g_retriever_relog | G-Retriever | `outputs/baselines/wave9_relog/g_retriever_relog/` |
-| w9_b2_linkalign_relog | LinkAlign | `outputs/baselines/wave9_relog/linkalign_relog/` |
-| w9_b3_xiyansql_relog | XiYan-SQL | `outputs/baselines/wave9_relog/xiyansql_relog/` |
+| ID | Baseline | 위치 | Suffix 의미 |
+|---|---|---|---|
+| **w9_b1_g_retriever_relog** | G-Retriever | `outputs/baselines/wave9_relog/g_retriever_relog/` | base `baseline_g_retriever` + `_relog` suffix |
+| **w9_b2_linkalign_relog** | LinkAlign | `outputs/baselines/wave9_relog/linkalign_relog/` | base `baseline_linkalign` + `_relog` suffix |
+| **w9_b3_xiyansql_relog** | XiYan-SQL | `outputs/baselines/wave9_relog/xiyansql_relog/` | base `baseline_xiyansql` + `_relog` suffix |
+
+`_relog` suffix 정합: Wave 7 Option A 의 anchor relog (c01_01 → `c01_01_wave7_relog`) 정합. **변경 spec = SQL Gen prompt 만**, base spec (final_nodes / Filter output) retain.
 
 ### Pattern — Wave 7 Option A 정합
 

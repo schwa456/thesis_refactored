@@ -4919,7 +4919,7 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
 
 ### 학습 비용 + 환경
 
-- **Wall**: 1h 02min (18:28 → 19:30 KST, parallel 3 streams)
+- **Wall**: ~67분 (18:28 → **19:35 KST**, parallel 3 streams)
 - **GPU 시간**: 0 (LLM API only)
 - **LLM API 비용**: ~$5~10 GLM 4.7 (3 cells × 1534 q × 1 LLM call = 4,602 calls)
 - **rate**: ~25 q/min/cell (anchor 의 ~3.4× 빠름 — 1 LLM/q 만, anchor 4 LLM/q 와 비교)
@@ -4928,8 +4928,32 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
 ### Checkpoint + Reference
 
 - final_nodes source: `outputs/baselines/baseline_{g_retriever,linkalign,xiyansql}/predictions.jsonl` (mtime 2026-03-28)
-- final_nodes 평균 cols/q: G-Retriever 80, LinkAlign 20, XiYan-SQL 1 (sparse)
+- final_nodes 평균 cols/q (analyzer 측정 정확): G-Retriever **mean 49, median 44** / LinkAlign **mean 15, median 16** / XiYan-SQL **mean 3, median 3 (extreme sparse)**
 - new prompt: LLMSQLGenerator (sql_generator prompt + evidence) — Wave 5+ 정합
+- analyzer 산출: [`notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md`](notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md) — §0 TL;DR + §1.1 결과 정합 + §7 핵심 finding 5 줄
+- DECISIONS 채택 entry: [`planning/DECISIONS.md` 2026-05-18 Wave 9 분석 결과 채택](planning/DECISIONS.md) — paper §10 갱신 + main contribution narrative 정량 정확화 + §V.5.x.M.2 retain 확인 ✅ planner 완료
+
+### prompt-axis Confounder ΔΔ 정밀 정량 (analyzer §0 정합)
+
+| Reference | anchor ΔEX (prompt-axis 효과) | baseline 평균 ΔEX | **ΔΔ (anchor − baseline)** |
+|---|---:|---:|---:|
+| Anchor c01_01 (5/1 prior 0.3396 → Wave 5 0.5176) | **+0.1780** | +0.1206 | **+0.0574** ⭐ |
+| Anchor c01_01 (5/1 prior 0.3396 → Wave 7 relog 0.5117) | +0.1721 | +0.1206 | **+0.0515** |
+
+→ **ΔΔ +0.0515~+0.0574** = 본 framework 의 schema linking effect 의 정량 evidence (prompt confounder 분리 후 retain 되는 effect). paper main contribution 의 quantitative base.
+
+### per-difficulty schema sparse penalty mechanism (analyzer §1.1 + §7 정합)
+
+- **simple/moderate** 에서 schema sparse 가 dominant penalty (XiYan-SQL mean 3 col/q ↓↓ — simple 0.3092 vs G-Retriever 0.5114 의 −0.2022 gap)
+- **challenging** 에서 LinkAlign (0.1586) vs XiYan-SQL (0.1379) 의 gap **shrink to +0.0207** — schema quality 가 less critical, 다른 lever (domain knowledge / SQL 복잡도) dominant → paper §V.5.x.M.5 thrombosis outlier narrative 정합 candidate
+
+### final_nodes size 별 EX mechanism (analyzer §0 정합)
+
+- **G-Retriever** (mean 49 col/q): sweet spot **16-30 cols (EX=0.5138, anchor 0.5117 와 정합)**, 61+ cols 에서 노이즈 EX=0.3919
+- **LinkAlign** (mean 15 col/q): bimodal — 6-15 EX=0.4093 vs 16-30 EX=0.2709 (난이도 confound 추정)
+- **XiYan-SQL** (mean 3 col/q): extreme sparse plateau (94% query 0-5 cols), EX flat 0.24
+
+→ paper §V.5.x.M.4 Three-Caveat narrative 의 schema noise tolerance mechanism 의 정량 보강 candidate
 
 ### 산출물
 
