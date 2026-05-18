@@ -1974,3 +1974,67 @@ C2: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ → 6번째 frontier cell 진�
 - Filter F1-EX 분리 first evidence + M4 EX gain mechanism ΔΔ 정량
 - paper §V.5.x.M.12 + §V.5.x.M.15 갱신 candidate (analyzer 위임 후)
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 7 Stage-wise EX Chain (2026-05-18)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 9 Baseline Relog — w9_b{1,2,3}_relog (DECISIONS 2026-05-18 Wave 9, 2026-05-18, 3 신규 ID — 🎯 baseline 3 cells SQL Gen prompt 재측정 + prompt-axis confounder 정량 분리)
+
+### 명명 규칙
+
+| ID | Baseline | 위치 |
+|---|---|---|
+| w9_b1_g_retriever_relog | G-Retriever | `outputs/baselines/wave9_relog/g_retriever_relog/` |
+| w9_b2_linkalign_relog | LinkAlign | `outputs/baselines/wave9_relog/linkalign_relog/` |
+| w9_b3_xiyansql_relog | XiYan-SQL | `outputs/baselines/wave9_relog/xiyansql_relog/` |
+
+### Pattern — Wave 7 Option A 정합
+
+- 기존 final_nodes 보존 + SQL Gen 만 재실행
+- main.py 변경 X — stand-alone Python script (`scripts/wave9_sql_regen.py`)
+- Builder/Selector/Extractor/Filter 재실행 X — R/P/F1 동일 retain, EX 만 신규 prompt 정합 갱신
+
+### Δ vs outdated (2026-03-28 측정)
+
+| Baseline | overall EX (Wave 9) | overall EX (Outdated) | Δ |
+|---|---:|---:|---:|
+| G-Retriever | **0.4283** | 0.2490 | **+0.1793** ★ |
+| LinkAlign | **0.3390** | 0.2001 | **+0.1389** |
+| XiYan-SQL | **0.2405** | 0.1969 | **+0.0436** |
+
+→ 3 baseline 모두 +Jump confirmed (prompt-axis effect 정합). G-Retriever (80 cols/q) > LinkAlign (20) > XiYan-SQL (1) — final_nodes size 정비례.
+
+### per-difficulty EX (paper §10 갱신 candidate)
+
+| Baseline | simple | moderate | challenging |
+|---|---:|---:|---:|
+| G-Retriever | 0.5114 | 0.3125 | 0.2690 |
+| LinkAlign | 0.4314 | 0.2112 | 0.1586 |
+| XiYan-SQL | 0.3092 | 0.1358 | 0.1379 |
+
+### Δ vs anchor (Wave 7 c01_01 EX=0.5117 / M4 EX=0.5300)
+
+| Baseline | Δ vs anchor c01_01 | Δ vs M4 |
+|---|---:|---:|
+| G-Retriever | −0.0834 | −0.1017 |
+| LinkAlign | −0.1727 | −0.1910 |
+| XiYan-SQL | −0.2712 | −0.2895 |
+
+→ baseline 우위 narrative squeeze: prior +0.28~+0.33 → new +0.08~+0.27 (anchor) / +0.10~+0.29 (M4).
+
+### Config 주의사항
+
+- 학습 없음 (final_nodes 재사용)
+- LLM: glm-4.7 (1 call/q × 1534 × 3 cells = 4,602 calls total)
+- DB: `data/raw/BIRD_dev/dev_databases/{db_id}/{db_id}.sqlite`
+- evaluate_ex: ProcessPoolExecutor 15s timeout
+
+### 첫 launch fail + fix history
+
+- 18:19 KST: dotenv 누락 → API 401 → EX=0.0000
+- 18:28 KST: `scripts/wave9_sql_regen.py` 에 `load_dotenv` 추가 후 relaunch 정상
+
+### 결론 — paper §10 표 갱신 + baseline 우위 narrative 정량 정확화
+
+- 3 baseline 모두 prompt-axis +Jump confirmed
+- ΔΔ (anchor +0.1780 vs baseline 평균 +0.1206) ~+0.057 = 본 framework 의 schema linking effect 정량 evidence
+- paper §V.5.x.M.2 EX-Friendly Property narrative retain 정합 확인
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 9 Baseline Relog (2026-05-18)](EXPERIMENT_HISTORY.md).

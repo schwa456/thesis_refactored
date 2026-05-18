@@ -3038,3 +3038,55 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - Wall: 3h 28min, 비용 ~$15-20 GLM API
 - failure: 0/1
 
+
+## Wave 9 Baseline Relog — G-Retriever / LinkAlign / XiYan-SQL SQL Gen prompt 재측정 (DECISIONS 2026-05-18 Wave 9, 2026-05-18, 🎯 prompt-axis confounder 분리 — baseline 우위 narrative ΔEX squeeze)
+
+### 3 cells × 4 metric (anchor c01_01 Wave 7 R/P/F1/EX = 0.8697/0.8581/0.8639/**0.5117** 정합)
+
+| Baseline | R | P | F1 | EX (Wave 9) | EX (Outdated) | Δ EX | Δ vs anchor c01_01 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| G-Retriever (Wave 9) | 0.7577 (retain) | 0.7866 (retain) | 0.7719 (retain) | **0.4283** | 0.2490 | +0.1793 | **−0.0834** |
+| LinkAlign (Wave 9) | 0.6940 (retain) | 0.7641 (retain) | 0.7274 (retain) | **0.3390** | 0.2001 | +0.1389 | −0.1727 |
+| XiYan-SQL (Wave 9) | 0.6832 (retain) | 0.7408 (retain) | 0.7108 (retain) | **0.2405** | 0.1969 | +0.0436 | −0.2712 |
+
+→ R/P/F1 동일 retain (기존 final_nodes 보존), EX 만 신규 prompt 정합 갱신.
+
+### per-difficulty EX
+
+| Baseline | simple | moderate | challenging |
+|---|---:|---:|---:|
+| G-Retriever | 0.5114 | 0.3125 | 0.2690 |
+| LinkAlign | 0.4314 | 0.2112 | 0.1586 |
+| XiYan-SQL | 0.3092 | 0.1358 | 0.1379 |
+| **anchor c01_01 (Wave 7)** | (analyzer pending) | (pending) | (pending) |
+
+### baseline 우위 narrative ΔEX squeeze (paper main contribution)
+
+| 비교 | prior outdated ΔEX | Wave 9 ΔEX | 정량 변화 |
+|---|---:|---:|---|
+| anchor c01_01 vs baseline | +0.2627~+0.3207 | **+0.0834~+0.2712** | **squeeze** |
+| M4 vs baseline | +0.2810~+0.3331 | **+0.1017~+0.2895** | squeeze |
+
+→ baseline 우위 narrative 의 prompt confounder 정량 분리 (anchor +0.1780 vs baseline 평균 +0.1206 의 ΔΔ ~+0.057 = 본 framework 의 schema linking effect 정량 evidence).
+
+### Implementation 주의사항
+
+- Pattern: Wave 7 Option A 정합 — 기존 final_nodes 보존 + SQL Gen 만 재실행 (Builder/Selector/Extractor/Filter 재실행 X)
+- main.py 변경 없이 stand-alone Python script (`scripts/wave9_sql_regen.py`)
+- Cost: 4,602 calls + ~$5~10 + 1h02m parallel (3 streams)
+- **첫 launch fail** (18:19 KST): dotenv 누락 → API 401 → EX=0.0000. Fix (load_dotenv 추가) 후 relaunch (18:28 KST) 정상.
+
+### 결론 — prompt-axis confounder 분리 evidence + paper §10 표 갱신 + baseline 우위 narrative 정량 정확화
+
+- 3 baseline 모두 +Jump confirmed (prompt-axis effect 정합)
+- G-Retriever +0.1793 > LinkAlign +0.1389 > XiYan-SQL +0.0436 (final_nodes size 정비례)
+- baseline 우위 narrative squeeze 단 retain — paper main contribution narrative 정합 retain (anchor 의 schema quality 우위 effect 정량 evidence)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 9 Baseline Relog (2026-05-18)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Scripts: `scripts/wave9_sql_regen.py` + `scripts/run_wave9_baseline_relog.sh`
+- Outputs: `outputs/baselines/wave9_relog/{g_retriever,linkalign,xiyansql}_relog/`
+- Wall: 1h02m, 비용 ~$5~10 GLM API
+- failure: 0/3 (relaunch 후)
+

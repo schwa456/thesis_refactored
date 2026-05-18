@@ -4855,3 +4855,100 @@ m4_anchor_framework_analysis §5.5.1 의 anchor stack 은 **M4 BidirectionalFilt
   - paper §3.5 axis #12 row 갱신 — EX dimension Filter cost 추가
   - Wave 7 closure 결정 (Stage-wise EX 완료) + Wave 8 candidate (선택): M4 anchor stack 의 stage-wise EX 직접 측정 (Backward Union 의 EX gain mechanism per-stage 분해)
 
+
+## Wave 9 Baseline Relog — G-Retriever / LinkAlign / XiYan-SQL 3 cells SQL Gen prompt 재측정 (DECISIONS 2026-05-18 Wave 9, 2026-05-18, 🎯 prompt-axis confounder 분리 — baseline 우위 narrative ΔEX squeeze +0.28~+0.33 → +0.08~+0.27)
+
+### 목적
+
+paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant factor +0.1512") + anchor EX +18.06%p jump (0.3396 → 0.5176) 정합 위에서 **baseline 3 cells (2026-03-28 측정) 의 EX outdated SQL Gen prompt 정합 검증 + 재측정**. paper §10 의 6 baseline 비교 표 정확성 회복 + baseline 우위 narrative 정량 정확화.
+
+### 구현 — Option A Stand-alone Python Script (main.py 변경 없이)
+
+**Pattern**: Wave 7 Option A 정합 — 기존 final_nodes 보존 + SQL Gen 만 재실행.
+
+- `scripts/wave9_sql_regen.py`: stand-alone Python script
+  - `parse_final_nodes()` — list of "table.col" strings → `{table: [col, col, ...]}` subgraph dict
+  - LLMSQLGenerator(provider="glm", llm_model="zai-org/glm-4.7", temperature=0.0)
+  - `evaluate_ex(pred_sql, gold_sql, db_path)` with 15s ProcessPoolExecutor timeout
+  - per-difficulty (simple/moderate/challenging) EX 분해
+  - 기존 generated_sql 도 보존 (`prior_generated_sql`)
+- `scripts/run_wave9_baseline_relog.sh`: 3 cells parallel wrapper
+
+### Final Metrics (n=1534 per cell)
+
+| Baseline | overall EX | simple | moderate | challenging | Outdated overall | Δ overall |
+|---|---:|---:|---:|---:|---:|---:|
+| **G-Retriever** | **0.4283** | 0.5114 | 0.3125 | 0.2690 | 0.2490 | **+0.1793** ★ |
+| **LinkAlign** | **0.3390** | 0.4314 | 0.2112 | 0.1586 | 0.2001 | **+0.1389** |
+| **XiYan-SQL** | **0.2405** | 0.3092 | 0.1358 | 0.1379 | 0.1969 | **+0.0436** |
+
+→ 3 baseline 모두 +Jump (prompt-axis confounder 정합 확인) 단 **G-Retriever 가 dominant +0.1793** vs XiYan-SQL +0.0436 만 (XiYan 의 final_nodes 평균 1 col/q sparse — SQL gen 가능성 부족 → 신규 prompt 의 schema-strict 사용 시 +Δ 작음).
+
+### Δ vs anchor c01_01 (Wave 7 EX=0.5117) + M4 (EX=0.5300, EX-best)
+
+| Baseline | Wave 9 EX | Δ vs anchor c01_01 | Δ vs M4 |
+|---|---:|---:|---:|
+| G-Retriever | 0.4283 | **−0.0834** (anchor 우위) | **−0.1017** (M4 우위) |
+| LinkAlign | 0.3390 | **−0.1727** | **−0.1910** |
+| XiYan-SQL | 0.2405 | **−0.2712** | **−0.2895** |
+
+### baseline 우위 narrative 정량 squeeze — paper §10 + paper main contribution 갱신 candidate
+
+| 영역 | prior (outdated baseline) | Wave 9 (new prompt) | 정량 변화 |
+|---|---:|---:|---|
+| anchor c01_01 vs baseline ΔEX | +0.2627~+0.3207 | **+0.0834~+0.2712** | **squeeze** (prompt confounder 분리) |
+| M4 vs baseline ΔEX | +0.2810~+0.3331 | **+0.1017~+0.2895** | squeeze |
+| **dominant evidence retain** | — | **본 framework 의 schema linking effect 정량 evidence** ★ | paper main contribution narrative 정합 정확화 |
+
+→ paper §10 의 6 baseline 비교 표 갱신 candidate (overall + per-difficulty 모두 갱신) + paper main contribution 의 baseline 우위 narrative ΔEX 정량 정확화 (anchor +0.18 vs baseline 평균 +0.12 의 ΔΔ = 본 framework 의 schema linking effect ~+0.06~+0.07).
+
+### per-difficulty 분포 정합 (paper §V.5.x.M.5 thrombosis_prediction outlier narrative 검증)
+
+- **simple**: G-Retriever 0.5114 > LinkAlign 0.4314 > XiYan-SQL 0.3092 (linear decay, schema rich → poor)
+- **moderate**: G-Retriever 0.3125 > LinkAlign 0.2112 > XiYan-SQL 0.1358 (동일 trend)
+- **challenging**: G-Retriever 0.2690 > LinkAlign 0.1586 ≈ XiYan-SQL 0.1379 (LinkAlign vs XiYan-SQL 의 gap shrink)
+- → **simple/moderate 에서 schema sparse 의 dominant penalty**, challenging 에서는 schema quality 가 less critical (다른 lever 가 dominant, e.g. domain knowledge)
+
+### 첫 launch fail + fix history (debugging note)
+
+- **첫 launch (18:19 KST)**: 모든 cell EX=0.0000 (API ERROR fallback)
+  - **Root cause**: `wave9_sql_regen.py` 에 `load_dotenv` 호출 미존재 → nohup subprocess 에 GLM_API_KEY env 미전달 → APIClient "sk-missing" fallback → OpenAI 401 Unauthorized
+  - Wave 8 cells 의 main.py 가 정상 동작 이유 = main.py line 4 의 `from dotenv import load_dotenv; load_dotenv(.env)` 자동 호출
+- **Fix (18:28 KST)**: `scripts/wave9_sql_regen.py` 에 dotenv 호출 추가
+- **Relaunch (18:28 KST)**: 정상 진행 → 19:30 KST 종료
+
+### 학습 비용 + 환경
+
+- **Wall**: 1h 02min (18:28 → 19:30 KST, parallel 3 streams)
+- **GPU 시간**: 0 (LLM API only)
+- **LLM API 비용**: ~$5~10 GLM 4.7 (3 cells × 1534 q × 1 LLM call = 4,602 calls)
+- **rate**: ~25 q/min/cell (anchor 의 ~3.4× 빠름 — 1 LLM/q 만, anchor 4 LLM/q 와 비교)
+- **failure**: 첫 launch failed (dotenv 누락), relaunch 정상 (0/3)
+
+### Checkpoint + Reference
+
+- final_nodes source: `outputs/baselines/baseline_{g_retriever,linkalign,xiyansql}/predictions.jsonl` (mtime 2026-03-28)
+- final_nodes 평균 cols/q: G-Retriever 80, LinkAlign 20, XiYan-SQL 1 (sparse)
+- new prompt: LLMSQLGenerator (sql_generator prompt + evidence) — Wave 5+ 정합
+
+### 산출물
+
+- Scripts: `scripts/wave9_sql_regen.py` (stand-alone) + `scripts/run_wave9_baseline_relog.sh` (3 parallel wrapper)
+- Outputs: `outputs/baselines/wave9_relog/{g_retriever,linkalign,xiyansql}_relog/` (predictions.jsonl + metrics.txt)
+- Logs: `logs/wave9_baseline_relog/`
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, Wave 9 분석)**: `notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md` 신규 작성
+  - 3 baseline × 4 metric (overall + simple + moderate + challenging) 정합 정량 갱신
+  - prompt-axis confounder 분리 정량 (anchor +0.1780 vs baseline 평균 +0.1206 의 ΔΔ ~+0.057)
+  - 본 framework 의 schema linking effect 정량 evidence (anchor 의 schema quality 우위 effect 정합)
+  - per-difficulty 정합 분포 (schema sparse penalty 의 difficulty-stratified analysis)
+  - paper §10 6 baseline 비교 표 갱신 권고 (overall + per-difficulty)
+  - paper §V.5.x.M.2 EX-Friendly Property narrative 정합 정확화 (baseline 도 prompt-axis +Jump 정합 확인)
+  - paper main contribution 의 baseline 우위 narrative ΔEX 정량 정확화 (현 +0.28~+0.33 → 신규 +0.08~+0.27)
+- **Planner 위임 (analyzer 후)**:
+  - paper §10 표 갱신 + ΔF1 / ΔEX 재계산
+  - paper main contribution baseline 우위 narrative 정합 정확화
+  - paper §V.5.x.M.2 narrative retain 확인
+
