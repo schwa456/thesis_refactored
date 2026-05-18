@@ -16,6 +16,8 @@ Builder/Selector/Extractor 내부는 가급적 언급하지 않고,
 - **bidirectional_agent_filter.py** `TieredBidirectionalAgentFilter` — Prune(Tier-1) + Restore(Tier-1 dropped ∪ Tier-2)
 - **adaptive_depth_filter.py** `AdaptiveDepthFilter` — GAT confidence 기반 depth 분기 (XiYan / Reflection / Bidirectional)
 - **stacked_filter.py** — 여러 Filter 직렬 연결
+- **bidirectional_filter.py** `BidirectionalFilter` — M4 anchor (Forward + Backward union, 2 LLM/q)
+- **d2_steiner_filter.py** `D2SteinerFilter` — Wave 8 D2: M4 위에 FK/PK Connectivity Steiner Closure (LLM 0× 추가, direct_fk / bridge_1hop variants). 의존: `steiner_closure.py` algorithm utility + `builders/db_fk_extractor.py` 메타데이터.
 - **tools/graph_tools.py** — F3용 graph-native tool (get_neighbors, get_fk_path, get_gat_score, get_column_examples, get_tier)
 
 ## XiYan Filter 핵심

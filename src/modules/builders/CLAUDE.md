@@ -120,3 +120,15 @@ Builder는 `(HeteroData, metadata_dict)` 반환. metadata_dict는:
 **커버리지 (BIRD-Dev 11 DB)**: pair 0.9353 / query 0.9445. 미스는 declared FK가 아닌 shared-column join (e.g., `cards.setCode = set_translations.setCode`). 보강 옵션은 implicit FK 추론.
 
 `LineGraphBuilder` / `RFMCompatibleBuilder` 는 위 키들을 그대로 forward + 자체 키 추가 (line graph는 `edge_node_to_orig` 등, RFM은 `rfm_text` 등).
+
+## Wave 8 D2 선결 utility (db_fk_extractor, 2026-05-18)
+
+filters 모듈 Wave 8 Direction 2 (FK/PK Connectivity Steiner Closure) 가 소비하는 DB DDL FK/PK 메타데이터 추출기. builders 영역 책임으로 분리 (DB DDL 파싱 = builder), filters 모듈은 algorithm 만 담당.
+
+- **파일**: [db_fk_extractor.py](db_fk_extractor.py) — SQLite PRAGMA 기반 추출 + `load_db_fk_metadata()` loader
+- **출력**: `data/processed/db_fk_metadata.json` (BIRD-Dev 11 DBs / 75 tables / 105 FK constraints, ~40KB)
+- **실행**: `PYTHONPATH=src python src/modules/builders/db_fk_extractor.py` (idempotent, `--force` 로 재빌드)
+- **형식**: `{db_id: {"tables": {t: {fk_cols, pk_cols, referenced}}, "fk_constraints": [...]}}` — DECISIONS §2 D2 spec + 학술 agent §2.1 flat list 동시 제공
+- **하류**: filters 의 `D2SteinerFilter.refine()` 가 lazy load 후 per-DB 사용. LLM 0× (algorithm only).
+
+[EXPERIMENT_PLAN_builders.md](EXPERIMENT_PLAN_builders.md) 의 "Wave 8 D2 선결 인프라" 섹션 + [DECISIONS 2026-05-18 §2 D2](../../../planning/DECISIONS.md) 참조.

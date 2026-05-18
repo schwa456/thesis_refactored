@@ -17,6 +17,7 @@ from .two_stage_filter import TwoStageFilter
 from .bidirectional_decompose_filter import BidirectionalDecomposeFilter
 from .bidirectional_verify_filter import BidirectionalVerifyLoopFilter
 from .bidirectional_value_hint_filter import BidirectionalValueHintFilter
+from .d2_steiner_filter import D2SteinerFilter
 
 __all__ = [
     "SingleAgentFilter",
@@ -40,4 +41,5 @@ __all__ = [
     "BidirectionalDecomposeFilter",
     "BidirectionalVerifyLoopFilter",
     "BidirectionalValueHintFilter",
+    "D2SteinerFilter",
 ]

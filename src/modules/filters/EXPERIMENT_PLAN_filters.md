@@ -33,11 +33,11 @@
 
 ---
 
-## D1 / D3 / D4. Wave 8 M4 Bidirectional 발전 (★ 최상, 2026-05-18)
+## D1 / D2 / D3 / D4. Wave 8 M4 Bidirectional 발전 (★ 최상, 2026-05-18)
 
-### 동기 (DECISIONS 2026-05-18 §2 + 학술 agent improving_m4_plan §1/§3/§4)
+### 동기 (DECISIONS 2026-05-18 §2 + 학술 agent improving_m4_plan §1/§2/§3/§4)
 - Wave 6 (Phase 1~5) 완료 — M1~M5 + Top 2 C1/C2 평가 closure.
-- 학술 agent improving_m4_plan: M4 Bidirectional (anchor F1=0.8370, EX=0.5300) 위에 **추가 발전** 의 4 direction 제시. 본 module 은 D2 제외 (Selector/Builder 책임 영역) + D1/D3/D4 wrapper 구현.
+- 학술 agent improving_m4_plan: M4 Bidirectional (anchor F1=0.8370, EX=0.5300) 위에 **추가 발전** 의 4 direction 제시 — 본 module 이 D1/D2/D3/D4 wrapper 모두 구현. D2 는 builder 세션의 [db_fk_extractor.py](../builders/db_fk_extractor.py) 메타데이터를 소비.
 
 ### 공통 설계 결정
 - **M4 anchor 변경 금지** — `BidirectionalFilter` 그대로 composition.
@@ -74,6 +74,50 @@ class BidirectionalDecomposeFilter(BaseFilter):
 
 ### Fallback
 - Decomposition parse 실패 (empty list) → M4 baseline 그대로 반환 (학술 agent §1.4 주의 1)
+
+## D2. FK/PK Connectivity Steiner Closure (★ 최상)
+
+### 학술 agent §2 spec
+- **Motivation**: M4 가 individual column 선택만, FK/PK 연결성 미고려 → DB DDL 기반 Steiner closure 로 JOIN path 보강
+- **Algorithm**: `steiner_closure()` (직접 FK) / `steiner_closure_with_bridge()` (1-hop bridge), `build_local_fk_graph()` 헬퍼
+- Variants: **v1 (direct_fk)** — `d2_1hop_bridge=False`, M4 union 의 테이블 쌍 사이 직접 FK column 추가 / **v2 (bridge_1hop)** — `d2_1hop_bridge=True`, 직접 FK 없을 시 중간 bridge 1개를 통해 간접 연결
+- **LLM 추가 0×** — DB DDL (builder 세션 [db_fk_extractor.py](../builders/db_fk_extractor.py) 추출) 만 사용
+- **검색 범위**: extractor_output (subgraph) 안에서만 — Full Schema 조회 금지 (Wave 8 핵심 제약)
+
+### 인터페이스
+```python
+@register("filter", "D2SteinerFilter")
+class D2SteinerFilter(BaseFilter):
+    def __init__(self, model_name, ...,
+                 forward_section="recall_biased_mild",
+                 backward_section="bidirectional_backward",
+                 bidirectional_forward_prompt_mode=None,
+                 bidirectional_forward_voting_strategy="MAJORITY",
+                 d2_steiner_closure=True,          # False = M4 그대로 (debug)
+                 d2_1hop_bridge=False,             # False=v1, True=v2
+                 db_fk_metadata_path="data/processed/db_fk_metadata.json",
+                 sanitize_output=True, **kwargs): ...
+    # refine(query, subgraph, db_id, gold=None, **kwargs)
+    # 1. self._m4.refine() (M4 BidirectionalFilter composition)
+    # 2. steiner_closure (direct 또는 bridge variant)
+    # 3. sanitize → final_nodes
+```
+
+### 측정 메타 (filter_info)
+- `filter_d2_steiner_closure`: closure 활성 여부 (False 시 M4 그대로)
+- `filter_d2_variant`: `"direct_fk"` | `"bridge_1hop"`
+- `filter_d2_added_count`: Steiner 가 추가한 FK 컬럼 수
+- `filter_d2_added_gold_count`: gold kwarg 가 들어왔으면 그 중 gold 인 수 (Steiner Precision 계산 입력)
+- `filter_d2_steiner_precision`: gold/added (added>0 시), else None
+- `filter_d2_added_cols`: `{table: [col, ...]}` per-table 추가 컬럼 (debug)
+- `filter_d2_skipped_reason`: skip 사유 (db_id metadata 미존재 / closure 예외)
+- `filter_m4_filter_info`: nested M4 filter_info 전체 (analyzer 가 M4 base 분석 가능)
+
+### Caveat / Failure modes
+- **db_fk_metadata cache 미존재 시 RuntimeError** — `python -m modules.builders.db_fk_extractor --out data/processed/db_fk_metadata.json` 사전 실행 필요. (현재 11 DB / 16 FK constraints 캐시 존재 — 2026-05-18 builder 세션 생성)
+- **db_id 가 metadata 에 없으면 warning + Steiner skip** — M4 결과 그대로 반환 (graceful degradation)
+- declared FK 만 사용 — shared-column 기반 implicit join (e.g., `cards.setCode = set_translations.setCode`) 은 보강 안 함 (builder coverage: pair 0.9353 / query 0.9445)
+- `d2_steiner_closure=False` 시 M4 결과 100% bitwise 동일 보장 (backward compat)
 
 ## D3. Self-Verification Loop (★ 최상)
 
@@ -139,6 +183,8 @@ class BidirectionalValueHintFilter(BaseFilter):
 ## Wave 8 Config 권장
 - `configs/experiments/abl/wave8_m4_directions/w8_d1_v1_multi_backward.yaml`
 - `configs/experiments/abl/wave8_m4_directions/w8_d1_v2_full_decompose.yaml` (d1_forward_per_sub_q=True)
+- `configs/experiments/abl/wave8_m4_extensions/d2_steiner/abl_wave8_d2v1_direct_fk.yaml` ★ 신규 (2026-05-18)
+- `configs/experiments/abl/wave8_m4_extensions/d2_steiner/abl_wave8_d2v2_bridge_1hop.yaml` ★ 신규 (2026-05-18)
 - `configs/experiments/abl/wave8_m4_directions/w8_d3_v1_verify_round1.yaml`
 - `configs/experiments/abl/wave8_m4_directions/w8_d3_v2_verify_round2.yaml`
 - `configs/experiments/abl/wave8_m4_directions/w8_d4_v1_value_hint.yaml`
@@ -146,15 +192,22 @@ class BidirectionalValueHintFilter(BaseFilter):
 
 ### 산출물 (본 모듈, 2026-05-18)
 - [`bidirectional_decompose_filter.py`](bidirectional_decompose_filter.py) — D1
+- [`steiner_closure.py`](steiner_closure.py) — D2 algorithm utility (`build_local_fk_graph` / `steiner_closure` / `steiner_closure_with_bridge` / `count_added_gold`) ★ 신규 (2026-05-18)
+- [`d2_steiner_filter.py`](d2_steiner_filter.py) — D2 BaseFilter wrapper (M4 composition + Steiner closure + measurement) ★ 신규 (2026-05-18)
 - [`bidirectional_verify_filter.py`](bidirectional_verify_filter.py) — D3 (sqlite execute + parse + recover helpers)
 - [`bidirectional_value_hint_filter.py`](bidirectional_value_hint_filter.py) — D4 (match_values_to_columns + format_value_evidence helpers)
-- [`tests/test_bidirectional_directions_d1_d3_d4.py`](tests/test_bidirectional_directions_d1_d3_d4.py) — 26-scenario smoke test (PASSED 26/26): D1 parse + decompose-fail fallback + multi-backward union + v2 forward_per_sub_q + cap + invalid arg + empty short-circuit + D3 parse helpers + recover from extractor only + invalid args + real sqlite valid SQL + real sqlite error → no halluc recover + empty short-circuit + D4 match boundaries (exact/partial/no-match) + format + v1 enhanced forward + v3 forced-include + v3 subgraph-skip + gold kwarg evidence_gold_precision + empty short-circuit + YAML build all 3
-- `src/prompts/filter.md` — 5 신규 section (`d1_decompose` / `d1_backward_sub` / `d3_sketch_sql` / `d4_value_extract` / `d4_forward`)
-- [`__init__.py`](__init__.py) — 3 신규 export
+- [`tests/test_bidirectional_directions_d1_d3_d4.py`](tests/test_bidirectional_directions_d1_d3_d4.py) — 26-scenario smoke test (PASSED 26/26)
+- [`../../../scripts/smoke_test_d2_steiner.py`](../../../scripts/smoke_test_d2_steiner.py) — D2 5-scenario smoke test (PASSED 5/5: direct FK closure / single-table no-op / bridge variant / Steiner Precision / D2SteinerFilter end-to-end with M4 monkey-patched) ★ 신규 (2026-05-18)
+- `src/prompts/filter.md` — 5 신규 section (`d1_decompose` / `d1_backward_sub` / `d3_sketch_sql` / `d4_value_extract` / `d4_forward`). D2 는 LLM 호출 0× 이므로 prompt 추가 없음.
+- [`__init__.py`](__init__.py) — 4 신규 export (D1/D2/D3/D4)
 
 ### 다음 단계 (Root + Analyzer 책임)
-- **Root**: 6 yaml 작성 + `scripts/run_wave8_m4_directions.sh` (학술 agent §10 권장 — Option C Hybrid 정합: D2 + D4 먼저, D1 + D3 후속). cost ~$11~33 + ~5h parallel
-- **Analyzer**: `notebooks/analysis_results/wave8_m4_directions_2026-05-XX.md` — direction 별 R/P/F1/EX + paper §V.5.x.M.16/17/18/19 candidate evidence + 조합 (Comb-A: D2+D4-v3 등) 가치 정량
+- **Root**: 6 yaml 작성 + `scripts/run_wave8_m4_directions.sh` (학술 agent §10 권장 — Option C Hybrid 정합: D2 + D4 먼저, D1 + D3 후속). cost ~$11~33 + ~5h parallel. D2 launch 는 즉시 가능 (LLM 0× 추가 — M4 와 동일 cost). D2 launch 명령 예시:
+  ```bash
+  conda run -n base python src/main.py --config experiments/abl/wave8_m4_extensions/d2_steiner/abl_wave8_d2v1_direct_fk
+  conda run -n base python src/main.py --config experiments/abl/wave8_m4_extensions/d2_steiner/abl_wave8_d2v2_bridge_1hop
+  ```
+- **Analyzer**: `notebooks/analysis_results/wave8_m4_directions_2026-05-XX.md` — direction 별 R/P/F1/EX + paper §V.5.x.M.16/17/18/19 candidate evidence + 조합 (Comb-A: D2+D4-v3 등) 가치 정량. D2 의 Steiner Precision (fk_added_gold / fk_cols_added) 학술 agent §8 Case 4 판정 기준.
 
 ---
 

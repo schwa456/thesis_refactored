@@ -239,6 +239,46 @@ B-III.b Diameter (이 절) ──┘
 
 ---
 
+## Wave 8 D2 선결 인프라 (db_fk_extractor — DECISIONS 2026-05-18 §2 D2)
+
+filters 모듈 Wave 8 Direction 2 (FK/PK Connectivity Steiner Closure) 가 소비하는 사전 메타데이터 추출기. builders 영역 (DB DDL 파싱) 책임으로 분리. LLM 0×, BIRD-Dev 11 DBs 1회성 추출 (idempotent).
+
+### 산출물
+- [db_fk_extractor.py](db_fk_extractor.py) — SQLite PRAGMA (foreign_key_list / table_info) 기반 FK/PK metadata 추출 + `load_db_fk_metadata()` loader
+- `data/processed/db_fk_metadata.json` — BIRD-Dev 11 DBs / 75 tables / 105 FK constraints
+
+### 형식
+`{db_id: {"tables": {t: {fk_cols, pk_cols, referenced}}, "fk_constraints": [{from_table, from_col, to_table, to_col}, ...]}}`. `tables[t].*` 는 DECISIONS §2 D2 Step 1 spec, `fk_constraints` flat list 는 학술 agent improving_m4_plan §2.1 `build_local_fk_graph` 가 직접 소비.
+
+### 실행
+```bash
+PYTHONPATH=src python src/modules/builders/db_fk_extractor.py
+```
+default idempotent skip, `--force` 로 cache 무효화 + 재실행 가능.
+
+### 11 DBs FK 분포 (2026-05-18 추출)
+| DB | tables | fk_constraints |
+|---|---:|---:|
+| california_schools | 3 | 2 |
+| card_games | 6 | 4 |
+| codebase_community | 8 | 13 |
+| debit_card_specializing | 5 | 2 |
+| european_football_2 | 7 | 31 |
+| financial | 8 | 8 |
+| formula_1 | 13 | 19 |
+| student_club | 8 | 8 |
+| superhero | 10 | 11 |
+| thrombosis_prediction | 3 | 2 |
+| toxicology | 4 | 5 |
+| **합계** | **75** | **105** |
+
+### 하류
+- filters 의 `D2SteinerFilter` (`src/modules/filters/d2_steiner_filter.py`) 가 `load_db_fk_metadata()` 로 로드 후 per-DB 메타데이터 사용
+- Steiner Closure algorithm (`src/modules/filters/steiner_closure.py`) 입력: `fk_constraints` flat list
+- LLM 호출 0× (algorithm only) — DECISIONS §2 D2 정합
+
+---
+
 ## 통합 실험 로드맵 (Builder 관점)
 
 모든 실험은 기존 cache 구조와 충돌하지 않도록 **builder suffix**로 분리. E1/E2와 호환 유지.
@@ -268,6 +308,7 @@ E1/E2의 precision 상한(0.81) 유지가 선결 조건. 새 builder가 기존 �
 | `configs/experiments/abl/build/diameter_meta/abl_build_06_diameter_meta.yaml` | 신규 (B-III.b — anchor E1 noise 일치 확인용) |
 | `scripts/smoke_test_b2b_no_t2t.py` | 신규 — B-II.b smoke + reachability invariance 검증 |
 | `scripts/smoke_test_b3b_diameter.py` | 신규 — B-III.b smoke + 11 DB D_max 프로파일링 |
+| [db_fk_extractor.py](db_fk_extractor.py) | 신규 (Wave 8 D2 선결, 2026-05-18) — DB DDL → FK/PK metadata 추출 + loader. `data/processed/db_fk_metadata.json` 생성 |
 
 ## 하류 모듈에 대한 계약 (유지)
 - 반환 포맷 `(HeteroData, metadata_dict)` 는 **절대 깨지 않음**.

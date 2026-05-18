@@ -1,0 +1,71 @@
+# Wave 8 D2-v2 — M4 BidirectionalFilter + FK/PK Steiner Closure (1-hop bridge)
+#
+# DECISIONS 2026-05-18 (Wave 8 M4 Bidirectional 발전 4 Direction) §2 D2 +
+# 학술 agent improving_m4_plan_scholar_agent_2026-05-18.md §2.3 정합.
+#
+# Base: abl_wave8_d2v1_direct_fk.yaml. 변경: d2_1hop_bridge=true (1-hop bridge 추가).
+#
+# Spec:
+#   M4 Forward (recall_biased_mild = M1-A) + Backward (bidirectional_backward) → union
+#   + D2-v2 1-hop bridge closure (선택 테이블 쌍에 직접 FK 없을 시 중간 bridge 1개 추가)
+#
+# Cost: 2 LLM call/q × 1534 = 3068 calls (M4 와 동일 — D2 자체는 LLM 0× 추가)
+#       Wall ≈ M4 + microsec (algorithm only)
+
+experiment_name: "abl_wave8_d2v2_bridge_1hop"
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "D2SteinerFilter"
+  params:
+    model_name: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+    max_iteration: 1
+    sanitize_output: true
+    # M4 anchor spec — Forward/Backward 그대로 retain
+    forward_section: "recall_biased_mild"
+    backward_section: "bidirectional_backward"
+    # D2 옵션
+    d2_steiner_closure: true
+    d2_1hop_bridge: true    # v2 = direct + 1-hop bridge
+    db_fk_metadata_path: "data/processed/db_fk_metadata.json"
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0
