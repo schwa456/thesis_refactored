@@ -2179,3 +2179,57 @@ F1-best Wave 6 (prior) = M1-B strong (0.8655)
 - F1-EX decoupling mechanism evidence (paper §V.5.x.M.12 narrative 보강 candidate)
 - paper §V.5.x.M.19 신규 sub-section candidate (Comb-A F1-best mechanism)
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 8 Comb-A 분석 채택 + Wave 8 Closure (DECISIONS 2026-05-19 §1+§3+§6, 2026-05-19, 0 신규 ID — 🎯 abl_wave8_comb_a_value_hint_verify2round 정합 mechanism 보강 + Wave 8 closure marker)
+
+### per-stage telemetry 정합 (StackedFilter 분해)
+
+- **Stage 0** D4 v1 BidirectionalValueHintFilter: nodes_in 76.86 → nodes_out **6.50**, evidence-aware schema retention
+- **Stage 1** D3 v2 BidirectionalVerifyLoopFilter: nodes_in 6.50 → nodes_out **5.61**, verify_success_rate **0.9394**, recovered_count **0** (D3 EX-axis mechanism collapse)
+
+### Mechanism 정량 (DECISIONS §1 정합)
+
+| Mechanism | 정량 | 정합 |
+|---|---:|---|
+| D4 individual P lift | +0.0030 | stand-alone |
+| **Stacking synergy** ⭐ | **+0.0624** | dual-lift (individual 의 ~20× magnitude) |
+| Total ΔP vs M4 | **+0.0654** | dramatic |
+| D3 stage 추가 pruning | 0.89 cols/q | verify rejection mechanism |
+| Net ΔEX vs D3 v2 alone | **−0.0098** | exact match (Comb-A 0.5117 − D3 v2 alone 0.5215) = −15/1534 EX-down queries |
+
+### Wave 8 Closure Marker — Pareto Frontier 4 Axis Multi-Coverage
+
+| Axis | Pareto Cell | 값 | Wave |
+|---|---|---:|---|
+| R-best ⭐ | D1 v2 full_decompose | R=0.9601 | Wave 8 신규 |
+| **F1-best post-Wave 5** ⭐⭐ | **abl_wave8_comb_a_value_hint_verify2round** | F1=**0.8684** | Wave 8 Comb-A 신규 |
+| **P-best post-Wave 5** ⭐ | **abl_wave8_comb_a_value_hint_verify2round** | P=**0.8247** | Wave 8 Comb-A 신규 |
+| EX-best ⭐ | M4 Bidirectional (w6_p2_m4_bidirectional) | EX=0.5300 | Wave 6 retain |
+| EX-2nd | D3 v2 verify2round | EX=0.5215 | Wave 8 신규 |
+
+→ **post-Wave 8 Comb-A 의 multi-Pareto coverage 완성** (R + F1 + P + EX 4 axis). paper drafting trigger 가능 base.
+
+### Planner 5 결정 ✅ 완료 (DECISIONS 2026-05-19 §2)
+
+1. paper §V.5.x.M.12 F1-EX Decoupling narrative 보강
+2. paper §V.5.x.M.17 (D3) Context-aware dual mechanism narrative 보강
+3. paper §V.5.x.M.18 (D4) Stacking platform mechanism narrative 보강
+4. paper §V.5.x.M.19 신규 sub-section (Pre-Filter + Post-Filter Stacking Synergy)
+5. Wave 8 closure 결정 + Pareto frontier 4 axis coverage
+
+### Comb-B/C/D = post-paper extension (post-paper backlog #23 candidate)
+
+- Comb-B (D1 + D3 v2): △ candidate, P-cost carryover 우려
+- Comb-C (D2 + D4 + D3): ❌ D2 mechanism 거의 무효
+- Comb-D (D4 + alternative post-filter): △ retain candidate
+
+→ paper drafting 후 post-paper extension 으로 위임.
+
+### 결론 — Wave 8 closure + paper drafting trigger 가능
+
+- abl_wave8_comb_* ID = 1 신규 (comb_a 의 sub-category, Wave 8 Top 2 조합 chain)
+- per-stage telemetry 정합 명시 + mechanism 정량 보강
+- Pareto frontier 4 axis multi-coverage 완성
+- paper main contribution evidence 충분 정합
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A 분석 채택 + closure (2026-05-19)](EXPERIMENT_HISTORY.md).

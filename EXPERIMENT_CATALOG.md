@@ -3269,3 +3269,72 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - Logs: `logs/wave8_comb_a/`
 - failure: 0/1
 
+
+## Wave 8 Comb-A 분석 결과 채택 + Wave 8 Closure (DECISIONS 2026-05-19 §1+§3+§6 + analyzer §0+§5+§6, 2026-05-19, 🎯 planner 5 결정 ✅ 완료 + Wave 8 closure marker + Pareto frontier 4 axis multi-coverage)
+
+### per-stage telemetry 정밀 정량 (Comb-A StackedFilter 분해)
+
+| Stage | Filter | nodes_in | nodes_out | telemetry |
+|---|---|---:|---:|---|
+| **Stage 0** | D4 v1 (Pre-Filter) | 76.86 | **6.50** | evidence-aware schema retention |
+| **Stage 1** | D3 v2 (Post-Filter) | 6.50 | **5.61** | verify_success_rate **0.9394**, recovered_count **0** (D3 collapse) |
+
+→ Stage 1 추가 pruning **0.89/q** (verify rejection of hallucinated cols).
+
+### F1 mechanism 분해 (P-axis dual-lift)
+
+| Component | ΔP vs M4 | 정합 |
+|---|---:|---|
+| (i) D4 v1 individual lift | +0.0030 | stand-alone (D4 alone P 0.7623 vs M4 P 0.7593) |
+| (ii) **Stacking synergy** ⭐ | **+0.0624** | dual-lift (Comb-A 0.8247 vs D4 alone 0.7623) — individual 의 **~20× magnitude** |
+| **Total ΔP vs M4** | **+0.0654** | dramatic |
+
+### EX paradox root cause (D3 mechanism collapse)
+
+- D3 v2 alone: 1 query SQL recovery (rounds=2 0.07% activation) → EX +0.0046 lift
+- **Comb-A**: D4 clean schema (6.50 nodes/q) → 1-round verify success rate 0.937 → 0.9394 saturate → **rounds=2 활성화 0%, recovered_count 0/q** → D3 의 specific EX-axis mechanism **disappear**
+- 추가 40 queries EX-down (over-pruning schema sparse penalty) → Net ΔEX = **−15/1534 = −0.0098** exact match (Comb-A − D3 v2 alone)
+
+### per-difficulty robustness
+
+| Difficulty | ΔF1 vs M4 | ΔP vs M4 | ΔEX vs M4 |
+|---|---:|---:|---:|
+| simple (n=925) | **+0.0342** | +0.0712 | −0.0130 |
+| moderate (n=464) | **+0.0264** | +0.0544 | **−0.0302** ⚠ |
+| challenging (n=145) | **+0.0307** | +0.0628 | −0.0138 |
+
+→ F1 gain robust across all difficulties + EX drop moderate-bias.
+
+### Wave 8 Closure Marker — Pareto Frontier 4 Axis Multi-Coverage
+
+| Axis | Pareto Cell (post-Wave 8 Comb-A) | 값 |
+|---|---|---:|
+| **R-best** ⭐ | D1 v2 full_decompose | R=**0.9601** |
+| **F1-best post-Wave 5** ⭐⭐ | **Comb-A** | F1=**0.8684** |
+| **P-best post-Wave 5** ⭐ | **Comb-A** | P=**0.8247** (dual-lift) |
+| **EX-best** ⭐ | M4 Bidirectional | EX=**0.5300** |
+| EX-2nd | D3 v2 verify2round | EX=0.5215 |
+
+→ **Wave 8 closure: paper main contribution evidence 충분 정합** (R + F1 + P + EX 4 axis multi-Pareto coverage). paper drafting trigger 가능 base.
+
+### Planner 5 결정 ✅ 완료
+
+1. paper §V.5.x.M.12 F1-EX Decoupling narrative 보강 (Comb-A simultaneous decoupling strongest single-cell evidence 통합)
+2. paper §V.5.x.M.17 (D3) narrative 보강 (Context-aware dual mechanism)
+3. paper §V.5.x.M.18 (D4) narrative 보강 (Stacking platform mechanism)
+4. paper §V.5.x.M.19 신규 sub-section (Pre-Filter + Post-Filter Stacking Synergy)
+5. Wave 8 closure marker 정합
+
+### Comb-B/C/D = post-paper extension (post-paper backlog #23 candidate)
+
+- Comb-B (D1 + D3 v2): △ P-cost carryover 우려
+- Comb-C (D2 + D4 + D3): ❌ D2 mechanism 거의 무효
+- Comb-D (D4 + 다른 post-filter): △ retain candidate
+
+### 결론 — Wave 8 closure 완료 + paper drafting trigger 가능 base
+
+- planner 5 결정 ✅ 완료
+- Pareto frontier 4 axis multi-coverage 완성
+- paper main contribution evidence 충분 정합
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A 분석 채택 + closure (2026-05-19)](EXPERIMENT_HISTORY.md).
+

@@ -5189,3 +5189,81 @@ DECISIONS 2026-05-19 §3 작업 4 + §6 + [wave8_m4_extensions_2026-05-19.md §5
   - Pareto frontier 갱신 (F1-best post-Wave 5 = Comb-A)
   - Wave 8 closure 결정 또는 Comb-B/C/D launch candidate
 
+
+## Wave 8 Comb-A 분석 결과 채택 + Wave 8 Closure (DECISIONS 2026-05-19 (Wave 8 Comb-A 채택 + closure) §1+§3+§6 + analyzer wave8_comb_a_2026-05-19.md §0+§5+§6, 2026-05-19, 🎯 paper §V.5.x.M.12+§V.5.x.M.17+§V.5.x.M.18+§V.5.x.M.19 narrative 보강/신설 ✅ planner 완료 + Wave 8 closure marker + Pareto frontier 4 axis multi-coverage)
+
+### F1 mechanism 분해 정밀 정량 (analyzer §0 + §5.4 정합)
+
+| Component | ΔP vs M4 | 정합 |
+|---|---:|---|
+| (i) **D4 v1 individual lift** | +0.0030 | stand-alone (D4 alone P=0.7623 vs M4 P=0.7593) |
+| (ii) **Stacking synergy** ⭐ | **+0.0624** | dual-lift (Comb-A P=0.8247 vs D4 alone P=0.7623) — individual 의 **~20× magnitude** |
+| **Total ΔP vs M4** | **+0.0654** | dramatic dual-lift |
+
+→ **stacking synergy dominant**: D4 의 clean schema (avg 6.5 nodes/q) base + D3 verify 의 hallucinated col rejection 의 직교 P-lift.
+
+### EX paradox root cause (analyzer §0 + §3 정합)
+
+| Source | Mechanism | 정량 |
+|---|---|---|
+| **D3 v2 recovered_count 1 → 0 collapse** | D4 clean schema → 1-round verify success rate 0.9394 (D3 v2 alone 0.937 +0.0024), **rounds=2 활성화 0%** (vs D3 v2 alone 0.07%), recovered_count **0/q** (vs 0.0007/q = 1 query) | D3 v2 alone EX +0.0046 lift mechanism **disappear** |
+| **D3 stage 추가 pruning 0.89/q** | nodes_out 6.50 → 5.61 (verify rejection of hallucinated cols) | P-axis +0.0624 stacking synergy의 source |
+| **EX-down 40 queries** | borderline col reject → 일부 gold col 제거 + SQL gen schema sparse penalty | Net ΔEX = −15/1534 = **−0.0098** exact match (Comb-A − D3 v2 alone) |
+
+### per-stage telemetry (Comb-A StackedFilter 분해)
+
+| Stage | Filter | nodes_in | nodes_out | LLM/q | telemetry |
+|---|---|---:|---:|---:|---|
+| **Stage 0** | D4 v1 BidirectionalValueHintFilter | 76.86 (Extractor output) | **6.50** | ~3 | evidence-aware schema retention |
+| **Stage 1** | D3 v2 BidirectionalVerifyLoopFilter | 6.50 (D4 output) | **5.61** | ~3 | **verify_success_rate 0.9394, recovered_count 0** (collapse) |
+
+### per-difficulty robustness (analyzer §0 정합)
+
+| Difficulty | ΔF1 vs M4 | ΔP vs M4 | ΔEX vs M4 |
+|---|---:|---:|---:|
+| simple (n=925) | **+0.0342** | +0.0712 | −0.0130 |
+| moderate (n=464) | **+0.0264** | +0.0544 | **−0.0302** ⚠ largest EX drop |
+| challenging (n=145) | **+0.0307** | +0.0628 | −0.0138 |
+
+→ **F1 gain robust across all difficulties** (mid spread 0.0078) + **EX drop moderate-bias** (mid-difficulty 의 schema sparse penalty sensitivity).
+
+### Planner 5 결정 ✅ 완료 (DECISIONS §2 정합)
+
+| # | 결정 | 결과 |
+|---|---|---|
+| 1 | **paper §V.5.x.M.12 F1-EX Decoupling narrative 보강** | ✅ 완료 (Comb-A 의 simultaneous decoupling 의 strongest single-cell evidence 통합, Wave 7 stage-wise + Comb-A cross-cell dual evidence 완성) |
+| 2 | **paper §V.5.x.M.17 (D3) narrative 보강** | ✅ 완료 (Context-aware dual mechanism — Stand-alone M4 base EX-axis ↔ Stacked D4 base P-axis) |
+| 3 | **paper §V.5.x.M.18 (D4) narrative 보강** | ✅ 완료 (Stacking platform mechanism — stand-alone P +0.0030 + stacked synergy +0.0624) |
+| 4 | **paper §V.5.x.M.19 신규 sub-section** | ✅ 완료 (Pre-Filter + Post-Filter Stacking Synergy — F1-best Mechanism, Comb-A Evidence) |
+| 5 | **Wave 8 closure** | ✅ 본 entry — main contribution evidence 충분, Pareto frontier 4 axis multi-coverage |
+
+### Wave 8 Closure Marker — paper main contribution evidence 충분 정합
+
+| 정합 axis | evidence | 정합 cell |
+|---|---|---|
+| **R-best** ⭐ | R=0.9601 | D1 v2 full_decompose (Wave 8 신규) |
+| **F1-best post-Wave 5** ⭐⭐ | F1=0.8684 | **Comb-A** (D4 v1 + D3 v2, Wave 8 Comb-A 신규) |
+| **P-best post-Wave 5** ⭐ | P=0.8247 | **Comb-A** (anchor c01_01 −0.0335 단 M4 +0.0654, dual-lift mechanism) |
+| **EX-best** ⭐ | EX=0.5300 | M4 Bidirectional (Wave 6 retain) |
+| EX-2nd-best | EX=0.5215 | D3 v2 verify2round (Wave 8 신규) |
+| F1-EX Decoupling strongest evidence | F1 +0.0314 + EX −0.0183 simultaneous | Comb-A single-cell |
+| paper §V.5.x.M.16~19 sub-section evidence | D2 + D1 격하, D3 + D4 retain, Comb-A 신규 | Wave 8 + Comb-A |
+
+→ **Wave 8 closure 의 paper main contribution evidence 충분** — Pareto frontier 4 axis multi-Pareto coverage 완성. paper drafting trigger 가능 base.
+
+### Comb-B/C/D = post-paper extension (post-paper backlog #23 candidate)
+
+| Combination | candidate | 정합 |
+|---|---|:---:|
+| Comb-B (D1 + D3 v2) | R-axis + EX-axis | △ (P-cost carryover 우려, D1 v2 P -0.2093 collapse) |
+| Comb-C (D2 + D4 + D3) | 3-axis 통합 | ❌ (D2 mechanism 거의 무효, LLM cost 큼) |
+| Comb-D (D4 + 다른 post-filter) | D3 대신 alternative | △ retain candidate |
+
+→ post-paper extension 으로 위임 — paper main contribution 영향 작음.
+
+### 후속 위임 (chain handoff)
+
+- **Root (paper drafting trigger 시점 결정)**: Wave 8 closure + Wave 9 baseline relog + Wave 10 framework audit 의 3 chain 통합 정량 base 위에 paper §V.5.x.M.* sub-section narrative 의 final integration timing 판단.
+- **Analyzer (Wave 8 후속 candidate, priority 낮음)**: Comb-A 의 EX-down 40 queries case-by-case 분석 (per-DB / per-difficulty schema modification trigger 분류) + Comb-A per-DB R/P/F1/EX 분포 + D3 verify 의 base-schema sensitivity 분석. 산출: `notebooks/analysis_results/wave8_comb_a_2026-05-19.md §7 확장` 또는 별도 supplemental.
+- **Planner**: paper drafting trigger 시점 결정 후 paper §V.5.x.M.* sub-section final integration.
+
