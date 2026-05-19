@@ -42,8 +42,203 @@ class SchemaLinkingPipeline:
             self.generator = build("generator", config['sql_generator'])
         else:
             self.generator = None
-        
+
+        # Wave 11 Schema Serialization Direction C (DECISIONS 2026-05-19) —
+        # serializer 분기 + question enrichment. config['sql_generator']['serializer']
+        # ∈ {None, "source_tagged", "flat_merged_fk", "flat_merged_no_fk",
+        #    "question_enrichment", "tagged_enriched"}
+        # config['sql_generator']['serializer_config']: dict (type-specific)
+        sql_gen_cfg = config.get('sql_generator', {}) or {}
+        self.serializer_type = sql_gen_cfg.get('serializer')  # None = legacy DDL path
+        self.serializer_config = sql_gen_cfg.get('serializer_config', {}) or {}
+        self._enrichment_cache = None
+        self._enrichment_client = None
+        self._enrichment_few_shots = None
+        if self.serializer_type in ("question_enrichment", "tagged_enriched"):
+            # Enrichment cache + LLM client lazy init (재사용)
+            from serializers.question_enricher import EnrichmentCache
+            from llm_client.api_handler import APIClient
+            self._enrichment_cache = EnrichmentCache()
+            self._enrichment_client = APIClient(
+                provider=self.serializer_config.get('enricher_provider', 'glm'),
+            )
+            # Few-shot examples 로드 (학술 agent §5.4 — 사용자 직접 작성 12 examples).
+            # 파일 형식: {"_meta": {...}, "examples": [{"db_id", "difficulty",
+            #                       "original_question", "filtered_schema",
+            #                       "enriched_question"}, ...]} (planner 5/19 정합).
+            few_shot_path = self.serializer_config.get('few_shot_path')
+            raw_few_shots: List[Dict[str, Any]] = []
+            if few_shot_path:
+                import os as _os, json as _json
+                if _os.path.exists(few_shot_path):
+                    with open(few_shot_path, "r", encoding="utf-8") as _f:
+                        loaded = _json.load(_f)
+                    if isinstance(loaded, dict) and "examples" in loaded:
+                        raw_few_shots = loaded.get("examples", []) or []
+                    elif isinstance(loaded, list):
+                        raw_few_shots = loaded
+                else:
+                    logger.warning(
+                        f"[Wave 11 Enrichment] few_shot_path '{few_shot_path}' missing — "
+                        "enrichment will run with 0 examples (suboptimal quality)."
+                    )
+            # JSON 키 정규화 → enricher 가 요구하는 {question, schema,
+            # enriched_question, db_id} 형식으로 변환 (data leakage filter 위한
+            # db_id retain). question/schema 키는 본 file format (original_question/
+            # filtered_schema) 와 enricher key (question/schema) 둘 다 호환.
+            normalized: List[Dict[str, Any]] = []
+            for ex in raw_few_shots:
+                if not isinstance(ex, dict):
+                    continue
+                normalized.append({
+                    "question": ex.get("original_question") or ex.get("question") or "",
+                    "schema": ex.get("filtered_schema") or ex.get("schema") or {},
+                    "enriched_question": ex.get("enriched_question", ""),
+                    "db_id": ex.get("db_id"),
+                    "difficulty": ex.get("difficulty"),
+                })
+            self._enrichment_few_shots = normalized
+            logger.info(
+                f"[Wave 11] Enrichment initialized — few_shots="
+                f"{len(self._enrichment_few_shots)} normalized "
+                f"(from {len(raw_few_shots)} raw), "
+                f"model={self.serializer_config.get('enricher_model_name', 'zai-org/glm-4.7')}"
+            )
+        if self.serializer_type:
+            logger.info(
+                f"[Wave 11 Serializer] type='{self.serializer_type}' active "
+                f"(schema_str + query 자리 직렬화 교체)"
+            )
+
         logger.info("✅ Pipeline assembly completed successfully.")
+
+    def _select_few_shots_for_query(
+        self, test_db_id: str = None, max_examples: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """Data leakage 방지 — test query 의 DB 와 다른 DB 의 examples 만 사용.
+
+        학술 agent §5.4 + 사용자 정합 (5/19): "각 test query의 DB와 다른 DB의 예시만 사용".
+        difficulty-stratified sampling 시도 (가능하면 simple/moderate/challenging 균등).
+        """
+        if not self._enrichment_few_shots:
+            return []
+        filtered = [
+            ex for ex in self._enrichment_few_shots
+            if not test_db_id or ex.get("db_id") != test_db_id
+        ]
+        # Difficulty 별 grouping → round-robin 으로 max_examples 까지 선택
+        by_diff: Dict[str, List[Dict[str, Any]]] = {"simple": [], "moderate": [], "challenging": []}
+        others: List[Dict[str, Any]] = []
+        for ex in filtered:
+            d = ex.get("difficulty")
+            if d in by_diff:
+                by_diff[d].append(ex)
+            else:
+                others.append(ex)
+        ordered: List[Dict[str, Any]] = []
+        # Round-robin
+        idx = 0
+        while len(ordered) < max_examples and any(by_diff.values()):
+            d_key = ["simple", "moderate", "challenging"][idx % 3]
+            if by_diff[d_key]:
+                ordered.append(by_diff[d_key].pop(0))
+            idx += 1
+            if idx > max_examples * 3:
+                break
+        if len(ordered) < max_examples and others:
+            ordered.extend(others[: max_examples - len(ordered)])
+        return ordered
+
+    def _apply_wave11_serializer(
+        self,
+        final_nodes: List[str],
+        filter_info: Dict[str, Any],
+        query: str,
+        metadata: Dict[str, Any] = None,
+        db_id: str = None,
+    ):
+        """Wave 11 serializer 적용. Returns (pre_serialized_schema, enriched_question)."""
+        if not self.serializer_type:
+            return None, None
+        # M4 output (final_nodes → {table: [col, ...]})
+        m4_output: Dict[str, List[str]] = {}
+        for n in final_nodes or []:
+            if not isinstance(n, str):
+                continue
+            if "." in n:
+                t, c = n.split(".", 1)
+                if c not in m4_output.setdefault(t, []):
+                    m4_output[t].append(c)
+            else:
+                m4_output.setdefault(n, [])
+
+        pre_serialized = None
+        enriched = None
+
+        # Source-Tagged 또는 Comb-C 의 schema 부분
+        if self.serializer_type in ("source_tagged", "tagged_enriched"):
+            from serializers.source_tagged_serializer import format_tagged_schema
+            fwd = (filter_info or {}).get("filter_forward_set") or []
+            bwd = (filter_info or {}).get("filter_backward_set") or []
+            pre_serialized = format_tagged_schema(m4_output, fwd, bwd)
+
+        # Flat Merged (C-v3a / C-v3b)
+        elif self.serializer_type in ("flat_merged_fk", "flat_merged_no_fk"):
+            from serializers.flat_merged_serializer import format_flat_schema
+            fk_relations = None
+            if self.serializer_type == "flat_merged_fk" and metadata:
+                fk_relations = self._extract_fk_relations_from_metadata(metadata)
+            pre_serialized = format_flat_schema(m4_output, fk_relations=fk_relations)
+
+        # Question Enrichment 단독 (C-v2). Schema 는 default DDL.
+        elif self.serializer_type == "question_enrichment":
+            pre_serialized = None  # SQL gen 의 default DDL path
+
+        # Comb-C 의 enrichment 부분 + tagged_enriched 모두 enrich
+        if self.serializer_type in ("question_enrichment", "tagged_enriched"):
+            from serializers.question_enricher import enrich_question
+            # data leakage 방지 — test DB 와 다른 DB 의 examples 만 (사용자 5/19 정합)
+            max_examples = int(self.serializer_config.get(
+                'enricher_max_few_shots', 8,
+            ))
+            selected_few_shots = self._select_few_shots_for_query(
+                test_db_id=db_id, max_examples=max_examples,
+            )
+            try:
+                enriched = enrich_question(
+                    question=query,
+                    m4_schema=m4_output,
+                    few_shot_examples=selected_few_shots,
+                    llm_client=self._enrichment_client,
+                    model_name=self.serializer_config.get(
+                        'enricher_model_name', 'zai-org/glm-4.7',
+                    ),
+                    temperature=float(self.serializer_config.get(
+                        'enricher_temperature', 0.0,
+                    )),
+                    cache=self._enrichment_cache,
+                )
+            except Exception as e:
+                logger.warning(f"[Wave 11 Enrichment] failed — fallback original query: {e}")
+                enriched = query
+        return pre_serialized, enriched
+
+    @staticmethod
+    def _extract_fk_relations_from_metadata(metadata: Dict[str, Any]):
+        """metadata['fk_to_id'] keys → list of (pt, pc, ct, cc) tuples."""
+        out = []
+        fk_to_id = (metadata or {}).get("fk_to_id") or {}
+        for fk_key in fk_to_id.keys():
+            if not isinstance(fk_key, str) or "->" not in fk_key:
+                continue
+            left, right = fk_key.split("->", 1)
+            left, right = left.strip(), right.strip()
+            if "." not in left or "." not in right:
+                continue
+            pt, pc = left.split(".", 1)
+            ct, cc = right.split(".", 1)
+            out.append((pt, pc, ct, cc))
+        return out
 
     def _apply_retry_strategy(self, strategy: str) -> Dict[str, Any]:
         """Relax Extractor parameters in-place. Returns snapshot for restore."""
@@ -415,9 +610,30 @@ class SchemaLinkingPipeline:
         t_start = time.perf_counter()
         if self.generator is not None:
             logger.debug("SQL Generation")
+            # Wave 11 Serializer 적용 (None 이면 legacy DDL + original query)
+            pre_serialized, enriched = self._apply_wave11_serializer(
+                final_nodes=final_result.get("final_nodes") or [],
+                filter_info=final_result.get("filter_info") or {},
+                query=query,
+                metadata=metadata,
+                db_id=db_id,
+            )
             # Stage 7: SQL Generation
-            generated_sql = self.generator.generate(query=query, subgraph=subgraph_dict, evidence=evidence)
+            generated_sql = self.generator.generate(
+                query=query, subgraph=subgraph_dict, evidence=evidence,
+                pre_serialized_schema=pre_serialized,
+                enriched_question=enriched,
+            )
             logger.debug(f"Generated SQL: {generated_sql}")
+            # filter_info 에 Wave 11 진단 노출 (analyzer 가 출력 분석 시)
+            if self.serializer_type:
+                fi = final_result.get("filter_info") or {}
+                fi["wave11_serializer_type"] = self.serializer_type
+                fi["wave11_pre_serialized_used"] = pre_serialized is not None
+                fi["wave11_enriched_question_used"] = enriched is not None and enriched != query
+                if self._enrichment_cache is not None:
+                    fi["wave11_enrichment_cache_stats"] = self._enrichment_cache.stats()
+                final_result["filter_info"] = fi
         execution_times["sql_generation"] = time.perf_counter() - t_start
 
         final_result["generated_sql"] = generated_sql

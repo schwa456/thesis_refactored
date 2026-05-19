@@ -367,6 +367,16 @@ class BidirectionalFilter(BaseFilter):
         contrib = self.analyze_backward_contribution(fwd_clean, bwd_clean, gold)
 
         token_after = AgentUtils.token_snapshot()
+        # Wave 11 (Schema Serialization Direction C, 2026-05-19) — F/B 별도 저장:
+        # source_tagged_serializer (C-v1) 가 forward_set / backward_set 의 disjoint
+        # mask 를 필요로 함. stats / filter_info 양쪽에 노출.
+        forward_set_list = sorted(
+            f"{t}.{c}" for t, cols in fwd_clean.items() for c in cols
+        )
+        backward_set_list = sorted(
+            f"{t}.{c}" for t, cols in bwd_clean.items() for c in cols
+        )
+
         self.last_info = AgentUtils.build_filter_info(
             filter_type="BidirectionalFilter",
             input_subgraph=subgraph, final_nodes=final_nodes, status=status,
@@ -390,6 +400,9 @@ class BidirectionalFilter(BaseFilter):
             backward_precision=contrib.get("backward_precision"),
             hallucination_removed_forward=halluc_fwd,
             hallucination_removed_backward=halluc_bwd,
+            # Wave 11 spec naming 정합 (filter_stage_infos source) — Serializer 가 직접 활용
+            forward_set=forward_set_list,
+            backward_set=backward_set_list,
         )
         return {
             "status": status, "final_nodes": final_nodes,
@@ -409,12 +422,11 @@ class BidirectionalFilter(BaseFilter):
                 "backward_precision": contrib.get("backward_precision"),
                 "hallucination_removed_forward": halluc_fwd,
                 "hallucination_removed_backward": halluc_bwd,
-                "forward_nodes": sorted(
-                    f"{t}.{c}" for t, cols in fwd_clean.items() for c in cols
-                ),
-                "backward_nodes": sorted(
-                    f"{t}.{c}" for t, cols in bwd_clean.items() for c in cols
-                ),
+                "forward_nodes": forward_set_list,
+                "backward_nodes": backward_set_list,
+                # Wave 11 spec naming alias — C-v1 source_tagged_serializer 의 entry
+                "forward_set": forward_set_list,
+                "backward_set": backward_set_list,
             },
             "filter_info": dict(self.last_info),
         }

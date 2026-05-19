@@ -10,7 +10,7 @@
 
 ---
 
-## 이 모듈이 받아야 할 16가지 제안
+## 이 모듈이 받아야 할 17가지 제안
 
 | # | 이름 | Filter의 역할 | 우선순위 | a05와의 관계 |
 |---|------|---------------|---------|-------------|
@@ -30,6 +30,7 @@
 | **D1** | **Question Decomposition → Multi-Backward (Wave 8, 2026-05-18)** | M4 위 wrapper — Question Decomposer + N sub-q × Backward (∪ option Forward) → M4 baseline 에 Union. v1 (Backward sub-q union) / v2 (Forward + Backward 모두 sub-q 별). 학술 agent §1 정합. | **최상** | M4 anchor 변경 없음. LLM/q = M4(2) + decomposer(1) + sub-q × 1~2. paper §V.5.x.M.16 candidate. |
 | **D3** | **Self-Verification Loop (Wave 8, 2026-05-18)** | M4 위 wrapper — Sketch SQL 생성 + SQLite 실행 (5s timeout) + 오류 parse + Extractor 후보에서만 column recover. max_rounds=1 또는 2. 학술 agent §3 정합 (AutoLink Wang 2025). | **최상** | DB 실행 필요. Hallucination 방지: recover_from_extractor 는 subgraph 안의 column 만 추가. paper §V.5.x.M.17 candidate. |
 | **D4** | **Value Hint 기반 Forward 강화 (Wave 8, 2026-05-18)** | M4 위 wrapper — Value extract + match_values_to_columns (DB sample values) + Value-Hint Enhanced Forward (v1) 또는 Forced-Include high-confidence (v3). 학술 agent §4 정합 (Ma 2026). | **최상** | LLM/q: v1=4, v3=3. v3 forced-include 는 LLM 판단 생략 (값 정확 매칭만으로 retain). paper §V.5.x.M.18 candidate. |
+| **Wave 11 (C-v1/v2/v3a/v3b/Comb-C)** | **Schema Serialization Direction C (2026-05-19)** | M4 column 선택 보존 + **직렬화 방식만** 변경 (Schema Content Invariance). C-v1 Source-Tagged ([F]/[B]/[F+B]), C-v2 Question Enrichment (M4-Constrained, No Full Schema), C-v3a/b Flat Merged (FK 포함/없음), Comb-C 조합. paper §V.5.x.M.20 candidate. | **최상** | M4 anchor 변경 없이 SQL Gen interface 만 변경 — Wave 8 F1-EX Decoupling 의 인과 검증 trigger. Cost: C-v1/v3 = 0 LLM; C-v2/Comb-C = +1 LLM (cache hit 시 0). |
 
 ---
 
@@ -208,6 +209,76 @@ class BidirectionalValueHintFilter(BaseFilter):
   conda run -n base python src/main.py --config experiments/abl/wave8_m4_extensions/d2_steiner/abl_wave8_d2v2_bridge_1hop
   ```
 - **Analyzer**: `notebooks/analysis_results/wave8_m4_directions_2026-05-XX.md` — direction 별 R/P/F1/EX + paper §V.5.x.M.16/17/18/19 candidate evidence + 조합 (Comb-A: D2+D4-v3 등) 가치 정량. D2 의 Steiner Precision (fk_added_gold / fk_cols_added) 학술 agent §8 Case 4 판정 기준.
+
+---
+
+## Wave 11 Schema Serialization Direction C (★ 최상, 2026-05-19)
+
+### 동기 (DECISIONS 2026-05-19 + 학술 agent §1~§5)
+- Wave 8 F1-EX Decoupling: M4 의 F1 = 0.8370 + EX = 0.5300 ceiling 정합. EX 가 F1 와 decouple → **EX ceiling 의 원인이 Filter (column 선택) 가 아니라 Filter-Generator Interface (직렬화 방식)** 일 수 있다는 가설.
+- 본 chain: M4 column 선택은 **고정** (Schema Content Invariance retain — R/P/F1 ΔX ±0.0001) + 직렬화 방식만 5 variants 로 변경 → ΔEX > 0 시 가설 confirm.
+
+### 핵심 제약 (학술 agent §9 + DECISIONS §3 Phase A)
+- **No Full Schema**: C-v2 Enrichment LLM 호출 시 입력 schema 는 **M4 Filter 출력만** — 전체 DB schema 절대 포함 안 함
+- **Schema Content Invariance**: R/P/F1 / Prune Rate 가 C-v0 (M4 baseline) 와 동일 (허용 오차 ±0.0001) — implementation 정합 검증 필수
+- **F/B 별도 저장**: M4 BidirectionalFilter 가 Forward / Backward pass 결과를 Union 전 별도 노출 (C-v1 source-tagged 의 입력)
+- **Enrichment 캐싱**: 동일 (question, schema) 의 enrichment 한 번만 (학술 agent §9)
+- **Data leakage 방지**: few-shot examples 중 test query 의 db_id 와 다른 DB 의 예시만 사용 (사용자 5/19 정합 — `_select_few_shots_for_query()` 의 db_id filter)
+
+### 5 cells (DECISIONS §3 Phase A)
+| Cell | Serializer | Schema 변경 | Question 변경 | +LLM/q |
+|---|---|---|---|---|
+| **C-v0** (baseline) | (none — legacy DDL) | — | — | 0 |
+| **C-v1** | Source-Tagged | [F]/[B]/[F+B] 태그 부착 | — | 0 |
+| **C-v2** | Question Enrichment | (legacy DDL) | Enriched (E-SQL 정합) | +1 (cache miss) |
+| **C-v3a** | Flat Merged + FK | table.col flat + FK hint | — | 0 |
+| **C-v3b** | Flat Merged no FK | table.col flat only | — | 0 |
+| **Comb-C** | C-v2 + C-v1 | Source-Tagged | Enriched | +1 |
+
+### 인터페이스
+yaml config (sql_generator 블록):
+```yaml
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  serializer: "source_tagged"   # ∈ {None, source_tagged, question_enrichment, flat_merged_fk, flat_merged_no_fk, tagged_enriched}
+  serializer_config:
+    enricher_model_name: "zai-org/glm-4.7"
+    enricher_provider: "glm"
+    enricher_temperature: 0.0
+    enricher_max_few_shots: 8        # round-robin difficulty stratified
+    few_shot_path: "planning/few_shot_examples_wave11_2026-05-19.json"
+  params:
+    llm_model: "zai-org/glm-4.7"
+    provider: "glm"
+    temperature: 0.0
+```
+
+### 측정 메타 (filter_info 신규)
+- `wave11_serializer_type` : 활성 serializer 명
+- `wave11_pre_serialized_used` : bool (schema text 가 serializer 출력으로 대체됐는지)
+- `wave11_enriched_question_used` : bool (query 가 enriched 로 대체됐는지)
+- `wave11_enrichment_cache_stats` : `{"hits": n, "misses": n, "size": n}` (Comb-C/C-v2 만)
+- BidirectionalFilter 의 신규 `filter_forward_set` / `filter_backward_set` (C-v1 input source)
+
+### Pipeline 통합
+`src/pipeline/schema_linking.py`:
+- `_apply_wave11_serializer()` 가 filter 결과 + metadata 로부터 pre_serialized + enriched 계산
+- `_select_few_shots_for_query()` 가 db_id 별 leakage filter + difficulty round-robin sampling
+- `LLMSQLGenerator.generate(query, subgraph, evidence, pre_serialized_schema, enriched_question)` — None pass-through (legacy DDL 동작 유지 = backward compat)
+
+### 산출물 (본 모듈, 2026-05-19)
+- [`/home/hyeonjin/thesis_refactored/src/serializers/source_tagged_serializer.py`](/home/hyeonjin/thesis_refactored/src/serializers/source_tagged_serializer.py) — C-v1 (`tag_columns` + `format_tagged_schema` + `_normalize_set`)
+- [`/home/hyeonjin/thesis_refactored/src/serializers/flat_merged_serializer.py`](/home/hyeonjin/thesis_refactored/src/serializers/flat_merged_serializer.py) — C-v3a/b (`format_flat_schema` with optional fk_relations)
+- [`/home/hyeonjin/thesis_refactored/src/serializers/question_enricher.py`](/home/hyeonjin/thesis_refactored/src/serializers/question_enricher.py) — C-v2 (`enrich_question` + `EnrichmentCache` + No-Full-Schema 강제)
+- [`/home/hyeonjin/thesis_refactored/src/serializers/tests/test_wave11_serializers.py`](/home/hyeonjin/thesis_refactored/src/serializers/tests/test_wave11_serializers.py) — 19-scenario smoke (PASSED 19/19)
+- [`bidirectional_filter.py`](bidirectional_filter.py) — F/B 별도 저장 (stats + filter_info)
+- `src/pipeline/schema_linking.py` — `_apply_wave11_serializer` + `_select_few_shots_for_query` (leakage + round-robin)
+- `src/modules/generators/sql_generator.py` — `pre_serialized_schema` + `enriched_question` 인자 추가 (None default → legacy DDL pass-through)
+
+### 다음 단계 (Root + Analyzer 책임)
+- **Root**: 5 cell yaml (`configs/experiments/abl/wave11_schema_serialization/{c_v1_source_tagged, c_v2_question_enrichment, c_v3a_flat_merged_fk, c_v3b_flat_merged_no_fk, comb_c_tagged_enriched}.yaml`) + `scripts/run_wave11_phase_b.sh` (5 cells parallel). Cost: C-v1/v3 = 0 추가 LLM, C-v2/Comb-C = +1500 calls ($1.5~3 × 2 = ~$3~6). Wall: ~2h parallel.
+- **Analyzer**: `notebooks/analysis_results/wave11_serialization_2026-05-XX.md` — 5-cell 매트릭스 (학술 agent §6.4 형식) + Schema Content Invariance 검증 (ΔR/ΔP/ΔF1 ±0.0001) + 난이도별 ΔEX + JOIN 수별 ΔEX + Enrichment 정성 sampling 20건 + cost ROI. 시나리오 분기 (1: ΔEX>0 / 2: 부분 개선 / 3: 귀무가설) 권고.
 
 ---
 

@@ -18,11 +18,23 @@ class LLMSQLGenerator(BaseGenerator):
         self.client = APIClient(provider=provider)
         logger.info(f"Initialized LLMSQLGenerator (Model: {llm_model}, Provider: {provider or 'auto'})")
 
-    def generate(self, query: str, subgraph: Dict[str, List[str]], evidence: str = "", **kwargs) -> str:
+    def generate(self, query: str, subgraph: Dict[str, List[str]], evidence: str = "",
+                 pre_serialized_schema: Optional[str] = None,
+                 enriched_question: Optional[str] = None,
+                 **kwargs) -> str:
         # evidence: BIRD-dev `external_knowledge` 필드 (query 별 domain hint / formula).
         # 직전 (2026-05-12 Filter sweep) 까지 미사용 → Baseline (GLM 4.7 Full Schema EX=55.87%) 대비
         # anchor EX=33.96% 21.91%p gap 의 dominant 원인. 본 fix 로 evidence 전달.
-        schema_ddl = AgentUtils.generate_ddl(subgraph=subgraph)
+        #
+        # Wave 11 Schema Serialization Direction C (DECISIONS 2026-05-19) — Serializer
+        # 가 schema_str 자리를 대체 + Question Enricher 가 query 자리를 대체.
+        #   - pre_serialized_schema 명시 → AgentUtils.generate_ddl 대신 사용 (C-v1/v3)
+        #   - enriched_question 명시 → query 자리 대체 (C-v2 + Comb-C)
+        # Schema Content Invariance retain: M4 column 선택 자체는 동일 → R/P/F1 invariant.
+        if pre_serialized_schema is not None:
+            schema_ddl = pre_serialized_schema
+        else:
+            schema_ddl = AgentUtils.generate_ddl(subgraph=subgraph)
 
         selected_tables = list(subgraph.keys())
         selected_columns = []
@@ -34,13 +46,15 @@ class LLMSQLGenerator(BaseGenerator):
         #mschema = MSchema()
         #mschema_str = MSchema.to_mschema(selected_tables=selected_tables, selected_columns=selected_columns, example_num=3, show_type_detail=True)
 
+        effective_query = enriched_question if enriched_question else query
+
         prompt = self.prompt_manager.load_prompt(
             file_name="sql_generator",
             section="sql_generator",
             schema_str=schema_ddl,
             # schema_str=mschema_str,
             evidence=evidence or "(none)",
-            query=query
+            query=effective_query,
         )
 
         logger.debug(f"[Generation Prompt]: \n{prompt}")
