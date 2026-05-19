@@ -2106,3 +2106,76 @@ C2: R=0.9273 ≥ 0.90 ✅, P=0.7745 ≥ 0.75 ✅ → 6번째 frontier cell 진�
 - D3 v2 EX-2nd + D4 v1 F1-best marginal = multi-axis evidence 확장
 - D1 + D2 격하 candidate (sub-section retain 부재)
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 M4 Bidirectional 발전 (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 8 Comb-A — abl_wave8_comb_a_value_hint_verify2round (DECISIONS 2026-05-19 §3 작업 4 + §6, 2026-05-19, 1 신규 ID — 🎯 D4 v1 + D3 v2 직렬 stacking, Verdict Fail 단 F1 globally best post-Wave 5)
+
+### 명명 규칙 — `abl_wave8_comb_a_*` (Wave 8 Top 2 조합 chain)
+
+| ID | Stacking | 위치 |
+|---|---|---|
+| **abl_wave8_comb_a_value_hint_verify2round** | StackedFilter[D4 v1 (BidirectionalValueHintFilter) → D3 v2 (BidirectionalVerifyLoopFilter)] | `configs/experiments/abl/wave8_m4_extensions/comb_a/` |
+
+### Pattern — StackedFilter composition (M4 anchor 변경 없이)
+
+- Stage 1 (Pre-Filter): D4 v1 (Value-Hint Enhanced Forward, d4_forced_include=false)
+- Stage 2 (Post-Filter): D3 v2 (Verify Loop d3_max_rounds=2, SQL probe + column 복구)
+- 학습 없음 (anchor ckpt `best_gat_qcond_nl3.pt` 재사용)
+
+### Δ vs M4 anchor (R=0.9325 / P=0.7593 / F1=0.8370 / EX=0.5300)
+
+| Metric | Comb-A | Δ vs M4 | Pareto Axis |
+|---|---:|---:|---|
+| R | 0.9170 | −0.0155 | (R-axis sub-noise) |
+| P | **0.8247** | **+0.0654** ★ | **P-best mechanism (synergy)** |
+| **F1** | **0.8684** ⭐ | **+0.0314** ★★ | **F1-best globally (post-Wave 5)** |
+| EX | 0.5117 | −0.0183 | (EX-axis 미달, M4 retain) |
+
+### Verdict 판정 — **Fail (EX < 0.5215)**
+
+- Pass (EX > 0.5300): ❌
+- Partial (EX ≥ 0.5215 + F1 ≥ 0.8370): ❌
+- **Fail (EX < 0.5215)**: ✅
+
+### Paradox finding — F1 globally best (post-Wave 5)
+
+| Reference | F1 | Δ vs Comb-A |
+|---|---:|---:|
+| **Comb-A** ⭐ | **0.8684** | (best) |
+| anchor c01_01 (Wave 5 baseline) | 0.8664 | +0.0020 marginal |
+| Wave 6 M1-B strong (prior F1-best) | 0.8655 | +0.0029 marginal |
+| Wave 8 D4 v1 (F1-best Wave 8) | 0.8393 | +0.0291 |
+| M4 anchor | 0.8370 | +0.0314 ★ |
+
+### Pareto Frontier 갱신 (Wave 5+6+8 통합)
+
+```
+F1-best post-Wave 5 ⭐ NEW = Comb-A (0.8684)
+R-best ★ Wave 8 = D1 v2 (0.9601)
+EX-best ★ retain = M4 (0.5300)
+EX-2nd Wave 8 = D3 v2 (0.5215)
+P-best mechanism ⭐ NEW = Comb-A (0.8247)
+F1-best Wave 6 (prior) = M1-B strong (0.8655)
+```
+
+### Mechanism decoupling evidence
+
+- F1 +0.0314 vs M4 (dramatic positive) + EX −0.0183 vs M4 (sub-noise drop) = **F1-EX axis decoupling**
+- paper §V.5.x.M.12 F1-EX Decoupling narrative 보강 candidate
+- D4 의 schema modification 이 D3 sketch SQL 의 base 변경 → verify loop column recovery 약화
+
+### Config 주의사항
+
+- M4 anchor (BidirectionalFilter Forward+Backward Union) 변경 없이 composition pattern
+- LLM 입력 = Extractor 출력 후보 (subgraph) 만 (Full Schema 입력 금지)
+- filter_llm_calls_mean: 6.0 (StackedFilter 의 두 stage 평균)
+- filter_stage_time_mean: 11.05s (M4 2s 의 ~5.5×, two-stage overhead)
+
+### 결론 — Verdict Fail (EX 미달) 단 F1-axis paradox finding
+
+- Verdict: Fail (EX < 0.5215, primary success criterion 미달)
+- **F1 globally best (post-Wave 5)** candidate (+0.0020 vs anchor, +0.0029 vs M1-B)
+- P-axis dramatic synergy (+0.0654 vs M4)
+- F1-EX decoupling mechanism evidence (paper §V.5.x.M.12 narrative 보강 candidate)
+- paper §V.5.x.M.19 신규 sub-section candidate (Comb-A F1-best mechanism)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A (2026-05-19)](EXPERIMENT_HISTORY.md).

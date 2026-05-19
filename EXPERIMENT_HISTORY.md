@@ -5086,3 +5086,106 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
   - paper §V.5.x.M.15 axis #15 evidence #5 (D1) 격하 결정 (R 갱신 +0.0276 marginal, P-cost dominant)
   - Top 2 조합 candidate 결정 (Comb-A D4 v1 + D3 v2 launch trigger or paper closure)
 
+
+## Wave 8 Comb-A — D4 v1 + D3 v2 직렬 Stacking (DECISIONS 2026-05-19 §3 작업 4 + §6, 2026-05-19, 🎯 Verdict Fail (EX < 0.5215) 단 F1 dramatic gain — paradox finding)
+
+### 목적
+
+DECISIONS 2026-05-19 §3 작업 4 + §6 + [wave8_m4_extensions_2026-05-19.md §5 Top 2 조합 정량 base](notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md) 정합. Wave 8 의 Top 2 조합 (F1-best D4 v1 + EX-2nd-best D3 v2) 의 **직교 mechanism stacking** evidence 측정.
+
+### Stacking 구조 (StackedFilter pattern)
+
+- **Stage 1 (Pre-Filter)**: D4 v1 `BidirectionalValueHintFilter` (Value-Hint Enhanced Forward, d4_forced_include=false)
+- **Stage 2 (Post-Filter)**: D3 v2 `BidirectionalVerifyLoopFilter` (Verify Loop d3_max_rounds=2, SQL probe + column 복구)
+- Composition: StackedFilter 의 stages[] 안 두 filter sequential 적용
+
+### Final Metrics (n=1534)
+
+| Metric | Comb-A | M4 anchor | Δ vs M4 | anchor c01_01 (Wave 5) | Δ vs c01_01 |
+|---|---:|---:|---:|---:|---:|
+| R | 0.9170 | 0.9325 | −0.0155 | 0.8748 | +0.0422 |
+| P | **0.8247** ★ | 0.7593 | **+0.0654** ★ | 0.8582 | −0.0335 |
+| **F1** | **0.8684** ⭐⭐ | 0.8370 | **+0.0314** ★★ | 0.8664 | **+0.0020** marginal |
+| EX | 0.5117 | **0.5300** | −0.0183 | 0.5176 | −0.0059 sub-noise |
+
+### Success Criteria 판정 (사용자 spec)
+
+| 판정 | 조건 | Comb-A | Status |
+|---|---|---:|:---:|
+| Pass | EX > 0.5300 | 0.5117 < 0.5300 | ❌ |
+| Partial | EX ≥ 0.5215 + F1 ≥ 0.8370 | EX 0.5117 < 0.5215 | ❌ |
+| **Fail** | EX < 0.5215 | EX 0.5117 < 0.5215 | ✅ **Fail** |
+
+→ **Verdict: Fail (EX-axis 미달)** 단 **F1-axis dramatic gain**.
+
+### Paradox finding — F1 globally best (post-Wave 5) candidate
+
+| Comparison | Comb-A F1 | Δ |
+|---|---:|---:|
+| vs **M4 anchor** (Wave 8 base) | 0.8684 | **+0.0314** ★★ dramatic |
+| vs **Wave 8 F1-best** D4 v1 (0.8393) | 0.8684 | **+0.0291** ★ |
+| vs **Wave 6 F1-best** M1-B strong (0.8655) | 0.8684 | **+0.0029** marginal positive |
+| vs **anchor c01_01** (Wave 5 baseline, 0.8664) | 0.8684 | **+0.0020** marginal positive |
+
+→ **Comb-A F1=0.8684 = 글로벌 best (post-Wave 5) candidate** — Wave 6 F1-best 갱신 + anchor 갱신 marginal positive.
+
+### P-axis dramatic gain mechanism (직교 evidence)
+
+- Comb-A P=0.8247 vs M4 P=0.7593 = **+0.0654** dramatic
+- D4 v1 alone: P=0.7623 (M4 +0.0030 marginal)
+- D3 v2 alone: P=0.7579 (M4 −0.0014 sub-noise)
+- Comb-A P 가 두 cells 의 individual P 보다 **dramatic 큼** → **stacking synergy**: D4 value-hint 의 evidence-aware schema retention + D3 verify 의 hallucinated column 차단 → **dual P-lift mechanism**
+
+### EX-axis paradox — F1 up + EX down
+
+- Comb-A EX=0.5117 (M4 0.5300 보다 −0.0183, D4 v1 0.5111 의 +0.0006 marginal, D3 v2 0.5215 보다 −0.0098)
+- **Comb-A EX < D3 v2 EX** — stacking 이 D3 v2 의 EX retain mechanism 약화 (D4 의 schema modification 이 D3 의 sketch SQL 의 schema basis 변경, verify loop 의 column recovery 효과 감소)
+- F1 +0.0314 vs EX -0.0183 의 **mechanism decoupling** evidence — paper §V.5.x.M.12 F1-EX Decoupling narrative 보강 candidate
+
+### 학습 비용 + 환경
+
+- **Wall**: ~7h 22min (09:40:44 → ~17:03 KST, single stream)
+- **LLM calls total**: 13,806 (filter 9,204 + SQL gen 1,534 + extras = ~9 LLM/q avg)
+- **filter_llm_calls_mean**: 6.0000 (StackedFilter 의 두 stage 의 평균 6 LLM/q)
+- **filter_stage_time_mean**: 11.05s (M4 2s 의 ~5.5×, two-stage overhead)
+- **filter_time_p95**: 14.35s, p_max: 95.85s
+- **Token usage**: input 17.95M / output 495k
+- **GPU 시간**: ~7h × GPU 0 only
+- **LLM API 비용**: ~$10~15 GLM 4.7
+- **failure**: 0/1
+
+### Configs + Module + Script
+
+- Config: `configs/experiments/abl/wave8_m4_extensions/comb_a/abl_wave8_comb_a_value_hint_verify2round.yaml`
+- Module 구현: StackedFilter (기존 registry) + D4 v1 (BidirectionalValueHintFilter, commit `c44b15a`) + D3 v2 (BidirectionalVerifyLoopFilter, commit `c44b15a`)
+- Launch script: `scripts/run_wave8_comb_a.sh` (nohup single stream)
+- Outputs: `outputs/experiments/abl/wave8_m4_extensions/comb_a/abl_wave8_comb_a_value_hint_verify2round/`
+- Logs: `logs/wave8_comb_a/`
+
+### Pareto Frontier 갱신 (Wave 5+6+8 통합)
+
+| Axis | Pareto Cell | 값 |
+|---|---|---:|
+| **F1-best (post-Wave 5)** ⭐ Wave 8 Comb-A 신규 | **Comb-A** | **F1=0.8684** ★ |
+| F1-best Wave 6 (prior) | M1-B strong | F1=0.8655 |
+| **R-best** ★ Wave 8 D1 v2 | D1 v2 full_decompose | R=0.9601 |
+| **EX-best** ★ M4 retain | M4 Bidirectional | EX=0.5300 |
+| **EX-2nd-best** Wave 8 D3 v2 | D3 v2 verify2round | EX=0.5215 |
+| **P-best mechanism** ★ Wave 8 Comb-A 신규 | **Comb-A** | P=0.8247 (+0.0654 vs M4) |
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (primary, Comb-A mechanism 분해 분석)**: `notebooks/analysis_results/wave8_comb_a_2026-05-19.md` 신규 작성
+  - per-stage telemetry 분석 (D4 stage 의 evidence_size + D3 stage 의 verify_success_rate / avg_rounds_used)
+  - F1-axis +0.0314 vs M4 의 mechanism 분해 (D4 P-lift + D3 verify P 보존 + stacking synergy 정량)
+  - P-axis dual-lift mechanism (+0.0654 vs M4) — D4 value-hint vs D3 verify 의 P contribution 분리
+  - EX-axis paradox (F1 up + EX down) — D4 의 schema modification 이 D3 verify 의 base 변경 mechanism 정량 (D3 v2 alone EX=0.5215 vs Comb-A EX=0.5117 의 −0.0098 정량 분해)
+  - per-difficulty (simple/moderate/challenging) 별 R/P/F1/EX (Comb-A vs M4 vs Wave 6 M1-B 비교)
+  - paper §V.5.x.M.12 F1-EX Decoupling narrative 보강 candidate (Comb-A 가 F1 +0.0314 + EX -0.0183 의 mechanism decoupling 정량 evidence)
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.17 + §V.5.x.M.18 narrative Comb-A boost 통합 갱신 (D4 + D3 directional retain candidate retain + Comb-A stacking synergy mechanism evidence)
+  - paper §V.5.x.M.19 신규 sub-section candidate (Comb-A 의 F1-best mechanism, EX-axis paradox 정합)
+  - paper §V.5.x.M.12 F1-EX Decoupling narrative 보강
+  - Pareto frontier 갱신 (F1-best post-Wave 5 = Comb-A)
+  - Wave 8 closure 결정 또는 Comb-B/C/D launch candidate
+
