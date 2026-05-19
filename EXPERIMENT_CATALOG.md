@@ -3338,3 +3338,58 @@ C1: R=0.9177 ≥ 0.90 ✅, P=0.8109 ≥ 0.75 ✅ → Pareto frontier 진입 (M1-
 - paper main contribution evidence 충분 정합
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A 분석 채택 + closure (2026-05-19)](EXPERIMENT_HISTORY.md).
 
+
+## Wave 11 Schema Serialization Direction C — Phase B 6 cells launch (DECISIONS 2026-05-19 (Wave 11) §3 Phase B + filter_improvement_wave10 §4+§6+§8, 2026-05-19 launch, 🎯 EX ceiling 0.5300 돌파 가능성 검증 — Schema Content Invariance retain)
+
+### 6 cells × launch spec (c_v0 baseline + 5 variants, M4 anchor R=0.9325/P=0.7593/F1=0.8370/EX=0.5300 reference)
+
+| ID | Variant | 직렬화 형식 | +LLM/q | 검증 가설 |
+|---|---|---|---:|---|
+| c_v0_baseline | Baseline (M4 legacy DDL) | flat JSON | 0 | reference |
+| **c_v1_source_tagged** | Source-Tagged | [F+B]/[F]/[B] 태그 | 0 | H1 |
+| **c_v2_question_enrichment** | Question Enrichment | E-SQL enriched question | +1 | H2 |
+| **c_v3a_flat_merged_fk** | Flat Merged + FK | table.col flat + FK hint | 0 | H3 |
+| **c_v3b_flat_merged_no_fk** | Flat Merged − FK | table.col flat only | 0 | H3 |
+| **comb_c_tagged_enriched** | Comb-C (v2+v1) | Tagged + Enriched | +1 | H4 |
+
+### Schema Content Invariance 핵심 제약
+
+Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일** retain → R/P/F1 ΔX ±0.0001 (implementation 정합 검증). EX 만 변화 측정.
+
+### Phase A 구현 (commit `3eb476d`)
+
+- `src/serializers/` 3 modules (source_tagged + question_enricher + flat_merged) + tests 19/19 PASSED
+- `src/pipeline/schema_linking.py` serializer_type 분기 + leakage filter + round-robin
+- `src/pipeline/sql_generator.py` pre_serialized_schema + enriched_question 인자
+- `src/modules/filters/bidirectional_filter.py` F/B set 별도 저장
+
+### Launch 진행 (~20:00 → ~24:00~01:00 KST 익일)
+
+- Wrapper PID 3242310, 6 cells parallel
+- Cost ~3000 LLM calls (C-v2 + Comb-C 만 +1) + ~$3~6 GLM 4.7
+- Wall ~3~5h parallel
+- Monitor `by0ev4lg9` 자동 추적
+
+### Few-Shot examples (planner 직접 작성)
+
+`planning/few_shot_examples_wave11_2026-05-19.json` — 12 examples (11 DBs cover, simple 4 / moderate 4 / challenging 4). Data leakage 방지 (test query DB 와 다른 DB 의 examples 만 filter, round-robin).
+
+### Configs
+
+`configs/experiments/abl/wave11_schema_serialization/{c_v0_baseline, c_v1_source_tagged, c_v2_question_enrichment, c_v3a_flat_merged_fk, c_v3b_flat_merged_no_fk, comb_c_tagged_enriched}.yaml`
+
+### 결론 — Wave 11 launch 진행 중, 종료 시 ΔEX 정량 + 시나리오 분기 결정
+
+- Phase A ✅ 완료 (commit `3eb476d`)
+- Phase B launch 진행 중 (~24:00~01:00 KST 익일 종료 예상)
+- Phase C analyzer 위임 (시나리오 1/2/3 분기 권고)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B launch (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+### 산출물
+
+- Configs 6: `configs/experiments/abl/wave11_schema_serialization/`
+- Launch script: `scripts/run_wave11_phase_b.sh`
+- Outputs: `outputs/experiments/abl/wave11_schema_serialization/` (launch 진행 중)
+- Logs: `logs/wave11_phase_b/`
+- Phase A module 구현: commit `3eb476d`
+

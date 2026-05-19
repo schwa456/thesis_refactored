@@ -5267,3 +5267,82 @@ DECISIONS 2026-05-19 §3 작업 4 + §6 + [wave8_m4_extensions_2026-05-19.md §5
 - **Analyzer (Wave 8 후속 candidate, priority 낮음)**: Comb-A 의 EX-down 40 queries case-by-case 분석 (per-DB / per-difficulty schema modification trigger 분류) + Comb-A per-DB R/P/F1/EX 분포 + D3 verify 의 base-schema sensitivity 분석. 산출: `notebooks/analysis_results/wave8_comb_a_2026-05-19.md §7 확장` 또는 별도 supplemental.
 - **Planner**: paper drafting trigger 시점 결정 후 paper §V.5.x.M.* sub-section final integration.
 
+
+## Wave 11 Schema Serialization Direction C — Phase B 6 cells parallel launch (DECISIONS 2026-05-19 (Wave 11) §3 Phase B + filter_improvement_wave10_2026-05-19.md §4+§6+§8 + Phase A commit `3eb476d`, 2026-05-19 ~ 2026-05-20, 🎯 launch 진행 중 — Filter 출력 직렬화 방식 변경 만으로 EX ceiling 0.5300 돌파 가능성 검증 (Schema Content Invariance retain, Wave 8 F1-EX Decoupling 의 인과 검증))
+
+### 목적
+
+Wave 8 Comb-A 의 F1-EX Decoupling paradox (F1 +0.0314 + EX −0.0183 simultaneous) 의 **인과 검증**:
+- 해석 1: EX ceiling 원인 = Filter-Generator Interface (Filter 이후 직렬화)
+- 해석 2: Generator 가 현재 flat list 만 소비 → EX 병목
+- 귀무가설 H0: Generator 자체 LLM 역량 한계
+
+→ Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일 retain** (Schema Content Invariance R/P/F1 ΔX ±0.0001) + 직렬화 방식만 변경 → ΔEX 측정.
+
+### 6 cells × Variants (5-Cell + 1 Baseline + 1 Combined)
+
+| Cell | Variant | 직렬화 형식 | +LLM | 검증 가설 |
+|---|---|---|---:|---|
+| **c_v0_baseline** | Baseline (M4 anchor) | legacy DDL pass-through | 0 | — (reference) |
+| **c_v1_source_tagged** | Source-Tagged | [F+B]/[F]/[B] 태그 (F/B set 별도 출처 신호) | 0 | H1 |
+| **c_v2_question_enrichment** | Question Enrichment | Enriched question 대체 (E-SQL 정합, M4-Constrained No Full Schema) | +1 | H2 |
+| **c_v3a_flat_merged_fk** | Flat Merged (FK포함) | table.col flat + FK hint | 0 | H3 |
+| **c_v3b_flat_merged_no_fk** | Flat Merged (FK없음) | table.col flat only | 0 | H3 |
+| **comb_c_tagged_enriched** | Comb-C (v2 + v1) | Tagged + Enriched question | +1 | H4 |
+
+### Phase A 구현 정합 (commit `3eb476d`)
+
+- `src/serializers/source_tagged_serializer.py` (C-v1): tag_columns + format_tagged_schema + _normalize_set helper
+- `src/serializers/question_enricher.py` (C-v2): Question Enrichment with E-SQL formatting, few_shot caching
+- `src/serializers/flat_merged_serializer.py` (C-v3): format_flat_schema with optional fk_relations
+- `src/pipeline/schema_linking.py`: serializer_type 분기 + leakage filter + round-robin
+- `src/pipeline/sql_generator.py`: pre_serialized_schema + enriched_question 인자 (legacy pass-through)
+- `src/modules/filters/bidirectional_filter.py`: F/B set 별도 저장 (Union 전 source signal retain)
+- Tests PASSED: 19/19
+
+### Configs + Few-Shot Examples
+
+- 6 configs: `configs/experiments/abl/wave11_schema_serialization/{c_v0_baseline, c_v1_source_tagged, c_v2_question_enrichment, c_v3a_flat_merged_fk, c_v3b_flat_merged_no_fk, comb_c_tagged_enriched}.yaml`
+- Few-shot examples (planner 직접 작성): `planning/few_shot_examples_wave11_2026-05-19.json` (12 examples — 11 DBs cover, simple 4 / moderate 4 / challenging 4, data leakage 방지 위해 test query DB 와 다른 DB 의 examples 만 filter)
+- Launch script: `scripts/run_wave11_phase_b.sh`
+
+### Launch (진행 중)
+
+- **Launch time**: 2026-05-19 20:00:50 KST
+- **Wrapper PID**: 3242310
+- **Cell PIDs**: c_v0 3242329, c_v1 3242330, c_v3a 3242331, c_v3b 3242332, c_v2 3242333, comb_c 3242334
+- **6 streams parallel** (burst confirmed 318 RPM > Wave 11 추정 ~50~100 RPM 안전)
+- **Cost 추정**: ~3000 LLM calls (C-v2 + Comb-C 만 +1 each = ~3068) + ~$3~6 GLM 4.7
+- **Wall 추정**: ~3~5h parallel
+- **ETA**: ~**24:00~01:00 KST 익일** (anchor rate ~7.4 q/min, 6 cells contention 감안)
+
+### Measure (filter_improvement §6 정합)
+
+1. **Primary**: ΔEX vs c_v0 baseline — 직렬화 효과 정량
+2. **Schema Content Invariance 검증 (필수)**: ΔR/ΔP/ΔF1 ±0.0001 — implementation 정합 검증, 다르면 implementation error 보고
+3. **Auxiliary**:
+   - 난이도별 ΔEX (simple/moderate/challenging) — E-SQL challenging 효과 정합
+   - JOIN 수별 ΔEX — C-v3 JOIN simplification 효과
+   - F+B/F/B 분포 (C-v1)
+   - Enrichment cache hit rate (filter_info["wave11_enrichment_cache_stats"] 의 hits/misses 정량)
+
+### Monitor 등록
+
+- `by0ev4lg9` (persistent) — metrics.txt 도달 시 [METRICS-W11] cell 별 emit + 6/6 시 [ALL-DONE-W11] 후속 트리거
+- 종료 시 HISTORY/CATALOG/ID_MIGRATION 갱신 + commit + analyzer 핸드오프 자동
+
+### 후속 위임 (chain handoff, Wave 11 종료 후)
+
+- **Analyzer 위임 (Phase C, primary)**: `notebooks/analysis_results/wave11_serialization_2026-05-XX.md` 신규 작성
+  - 학술 agent §6.4 결과 보고 표 형식 정합 (6 cells × 7 metrics)
+  - Schema Content Invariance 검증 결과 (R/P/F1 동일성 ±0.0001 spec)
+  - 난이도/JOIN-count breakdown
+  - Enrichment 품질 정성 분석 (EX 틀린 케이스 20건 무작위 sampling)
+  - **시나리오 분기 권고 (filter_improvement §7)**:
+    - 시나리오 1 (긍정적): C-v2/Comb-C ΔEX > 0 → paper §V.5.x.M.20 신규 sub-section + Comb-A (Wave 8) 와 결합 실험 candidate
+    - 시나리오 2 (부분적): C-v1/C-v3 만 소폭 개선 → C-v2 강화 방향 (iterative enrichment) post-paper
+    - 시나리오 3 (귀무가설): ΔEX ≈ 0 → EX ceiling 원인 = Generator 자체 → paper narrative reframe (Prune+F1 final 기여)
+- **Planner 위임 (Phase C 후)**:
+  - 시나리오별 paper §V.5.x.M.* sub-section 결정 (positive 시 §V.5.x.M.20 신규 / negative 시 narrative reframe)
+  - Wave 8 closure + Wave 9 + Wave 10 + Wave 11 의 4 chain 통합 정량 base 위 paper drafting final integration trigger
+

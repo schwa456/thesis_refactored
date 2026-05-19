@@ -2233,3 +2233,47 @@ F1-best Wave 6 (prior) = M1-B strong (0.8655)
 - Pareto frontier 4 axis multi-coverage 완성
 - paper main contribution evidence 충분 정합
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 8 Comb-A 분석 채택 + closure (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 11 Schema Serialization Direction C — c_v{0,1,2,3a,3b} + comb_c (DECISIONS 2026-05-19 (Wave 11) §3 Phase B + filter_improvement_wave10 §4, 2026-05-19, 6 신규 ID — 🎯 Filter 출력 직렬화 5 variants × Schema Content Invariance retain × EX 변화 측정)
+
+### 명명 규칙 — Wave 11 Direction C 의 5 variants + 1 baseline + 1 combined
+
+| ID | Variant | 위치 | Serializer Module |
+|---|---|---|---|
+| **c_v0_baseline** | Baseline (M4 legacy DDL) | `configs/experiments/abl/wave11_schema_serialization/` | (none, legacy pass-through) |
+| **c_v1_source_tagged** | Source-Tagged [F+B]/[F]/[B] | 위 동일 | `src/serializers/source_tagged_serializer.py` |
+| **c_v2_question_enrichment** | Question Enrichment (E-SQL) | 위 동일 | `src/serializers/question_enricher.py` |
+| **c_v3a_flat_merged_fk** | Flat Merged + FK | 위 동일 | `src/serializers/flat_merged_serializer.py` |
+| **c_v3b_flat_merged_no_fk** | Flat Merged − FK | 위 동일 | 위 동일 |
+| **comb_c_tagged_enriched** | Comb-C (v2 + v1) | 위 동일 | `src/serializers/question_enricher.py` + tagged combined |
+
+### Schema Content Invariance 제약
+
+Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일** retain. R/P/F1 ΔX ±0.0001 (implementation 정합 검증). 오직 직렬화 방식만 변경.
+
+### Phase A 모듈 구현 (commit `3eb476d`)
+
+- `src/serializers/source_tagged_serializer.py` (C-v1)
+- `src/serializers/question_enricher.py` (C-v2)
+- `src/serializers/flat_merged_serializer.py` (C-v3)
+- `src/pipeline/schema_linking.py` serializer_type 분기
+- `src/pipeline/sql_generator.py` pre_serialized_schema + enriched_question 인자
+- `src/modules/filters/bidirectional_filter.py` F/B set 별도 저장
+- Tests PASSED: 19/19
+
+### Few-Shot Examples (planner 직접 작성)
+
+`planning/few_shot_examples_wave11_2026-05-19.json` — 12 examples (11 DBs cover, simple 4 / moderate 4 / challenging 4). Data leakage 방지 (test query DB 와 다른 DB 의 examples 만 round-robin filter).
+
+### Launch 진행 (2026-05-19 20:00 launch, ~24:00~01:00 익일 종료 예상)
+
+- Wrapper PID 3242310, 6 cells parallel (burst confirmed 318 RPM > Wave 11 추정 ~50~100 RPM 안전)
+- Cost ~3000 LLM calls (C-v2 + Comb-C 만 +1) + ~$3~6 GLM 4.7
+
+### 결론 — Wave 11 launch 진행 중
+
+- Phase A ✅ 완료 (commit `3eb476d`)
+- Phase B launch 진행 중
+- Phase C analyzer 위임 (시나리오 1/2/3 분기 권고)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B launch (2026-05-19)](EXPERIMENT_HISTORY.md).
