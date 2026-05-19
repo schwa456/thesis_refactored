@@ -5346,3 +5346,75 @@ Wave 8 Comb-A 의 F1-EX Decoupling paradox (F1 +0.0314 + EX −0.0183 simultaneo
   - 시나리오별 paper §V.5.x.M.* sub-section 결정 (positive 시 §V.5.x.M.20 신규 / negative 시 narrative reframe)
   - Wave 8 closure + Wave 9 + Wave 10 + Wave 11 의 4 chain 통합 정량 base 위 paper drafting final integration trigger
 
+
+## Wave 11 Phase B Final Results — Schema Serialization Direction C 6 cells closure (DECISIONS 2026-05-19 Wave 11 §3 Phase B + filter_improvement §7 시나리오 분기, 2026-05-19 ~ 2026-05-20, 🎯 시나리오 2 (부분적) confirmed — c_v1 EX=0.5332 > M4 0.5300 ★ 단 c_v2/Comb-C dramatic harm)
+
+### Final Metrics (n=1534, c_v0 baseline reference)
+
+| Cell | R | P | F1 | EX | ΔEX vs c_v0 | ΔEX vs M4 (0.5300) | Verdict |
+|---|---:|---:|---:|---:|---:|---:|---|
+| **c_v1_source_tagged** ⭐ | 0.8994 | 0.7321 | 0.8072 | **0.5332** | **+0.0443** ★ | **+0.0032** ★ | **EX > M4 Pass** ✓ |
+| **c_v3a_flat_merged_fk** | 0.8940 | 0.7263 | 0.8015 | 0.5248 | +0.0359 (Inv ✗) | −0.0052 sub-noise | Inv violation (해석 부정확) |
+| c_v0_baseline | 0.8980 | 0.7300 | 0.8053 | 0.4889 | (reference) | −0.0411 | reference |
+| c_v3b_flat_merged_no_fk | 0.8930 | 0.7249 | 0.8002 | 0.4870 | −0.0019 sub-noise (Inv ✗) | −0.0430 | Inv violation |
+| **comb_c_tagged_enriched** ⚠ | 0.9020 | 0.7368 | 0.8111 | 0.3950 | **−0.0939** ❌ | −0.1350 | Fail |
+| **c_v2_question_enrichment** ⚠⚠ | 0.9017 | 0.7342 | 0.8094 | **0.3742** | **−0.1147** ❌❌ | −0.1558 | Fail |
+
+### 시나리오 분기 판정 (filter_improvement §7)
+
+| 시나리오 | 조건 | Wave 11 결과 | 판정 |
+|---|---|---|:---:|
+| 시나리오 1 (긍정적) | C-v2/Comb-C ΔEX > 0 | c_v2 −0.1147, Comb-C −0.0939 | ❌ |
+| **시나리오 2 (부분적)** ★ | C-v1/C-v3 만 소폭 개선 | **c_v1 +0.0443 ★ (dramatic positive, single-cell)**, c_v3a +0.0359 (Inv violation) | **✅ 정합** |
+| 시나리오 3 (귀무가설) | 모든 ΔEX ≈ 0 | 모든 cell non-negligible Δ | ❌ |
+
+→ **시나리오 2 (부분적) confirmed — c_v1 dramatic positive single-cell finding**.
+
+### Main findings
+
+1. **c_v1 (Source-Tagged) 만 EX > M4** (0.5332 vs 0.5300, +0.0032 ★) — **paper §V.5.x.M.20 candidate** (post-M4 EX-best, post-Wave 5 globally best EX 갱신)
+2. **c_v2 (Question Enrichment) 가 dramatic harm** (−0.1147 vs c_v0, −0.1558 vs M4) — Enrichment 가 SQL gen EX 손상 (E-SQL 의 enrichment 가 BIRD format 에 misalign 추정)
+3. **Comb-C (Tagged + Enrichment) 도 harm** (−0.0939) — Enrichment 의 harm dominant (Tagged 의 +0.0443 lift 무효, stacking interaction paradox)
+4. **c_v3a/v3b (Flat Merged) Schema Content Invariance violation** ⚠ — ΔR/ΔP −0.004~−0.005, ±0.0001 spec 위반 (Phase A flat_merged serializer implementation bug)
+5. **c_v0 vs M4 anchor difference** ⚠ — R −0.0345, P −0.0293, EX −0.0411, LLM calls 2.4× (Phase A 의 BidirectionalFilter 수정이 base behavior shift)
+
+### Implementation 진단 (Phase A commit `3eb476d`)
+
+- **c_v1 invariance ≈ OK** (ΔR +0.0014, ΔP +0.0021 — marginal sub-noise) → source_tagged_serializer 의 final_nodes 비변경 정합
+- **c_v3a/v3b invariance ✗** (ΔR/ΔP ~−0.004~−0.005) → flat_merged_serializer 의 final_nodes modify bug
+- **c_v0 base shift** (vs M4) → BidirectionalFilter 의 F/B 별도 저장 + serializer 분기 patch 가 sanitize_output 또는 다른 logic 영향
+
+### Cost / Wall (Final)
+
+- **Wall**: ~6h 20min (20:00:50 → 02:20 KST 익일, 6 streams parallel)
+- **LLM calls total**:
+  - c_v0/c_v1/c_v3a/c_v3b: ~7300~7400 (M4 base ~4.8 LLM/q)
+  - c_v2/Comb-C: ~8880 (M4 base + 1 enrichment ≈ ~5.8 LLM/q)
+- **Token**: total ~80~90M input / ~2~3M output
+- **GLM API 비용**: ~$8~12 (predicted ~$3~6 보다 cost 약 2× — Phase A 의 BidirectionalFilter LLM calls 증가 영향)
+
+### Wave 8 Comb-A precedent 정합
+
+- Wave 8 Comb-A (D4+D3 stacking): F1 globally best 단 EX paradox (verdict Fail)
+- **Wave 11 Comb-C (c_v1+c_v2 stacking)**: EX drop dramatic (Comb-C −0.0939 vs c_v0) — **stacking interaction paradox 정합** (positive single + harmful stacking 의 dual mechanism)
+
+### 후속 위임 (chain handoff)
+
+- **Filter 모듈 세션 (high priority — implementation debug)**: Phase A commit `3eb476d` 의 검토:
+  - flat_merged_serializer 의 final_nodes 비변경 정합 fix (c_v3a/v3b Invariance violation 원인)
+  - BidirectionalFilter 의 F/B 별도 저장 + serializer 분기 patch 의 sanitize_output / round-robin logic 점검 (c_v0 vs M4 base shift 원인)
+  - 신뢰 가능한 c_v0 baseline + c_v3 cells 재실행 후 시나리오 재판정
+- **Analyzer 위임 (primary, Wave 11 결과 분석)**: `notebooks/analysis_results/wave11_serialization_2026-05-20.md` 신규 작성
+  - 학술 agent §6.4 결과 보고 표 형식 정합 (6 cells × 7 metrics)
+  - Schema Content Invariance 검증 결과 (c_v1 OK / c_v3a/v3b violation / c_v0 base shift)
+  - c_v1 dramatic positive single-cell mechanism 분석 ([F+B]/[F]/[B] 태그의 SQL gen 효과)
+  - c_v2 enrichment harm root cause (E-SQL format vs BIRD format misalignment, 실패 케이스 20건 sampling)
+  - Comb-C stacking paradox mechanism (Wave 8 Comb-A 와 비교)
+  - 난이도별 ΔEX breakdown (simple/moderate/challenging)
+  - 시나리오 2 confirm + paper §V.5.x.M.20 narrative draft (c_v1 evidence)
+- **Planner 위임 (analyzer 후)**:
+  - paper §V.5.x.M.20 신규 sub-section candidate (c_v1 EX > M4 evidence)
+  - paper main contribution narrative 갱신 (Source-Tagged Schema Serialization 의 EX gain mechanism)
+  - c_v2 enrichment harm + Comb-C stacking paradox 의 narrative 처리 (paper cautionary evidence 또는 post-paper 위임)
+  - Wave 11 closure 결정 + paper drafting trigger 시점
+

@@ -2277,3 +2277,49 @@ Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일** retain. R/P
 - Phase B launch 진행 중
 - Phase C analyzer 위임 (시나리오 1/2/3 분기 권고)
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B launch (2026-05-19)](EXPERIMENT_HISTORY.md).
+
+
+## Wave 11 Phase B Final Results — c_v{0,1,2,3a,3b} + comb_c (DECISIONS 2026-05-19 Wave 11, 2026-05-20 closure, 🎯 시나리오 2 부분적 confirm — c_v1 EX > M4 ★)
+
+### Final metrics 정합 (c_v0 baseline reference)
+
+| ID | EX | ΔEX vs c_v0 | ΔEX vs M4 |
+|---|---:|---:|---:|
+| **c_v1_source_tagged** ⭐ | **0.5332** | **+0.0443** ★ | **+0.0032** ★ post-M4 EX-best candidate |
+| c_v3a_flat_merged_fk | 0.5248 | +0.0359 (Inv ✗) | −0.0052 sub-noise |
+| c_v0_baseline | 0.4889 | (reference) | −0.0411 ⚠ Phase A base shift |
+| c_v3b_flat_merged_no_fk | 0.4870 | −0.0019 (Inv ✗) | −0.0430 |
+| comb_c_tagged_enriched | 0.3950 | **−0.0939** ❌ | −0.1350 |
+| c_v2_question_enrichment | **0.3742** | **−0.1147** ❌❌ | −0.1558 |
+
+### Schema Content Invariance 검증 (학술 agent §6.2 spec ±0.0001)
+
+| Cell | ΔR vs c_v0 | ΔP vs c_v0 | Invariance |
+|---|---:|---:|:---:|
+| c_v1_source_tagged | +0.0014 | +0.0021 | ≈ OK (marginal sub-noise) ✓ |
+| c_v3a_flat_merged_fk | −0.0040 | −0.0037 | ✗ violated |
+| c_v3b_flat_merged_no_fk | −0.0050 | −0.0051 | ✗ violated |
+| c_v2_question_enrichment | +0.0037 | +0.0042 | ≈ OK (marginal) ✓ |
+| comb_c_tagged_enriched | +0.0040 | +0.0068 | ≈ OK (marginal) ✓ |
+
+### 시나리오 분기 판정
+
+- 시나리오 1 (긍정적): ❌
+- **시나리오 2 (부분적)**: ✅ c_v1 dramatic positive ★, c_v3a marginal positive 단 Inv violation
+- 시나리오 3 (귀무가설): ❌
+
+### Implementation issues 진단
+
+| Issue | 정합 cell | 영향 |
+|---|---|---|
+| c_v0 base shift | 모든 cell (M4 anchor vs c_v0 R −0.0345 / EX −0.0411) | Phase A BidirectionalFilter 수정 영향 |
+| Invariance violation | c_v3a, c_v3b (flat_merged serializer) | final_nodes modify bug |
+
+→ Filter 모듈 세션 debug 필요 (Phase A commit `3eb476d` 검토).
+
+### 결론 — Wave 11 시나리오 2 confirm + c_v1 paper §V.5.x.M.20 candidate
+
+- c_v1 dramatic positive single-cell finding (post-M4 EX-best)
+- c_v2 enrichment harm + Comb-C stacking paradox = cautionary evidence
+- Phase A implementation issues 잔존 — Filter 모듈 debug 필요
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B Final Results (2026-05-20)](EXPERIMENT_HISTORY.md).

@@ -3393,3 +3393,44 @@ Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일** retain → 
 - Logs: `logs/wave11_phase_b/`
 - Phase A module 구현: commit `3eb476d`
 
+
+## Wave 11 Phase B Final Results — Schema Serialization 6 cells closure (DECISIONS 2026-05-19 Wave 11, 2026-05-20, 🎯 시나리오 2 부분적 confirmed — c_v1 EX > M4 ★)
+
+### Final 6 cells × R/P/F1/EX (c_v0 baseline reference)
+
+| ID | R | P | F1 | EX | ΔEX vs c_v0 | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| **c_v1_source_tagged** ⭐ | 0.8994 | 0.7321 | 0.8072 | **0.5332** | **+0.0443** ★ | **EX > M4** ✓ |
+| c_v3a_flat_merged_fk | 0.8940 | 0.7263 | 0.8015 | 0.5248 | +0.0359 | Inv violation |
+| c_v0_baseline | 0.8980 | 0.7300 | 0.8053 | 0.4889 | (reference) | reference |
+| c_v3b_flat_merged_no_fk | 0.8930 | 0.7249 | 0.8002 | 0.4870 | −0.0019 | Inv violation |
+| comb_c_tagged_enriched | 0.9020 | 0.7368 | 0.8111 | 0.3950 | **−0.0939** ❌ | Fail |
+| **c_v2_question_enrichment** | 0.9017 | 0.7342 | 0.8094 | **0.3742** | **−0.1147** ❌❌ | Fail |
+
+### 시나리오 판정: **시나리오 2 (부분적) confirmed**
+
+- 시나리오 1 (긍정적, C-v2/Comb-C ΔEX > 0): ❌
+- **시나리오 2 (부분적, C-v1 만 dramatic positive)**: **✅** — c_v1 EX +0.0443 ★, c_v3a +0.0359 (Inv ✗)
+- 시나리오 3 (귀무가설): ❌
+
+### Main findings
+
+1. **c_v1 (Source-Tagged)**: 유일한 paper §V.5.x.M.20 candidate (EX 0.5332 > M4 0.5300 +0.0032)
+2. **c_v2 (Question Enrichment) dramatic harm**: −0.1147 vs c_v0, E-SQL format misalignment 추정
+3. **Comb-C stacking paradox**: c_v1 +0.0443 + c_v2 −0.1147 → Comb-C −0.0939 (Wave 8 Comb-A precedent 정합)
+4. **c_v3a/v3b Invariance violation**: Phase A flat_merged_serializer bug (ΔR/ΔP ~−0.004~−0.005)
+5. **c_v0 vs M4 base shift**: Phase A BidirectionalFilter 수정 영향 (R −0.0345, EX −0.0411, LLM calls 2.4×)
+
+### Wall + Cost (Final)
+
+- Wall: ~6h 20min (20:00:50 → 02:20 KST 익일, 6 streams parallel)
+- LLM calls total: ~7300~8880 per cell (Phase A base shift 영향)
+- GLM API 비용: ~$8~12 (predicted ~$3~6 보다 ~2×)
+
+### 결론 — Wave 11 시나리오 2 confirm + paper §V.5.x.M.20 c_v1 evidence + Phase A debug 필요
+
+- c_v1 dramatic positive single-cell finding (paper main contribution narrative §V.5.x.M.20 candidate)
+- c_v2 enrichment harm + Comb-C stacking paradox = cautionary evidence
+- Phase A implementation issues (c_v0 base shift + c_v3 Invariance violation) — Filter 모듈 세션 debug 필요
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B Final Results (2026-05-20)](EXPERIMENT_HISTORY.md).
+
