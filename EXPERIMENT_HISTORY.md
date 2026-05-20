@@ -4876,11 +4876,21 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
 
 ### Final Metrics (n=1534 per cell)
 
-| Baseline | overall EX | simple | moderate | challenging | Outdated overall | Δ overall |
-|---|---:|---:|---:|---:|---:|---:|
-| **G-Retriever** | **0.4283** | 0.5114 | 0.3125 | 0.2690 | 0.2490 | **+0.1793** ★ |
-| **LinkAlign** | **0.3390** | 0.4314 | 0.2112 | 0.1586 | 0.2001 | **+0.1389** |
-| **XiYan-SQL** | **0.2405** | 0.3092 | 0.1358 | 0.1379 | 0.1969 | **+0.0436** |
+**R/P/F1 per-difficulty 통합 표** (analyzer Wave 14 보고서 §6 정합, 2026-05-20):
+
+| Baseline | overall R | overall P | overall F1_harm | overall EX | simple R | simple EX | mod R | mod EX | chall R | chall EX |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **G-Retriever** | **0.9176** | 0.1694 | 0.2860 | **0.4283** | 0.9207 | 0.5114 | 0.9114 | 0.3125 | 0.9173 | 0.2690 |
+| **LinkAlign** | **0.7689** | 0.2369 | 0.3622 | **0.3390** | 0.8163 | 0.4314 | 0.6998 | 0.2112 | 0.6873 | 0.1586 |
+| **XiYan-SQL** | **0.5987** | 0.7702 | 0.6737 | **0.2405** | 0.6267 | 0.3092 | 0.5561 | 0.1358 | 0.5567 | 0.1379 |
+
+**Outdated / ΔEX 정합** (2026-03-28 prior baseline 비교):
+
+| Baseline | overall EX | Outdated overall | ΔEX overall |
+|---|---:|---:|---:|
+| G-Retriever | 0.4283 | 0.2490 | **+0.1793** ★ |
+| LinkAlign | 0.3390 | 0.2001 | **+0.1389** |
+| XiYan-SQL | 0.2405 | 0.1969 | **+0.0436** |
 
 → 3 baseline 모두 +Jump (prompt-axis confounder 정합 확인) 단 **G-Retriever 가 dominant +0.1793** vs XiYan-SQL +0.0436 만 (XiYan 의 final_nodes 평균 1 col/q sparse — SQL gen 가능성 부족 → 신규 prompt 의 schema-strict 사용 시 +Δ 작음).
 
@@ -5672,4 +5682,75 @@ Wave 13 Phase A patch (commit f67fa65, evaluator alias resolution) 의 retrospec
 - Analyzer 보고서: `notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md`
 - CSV: `outputs/analysis/evaluator_alias_fix_retrospective_2026-05-20.csv` (73 cells × R_old/R_new/ΔR/P_old/P_new/F1_harm_old/F1_harm_new/EX)
 - Phase B closure marker (본 entry)
+
+
+## Wave 14 — Wave 9 Baseline Relog Per-Difficulty R/P/F1 Post-hoc 측정 (analyzer 직접, 0 LLM, 2026-05-20)
+
+### 개요
+
+Wave 9 Baseline Relog (commit `12b82cc` + `c3174ac`) 의 per-difficulty EX 정합 위에 **per-difficulty R/P/F1 컬럼 완성** — post-Wave 13 alias resolution patch (commit `f67fa65`) 정합 retrospective 정합. analyzer 직접 (0 LLM, ~10 분) 의 post-hoc 측정 chain. DECISIONS 2026-05-20 (Wave 14 결과 채택) §1+§5 정합.
+
+### 3 cells × 3 difficulty × R/P/F1/EX matrix (Sanity Check 4종 PASS ✅)
+
+| Cell | Scope | n | R | P | F1_harm | EX |
+|---|---|---:|---:|---:|---:|---:|
+| **G-Retriever** | simple | 925 | 0.9207 | 0.1615 | 0.2748 | 0.5114 |
+| | moderate | 464 | 0.9114 | 0.1734 | 0.2914 | 0.3125 |
+| | challenging | 145 | 0.9173 | 0.2073 | 0.3382 | 0.2690 |
+| **LinkAlign** | simple | 925 | **0.8163** ⭐ | 0.2320 | 0.3613 | 0.4314 |
+| | moderate | 464 | 0.6998 | 0.2393 | 0.3567 | 0.2112 |
+| | challenging | 145 | **0.6873** | 0.2604 | 0.3777 | 0.1586 |
+| **XiYan-SQL** | simple | 925 | 0.6267 | 0.7884 | 0.6983 | 0.3092 |
+| | moderate | 464 | 0.5561 | 0.7499 | 0.6386 | 0.1358 |
+| | challenging | 145 | 0.5567 | 0.7188 | 0.6275 | 0.1379 |
+
+### Sanity Check 4종 PASS ✅
+
+| Check | 결과 |
+|---|---|
+| (a) overall R retain (Wave 13 §2.2 exact match) | ✅ PASS — G-Retriever 0.9176, LinkAlign 0.7689, XiYan-SQL 0.5987 |
+| (b) mass conservation (weighted-mean = overall, Δ < 5e-5) | ✅ PASS |
+| (c) per-difficulty EX retain (Wave 9 §1.1 9/9 exact match) | ✅ PASS |
+| (d) F1_harm retain (Wave 13 §5.2 within rounding tolerance) | ✅ PASS |
+
+### 핵심 finding
+
+1. **LinkAlign R dramatic drop simple→challenging −0.1290** ★ (0.8163 → 0.6873) — LLM-based linking 의 challenging schema linking 실패 mechanism
+2. **Challenging EX Convergence (LinkAlign 0.1586 ≈ XiYan-SQL 0.1379)** 단 **R divergence (LinkAlign 0.6873 vs XiYan-SQL 0.5567, +0.1306 R gap)** — schema linking quality 의 EX-axis transfer 의 challenging 한계
+3. **3 Baseline 의 Challenging EX Universal Decay Pattern** — G-Retriever −0.2424 / LinkAlign −0.2728 / XiYan-SQL −0.1713 (**mechanism universality (cell-architecture-agnostic) evidence**)
+4. **G-Retriever schema-rich pattern** (R uniform 0.91-0.92, P 약간 challenging 상승)
+5. **XiYan-SQL extreme sparse pattern** (P-ceiling 0.77 uniform, F1_harm monotonic drop simple→challenging)
+
+### Paper 갱신 link (planner 직접 ✅ 완료, DECISIONS Wave 14 결과 채택 entry §2)
+
+- **paper §10 6-baseline 비교 표 갱신** ✅ — 🆕 Wave 14 Wave 9 Baseline Per-Difficulty R/P/F1/EX Matrix sub-section 신설 (per-difficulty mechanism 차이 + challenging EX convergence narrative)
+- **paper §V.5.x.M.5 narrative 보강** ✅ — 🆕 Difficulty-Stratified Mechanism Boundary sub-section 신설 (thrombosis_prediction outlier + Wave 14 per-difficulty 의 dual dimension + 3 baseline universal decay = mechanism universality evidence)
+
+### Wave 9~14 와의 정합
+
+| Chain | 정합 |
+|---|---|
+| Wave 9 Baseline Relog (5/18) | ✅ per-difficulty EX 정합 retain (Sanity c) + R/P/F1 per-difficulty 완성 |
+| Wave 11 c_v3a EX-best | candidate for post-paper backlog #25 (Wave 6/Wave 8 + Wave 11 c_v3a 통합 retrospective) |
+| Wave 12 Oracle (B3 perfect SL) | per-difficulty EX ceiling reference (simple 0.6995 / moderate 0.5108 / challenging 0.5034) |
+| Wave 13 Phase B (alias resolution) | ✅ post-patch f67fa65 정합 (Sanity a) |
+| post-paper backlog #24 (Wave 9 R/P/F1) | ✅ 완료 reclassify (Wave 13 통합 + Wave 14 per-difficulty 완성) |
+| post-paper backlog #25 (Wave 6/Wave 8 per-difficulty retrospective) | 신규 등재 — paper drafting 직전 active trigger candidate, priority 3 |
+
+### Timing 정합
+
+본 entry 의 HISTORY 갱신 = **paper drafting 직전 trigger** (DECISIONS Wave 14 §6 에스컬레이션 정합). 본 chain 의 결과 가 paper §10 갱신 base 정합 retain — 사용자 paper drafting 진입 결정 시점에 HISTORY 통합 갱신.
+
+### 산출물
+
+- Analyzer 보고서: `notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md`
+- CSV: `outputs/analysis/wave9_per_difficulty_rpf1_2026-05-20.csv`
+- Cost: 0 LLM call (analyzer 직접 retrospective on Wave 9 predictions.jsonl + Wave 13 patch-aware evaluator)
+- Wall: ~10 분 (post-hoc analyzer)
+- paper 갱신 link: §10 (Wave 14 per-difficulty sub-section) + §V.5.x.M.5 (difficulty-stratified mechanism boundary)
+
+### 후속 위임 (chain handoff)
+
+- **Root (HISTORY 통합 갱신, paper drafting 직전 timing)**: ✅ 본 entry 의 Wave 9 per-difficulty R/P/F1 컬럼 추가 + Wave 14 chain entry 등재 완료
+- **Analyzer (post-paper backlog #25, priority 3)**: Wave 6 9 cells + Wave 8 9 cells × per-difficulty R/P/F1 retrospective (54 entries) — paper drafting 직전 active trigger candidate
 
