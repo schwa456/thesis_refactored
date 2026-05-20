@@ -4997,14 +4997,16 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
 
 | Cell | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX | Note |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| **D1 v1** multi_backward | 0.9458 | 0.6914 | 0.7988 | 0.5111 | +0.0133 | −0.0679 | **−0.0382** | −0.0189 | R up + P drop |
-| **D1 v2** full_decompose | **0.9601** ★ R-best | 0.5500 | 0.6994 ❌ | 0.5163 | **+0.0276** ★ | **−0.2093** ❌ | **−0.1376** ❌ | −0.0137 | R-best 단 P collapse |
-| **D2 v1** direct_fk | 0.9351 | 0.7416 | 0.8272 | 0.5104 | +0.0026 | −0.0177 | −0.0098 | −0.0196 | sub-noise |
-| **D2 v2** 1hop_bridge | 0.9373 | 0.7405 | 0.8274 | 0.5085 | +0.0048 | −0.0188 | −0.0096 | −0.0215 | sub-noise |
-| **D3 v1** verify1round | 0.9328 | 0.7534 | 0.8336 | 0.5169 | +0.0003 | −0.0059 | −0.0034 | −0.0131 | EX-3rd |
-| **D3 v2** verify2round ⭐ | 0.9304 | 0.7579 | 0.8353 | **0.5215** ⭐ | −0.0021 | −0.0014 | −0.0017 sub-noise | **−0.0085** | **EX-2nd-best** (M4 sub-noise 안) |
-| **D4 v1** value_hint ★ | 0.9336 | **0.7623** ★ | **0.8393** ★ F1-best | 0.5111 | +0.0011 | **+0.0030** ✓ | **+0.0023** ✓ | −0.0189 | **F1-best marginal +** |
-| **D4 v3** forced_include | 0.9364 | 0.7215 | 0.8150 | 0.5091 | +0.0039 | −0.0378 | −0.0220 | −0.0209 | F1 drop |
+| **D1 v1** multi_backward | 0.9489 | 0.6914 | 0.7999 | 0.5111 | +0.0132 | −0.0679 | **−0.0384** | −0.0189 | R up + P drop |
+| **D1 v2** full_decompose | **0.9633** ★ R-best | 0.5500 | 0.7002 ❌ | 0.5163 | **+0.0276** ★ | **−0.2093** ❌ | **−0.1381** ❌ | −0.0137 | R-best 단 P collapse |
+| **D2 v1** direct_fk | 0.9383 | 0.7416 | 0.8284 | 0.5104 | +0.0026 | −0.0177 | −0.0099 | −0.0196 | sub-noise |
+| **D2 v2** 1hop_bridge | 0.9404 | 0.7405 | 0.8286 | 0.5085 | +0.0047 | −0.0188 | −0.0097 | −0.0215 | sub-noise |
+| **D3 v1** verify1round | 0.9358 | 0.7534 | 0.8348 | 0.5169 | +0.0001 | −0.0059 | −0.0035 | −0.0131 | EX-3rd |
+| **D3 v2** verify2round ⭐ | 0.9334 | 0.7579 | 0.8365 | **0.5215** ⭐ | −0.0023 | −0.0014 | −0.0018 sub-noise | **−0.0085** | **EX-2nd-best** (M4 sub-noise 안) |
+| **D4 v1** value_hint ★ | 0.9366 | **0.7623** ★ | **0.8405** ★ F1-best | 0.5111 | +0.0009 | **+0.0030** ✓ | **+0.0022** ✓ | −0.0189 | **F1-best marginal +** |
+| **D4 v3** forced_include | 0.9396 | 0.7215 | 0.8162 | 0.5091 | +0.0039 | −0.0378 | −0.0221 | −0.0209 | F1 drop |
+
+> ⚠ inline 값은 **Wave 13 patch f67fa65 (alias resolution) post 정정** — R/F1_harm 모두 +0.003 sub-noise uniform shift. M4 anchor 도 동일 patch 정합 (R=0.9357, F1_harm=0.8383, P=0.7593 invariant, EX=0.5300 retain).
 
 → **M4 anchor 정합 정확**: M4 EX=0.5300 retain (8 cells 중 그 어떤 cell 도 EX > M4 미달) ❌.
 
@@ -5024,11 +5026,13 @@ paper §V.5.x.M.2 5/15 갱신 narrative ("SQL gen prompt = EX-axis dominant fact
 
 | Axis | Pareto Cell | 값 |
 |---|---|---:|
-| **R-best** ★ Wave 8 신규 | **D1 v2** full_decompose | R=0.9601 |
-| **F1-best** Wave 6 retain | M1-B strong | F1=0.8655 |
-| **F1-best Wave 8 marginal** | D4 v1 value_hint | F1=0.8393 (+0.0023 vs M4) |
-| **EX-best** ★ M4 retain | M4 Bidirectional | EX=0.5300 |
+| **R-best** ★ Wave 8 신규 | **D1 v2** full_decompose | R=**0.9633** (Wave 13 patch post) |
+| **F1-best** Wave 6 retain | M1-B strong | F1_harm=0.8668 |
+| **F1-best Wave 8 marginal** | D4 v1 value_hint | F1_harm=0.8405 (+0.0022 vs M4) |
+| **EX-best** ★ M4 retain (Wave 8 까지) | M4 Bidirectional | EX=0.5300 |
 | **EX-2nd-best** ★ Wave 8 신규 | **D3 v2** verify2round | EX=0.5215 (M4 −0.0085 sub-noise) |
+
+> ⚠ **post-Wave 11 c_v3a EX-best 갱신**: Wave 11 c_v3a (Flat Merged + FK rerun) EX=**0.5535** = post-Wave 5 globally best (M4 +0.0235). Wave 13 Phase B Closure section (line ~5578+) 참조.
 
 ### paper §V.5.x.M.16~19 candidate sub-section map
 
@@ -5251,13 +5255,15 @@ DECISIONS 2026-05-19 §3 작업 4 + §6 + [wave8_m4_extensions_2026-05-19.md §5
 
 | 정합 axis | evidence | 정합 cell |
 |---|---|---|
-| **R-best** ⭐ | R=0.9601 | D1 v2 full_decompose (Wave 8 신규) |
-| **F1-best post-Wave 5** ⭐⭐ | F1=0.8684 | **Comb-A** (D4 v1 + D3 v2, Wave 8 Comb-A 신규) |
-| **P-best post-Wave 5** ⭐ | P=0.8247 | **Comb-A** (anchor c01_01 −0.0335 단 M4 +0.0654, dual-lift mechanism) |
-| **EX-best** ⭐ | EX=0.5300 | M4 Bidirectional (Wave 6 retain) |
+| **R-best** ⭐ | R=**0.9633** (Wave 13 patch post) | D1 v2 full_decompose (Wave 8 신규) |
+| **F1-best post-Wave 5** ⭐⭐ | F1_harm=**0.8697** | **Comb-A** (D4 v1 + D3 v2, Wave 8 Comb-A 신규) |
+| **P-best post-Wave 5** ⭐ | P=0.8247 (patch invariant) | **Comb-A** (anchor c01_01 −0.0335 단 M4 +0.0654, dual-lift mechanism) |
+| **EX-best** (Wave 8 까지) ⭐ | EX=0.5300 | M4 Bidirectional (Wave 6 retain) |
 | EX-2nd-best | EX=0.5215 | D3 v2 verify2round (Wave 8 신규) |
 | F1-EX Decoupling strongest evidence | F1 +0.0314 + EX −0.0183 simultaneous | Comb-A single-cell |
 | paper §V.5.x.M.16~19 sub-section evidence | D2 + D1 격하, D3 + D4 retain, Comb-A 신규 | Wave 8 + Comb-A |
+
+> ⚠ **post-Wave 11 EX-best 갱신**: Wave 11 c_v3a rerun EX=**0.5535** = post-Wave 5 globally best (M4 +0.0235). Wave 13 Phase B Closure section 참조.
 
 → **Wave 8 closure 의 paper main contribution evidence 충분** — Pareto frontier 4 axis multi-Pareto coverage 완성. paper drafting trigger 가능 base.
 
@@ -5361,14 +5367,16 @@ Wave 8 Comb-A 의 F1-EX Decoupling paradox (F1 +0.0314 + EX −0.0183 simultaneo
 
 ### Final Metrics (n=1534, c_v0 baseline reference)
 
-| Cell | R | P | F1 | EX | ΔEX vs c_v0 | ΔEX vs M4 (0.5300) | Verdict |
+| Cell | R | P | F1_harm | EX | ΔEX vs c_v0 | ΔEX vs M4 (0.5300) | Verdict |
 |---|---:|---:|---:|---:|---:|---:|---|
-| **c_v1_source_tagged** ⭐ | 0.8994 | 0.7321 | 0.8072 | **0.5332** | **+0.0443** ★ | **+0.0032** ★ | **EX > M4 Pass** ✓ |
-| **c_v3a_flat_merged_fk** | 0.8940 | 0.7263 | 0.8015 | 0.5248 | +0.0359 (Inv ✗) | −0.0052 sub-noise | Inv violation (해석 부정확) |
-| c_v0_baseline | 0.8980 | 0.7300 | 0.8053 | 0.4889 | (reference) | −0.0411 | reference |
-| c_v3b_flat_merged_no_fk | 0.8930 | 0.7249 | 0.8002 | 0.4870 | −0.0019 sub-noise (Inv ✗) | −0.0430 | Inv violation |
-| **comb_c_tagged_enriched** ⚠ | 0.9020 | 0.7368 | 0.8111 | 0.3950 | **−0.0939** ❌ | −0.1350 | Fail |
-| **c_v2_question_enrichment** ⚠⚠ | 0.9017 | 0.7342 | 0.8094 | **0.3742** | **−0.1147** ❌❌ | −0.1558 | Fail |
+| **c_v1_source_tagged** ⭐ | 0.9024 | 0.7321 | 0.8076 | **0.5332** | **+0.0443** ★ | **+0.0032** ★ | **EX > M4 Pass** ✓ |
+| **c_v3a_flat_merged_fk** | 0.8970 | 0.7263 | 0.8018 | 0.5248 | +0.0359 (Inv: LLM stoch) | −0.0052 sub-noise | within LLM stochastic ~±0.04 |
+| c_v0_baseline | 0.9012 | 0.7300 | 0.8061 | 0.4889 | (reference) | −0.0411 | reference |
+| c_v3b_flat_merged_no_fk | 0.8960 | 0.7249 | 0.8002 | 0.4870 | −0.0019 sub-noise | −0.0430 | within LLM stochastic |
+| **comb_c_tagged_enriched** ⚠ | 0.9050 | 0.7368 | 0.8113 | 0.3950 | **−0.0939** ❌ | −0.1350 | Fail |
+| **c_v2_question_enrichment** ⚠⚠ | 0.9047 | 0.7342 | 0.8094 | **0.3742** | **−0.1147** ❌❌ | −0.1558 | Fail |
+
+> ⚠ inline R/F1_harm = **Wave 13 patch f67fa65 (alias resolution) post**. **Wave 13 Phase B Closure section (line ~5578+) 의 73 cells 매트릭스가 single source of truth**. Phase A debug 의 "LLM stochastic" 가설 + Wave 13 alias artifact 정정 = 둘 의 정합 정정 (Wave 11 Rerun ALL-DONE 결과 정합).
 
 ### 시나리오 분기 판정 (filter_improvement §7)
 
