@@ -4276,9 +4276,11 @@ F1 trajectory (α axis):
 
 | Cell | prompt_mode | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **wave6_p1_recall_biased_mild** | recall_biased_mild | **0.9259** ★ | 0.7648 | 0.8377 | **0.5169** ★ | **+0.0511** ✅ | -0.0934 | -0.0287 | -0.0007 |
-| **wave6_p1_recall_biased_strong** | recall_biased_strong | 0.9022 | 0.8316 | **0.8655** ★ | 0.5130 | +0.0274 | -0.0266 | **-0.0009** sub-noise | -0.0046 |
-| **wave6_p1_recall_biased_exclusion_rule** | recall_biased_exclusion_rule | 0.8907 | 0.8263 | 0.8573 | 0.5143 | +0.0159 | -0.0319 | -0.0091 | -0.0033 |
+| **wave6_p1_recall_biased_mild** | recall_biased_mild | **0.9289** ★ | 0.7648 | 0.8389 | **0.5169** ★ | **+0.0512** ✅ | -0.0934 | -0.0289 | -0.0007 |
+| **wave6_p1_recall_biased_strong** | recall_biased_strong | 0.9051 | 0.8316 | **0.8668** ★ | 0.5130 | +0.0274 | -0.0266 | **-0.0010** sub-noise | -0.0046 |
+| **wave6_p1_recall_biased_exclusion_rule** | recall_biased_exclusion_rule | 0.8937 | 0.8263 | 0.8587 | 0.5143 | +0.0160 | -0.0319 | -0.0091 | -0.0033 |
+
+> ⚠ inline R/F1 = Wave 13 patch f67fa65 (alias resolution) post 정정 (anchor c01_01 R=0.8777 / F1=0.8678 patch post 정합).
 
 ### 핵심 finding (학술 agent improve plan §3 검증)
 
@@ -4387,10 +4389,12 @@ F1 trajectory (α axis):
 
 | Cell | Method | R | P | F1 | EX | ΔR | ΔP | ΔF1 | ΔEX |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **M2** w6_p2a_m2cot_strong | CoT + Confidence-Gated (thr=0.5) on M1 strong | **0.9745** ★ | 0.2286 | **0.3703** ★ worst | 0.5169 | +0.0997 ✅ | **-0.6296** ❌ | **-0.4961** ❌❌ | -0.0007 |
-| **M3** w6_p2_m3_voting | Multi-Prompt OR Voting (3 prompts × OR default) | 0.9408 | 0.6859 | 0.7934 | 0.5202 | +0.0660 | -0.1723 | -0.0730 | +0.0026 |
-| **M4** ⭐ w6_p2_m4_bidirectional | Forward (M1-A mild) + Backward (SQL Schema Analyst) union | 0.9325 | 0.7593 | **0.8370** ★ F1-best | **0.5300** ★ EX-max | +0.0577 | -0.0989 | -0.0294 | **+0.0124** ✅ |
-| **M5** w6_p2_m5_two_stage | Sequential Stage1 (Coarse Recall) → Stage2 (Fine Precision) | 0.7739 | 0.7964 | 0.7850 | 0.5222 | **-0.1009** ❌ | -0.0618 | -0.0814 | +0.0046 |
+| **M2** w6_p2a_m2cot_strong | CoT + Confidence-Gated (thr=0.5) on M1 strong | **0.9778** ★ | 0.2286 | **0.3706** ★ worst | 0.5169 | +0.1001 ✅ | **-0.6296** ❌ | **-0.4972** ❌❌ | -0.0007 |
+| **M3** w6_p2_m3_voting | Multi-Prompt OR Voting (3 prompts × OR default) | 0.9439 | 0.6859 | 0.7945 | 0.5202 | +0.0662 | -0.1723 | -0.0733 | +0.0026 |
+| **M4** ⭐ w6_p2_m4_bidirectional | Forward (M1-A mild) + Backward (SQL Schema Analyst) union | 0.9357 | 0.7593 | **0.8383** ★ F1-best | **0.5300** ★ EX-max | +0.0580 | -0.0989 | -0.0295 | **+0.0124** ✅ |
+| **M5** w6_p2_m5_two_stage | Sequential Stage1 (Coarse Recall) → Stage2 (Fine Precision) | 0.7761 | 0.7964 | 0.7861 | 0.5222 | **-0.1016** ❌ | -0.0618 | -0.0817 | +0.0046 |
+
+> ⚠ inline R/F1 = Wave 13 patch f67fa65 (alias resolution) post 정정 (anchor c01_01 F1=0.8678, P invariant). M2 R drop +0.1001 ✅ retain dramatic.
 
 ### 🌟 핵심 finding
 
@@ -4517,7 +4521,7 @@ F1 trajectory (α axis):
 
 | Source | R | P | F1 | EX | ΔF1 vs C1 | ΔEX vs C1 |
 |---|---:|---:|---:|---:|---:|---:|
-| **C1 w6_p4_c1_m4_strong** | **0.9177** | 0.8109 | **0.8610** | 0.5150 | (base) | (base) |
+| **C1 w6_p4_c1_m4_strong** | **0.9207** | 0.8109 | **0.8623** | 0.5150 | (base) | (base) |
 | anchor c01_01 | 0.8748 | 0.8582 | 0.8664 | 0.5176 | C1 -0.0054 sub-noise | C1 -0.0026 sub-noise |
 | M4 baseline (mild Forward) | 0.9325 | 0.7593 | 0.8370 | **0.5300** ★ | **C1 +0.0240** ✅ | **C1 -0.0150** ❌ EX loss |
 | M1-B strong (Forward only) | 0.9022 | 0.8316 | **0.8655** ★ | 0.5130 | C1 -0.0045 sub-noise | C1 +0.0020 sub-noise |
@@ -4620,7 +4624,9 @@ C1 의 Pareto frontier position: F1 (0.8610) 가 M3 MAJORITY (0.8433) > M4 (0.83
 
 | Source | R | P | F1 | EX | ΔF1 vs C2 | ΔEX vs C2 |
 |---|---:|---:|---:|---:|---:|---:|
-| **C2 w6_p5_c2_m4_majority** | **0.9273** | 0.7745 | **0.8440** | **0.5196** | (base) | (base) |
+| **C2 w6_p5_c2_m4_majority** | **0.9305** | 0.7745 | **0.8454** | **0.5196** | (base) | (base) |
+
+> ⚠ inline R/F1 = Wave 13 patch f67fa65 (alias resolution) post 정정 (C1: R 0.9207, F1_harm 0.8623 / C2: R 0.9305, F1_harm 0.8454).
 | anchor c01_01 | 0.8748 | 0.8582 | 0.8664 | 0.5176 | C2 -0.0224 | C2 +0.0020 sub-noise |
 | M4 baseline (mild Forward) ⭐ EX-max | 0.9325 | 0.7593 | 0.8370 | **0.5300** ★ | **C2 +0.0070** | **C2 -0.0104** ← key |
 | C1 (strong Forward, Partial Degrade) | 0.9177 | 0.8109 | 0.8610 | 0.5150 | C2 -0.0170 | **C2 +0.0046** ← key |
