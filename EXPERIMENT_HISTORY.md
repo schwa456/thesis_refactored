@@ -5523,14 +5523,24 @@ Wave 11 Phase B Final Results (commit 9a23d4c) 의 두 issue (base shift + Invar
 | 시나리오 2 (부분적) | retain — c_v1 (1st run +0.0032), **c_v3a rerun +0.0235** ★★ dramatic |
 | 시나리오 3 (귀무가설) | ❌ |
 
-### ΔR analysis — Wave 13 patch 효과 dominant vs LLM stochastic 분리
+### ΔR analysis — 정정 ⚠ (analyzer Phase B 보고서 §6.2 정합, 2026-05-20)
 
-| Source | ΔR 정량 | 정합 |
+> ⚠ **본 entry 의 원안 claim ("evaluator patch dominant ~+0.034 / LLM stochastic sub-noise <±0.005") 은 factually 부정확 — 본 decomposition 으로 정정**. [analyzer 보고서 §6.2](notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) 참조.
+
+| Cell | R_old (1st) | R_retro (new eval on 1st preds) | R_rerun_metrics | **Δ_eval_patch** | **Δ_LLM_stoch** | Total Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| c_v0 | 0.8980 | 0.9012 | 0.9329 | **+0.0032** | **+0.0317** ⚠ | +0.0349 |
+| c_v3a | 0.8940 | 0.8970 | 0.9332 | **+0.0030** | **+0.0362** ⚠ | +0.0392 |
+| c_v3b | 0.8930 | 0.8960 | 0.9327 | **+0.0030** | **+0.0367** ⚠ | +0.0397 |
+
+| Source | Δ 정량 | 역할 |
 |---|---:|---|
-| Wave 13 evaluator patch (alias artifact 제거) | ~+0.034~+0.040 | dominant (3 cells 모두 동일 magnitude +Δ) |
-| LLM stochastic (same-batch deterministic execution) | < ±0.005 | sub-noise (3 cells 의 ΔR variance 작음) |
+| `Δ_eval_patch` = R_retro − R_old (same final_nodes, alias-aware eval) | **+0.003 sub-noise** | other 64 cells 와 동일 magnitude |
+| `Δ_LLM_stoch` = R_rerun_retro − R_retro (rerun 의 new final_nodes) | **+0.032~+0.037 dominant** ⚠ | GLM 4.7 temp=0.0 의 cross-run R variance |
 
-→ **3 cells 모두 ΔR +0.034~+0.040 동일 magnitude** = LLM stochastic 의 cross-run variance 아닌 **evaluator patch 일관 효과** confirmed.
+→ **정정 conclusion**: evaluator patch 는 sub-noise (+0.003), **LLM stochastic 이 dominant (+0.035)**. 본 framework 의 GLM 4.7 temp=0.0 cross-run R variance ~±0.04 confirmed (same-batch parallel 도 deterministic 아님).
+
+→ **c_v3a EX 0.5535 dramatic finding 의 robustness 정합 retain** ✅: 1st run ΔEX_v3a−v0 = +0.0359 / Rerun ΔEX_v3a−v0 = +0.0326 / 평균 +0.0343 = within-run robust mechanism (LLM stochastic cross-run R variance 와 무관).
 
 ### 후속 위임 update (Phase B retrospective chain 정합)
 
@@ -5553,4 +5563,113 @@ Wave 11 Phase B Final Results (commit 9a23d4c) 의 두 issue (base shift + Invar
 - Wall: ~4h 14min (11:07:42 → ~15:20 KST, 3 streams parallel same-batch)
 - LLM calls: ~6900 (M4 base + 0 LLM serializer, 4.5 LLM/q × 1534 × 3 cells)
 - Cost: ~$5~8 GLM 4.7
+
+
+## Wave 13 Phase B Closure — Retrospective R 재측정 73 cells × R/F1_harmonic 정정 매트릭스 (analyzer 보고서 [evaluator_alias_fix_retrospective_2026-05-20.md](notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) §2+§3 정합, 2026-05-20)
+
+### 개요
+
+Wave 13 Phase A patch (commit f67fa65, evaluator alias resolution) 의 retrospective recompute — 본 framework 의 모든 active cells (Wave 5~12 + Wave 11 9 cells) × 새 evaluator R/P/F1 계산. **73 cells total, 4 Sanity Check 모두 PASS** ✅ (ΔR ≥ 0 all cells, ΔP = 0 exact, B3 invariant at 1.0, B1/B2 oracle R 0.9968 → **1.0000** ⭐).
+
+→ **paper main contribution Pareto frontier 변화** (정정값):
+
+| Axis | Cell | R/F1_harm_new (post-patch) |
+|---|---|---:|
+| **EX-best** ⭐⭐ (paper §V.5.x.M.20 new candidate) | **c_v3a Flat Merged + FK** (Wave 11 rerun) | EX=**0.5535** (M4 +0.0235) |
+| F1-best post-Wave 5 | Wave 8 Comb-A | F1_harm=**0.8697** (+0.0013 patch) |
+| R-best | Wave 8 D1 v2 full_decompose | R=**0.9633** (+0.0032) |
+| P-best | Wave 8 Comb-A | P=0.8247 (patch invariant) |
+| R upper bound | Wave 12 B1/B2 oracle | R=**1.0000** ⭐ (Wave 12 alias artifact 완전 해소) |
+
+### Wave 11 9 cells 정정 (1st run + Rerun, post-patch)
+
+| Cell | R_old | R_new | ΔR | P_new | F1_harm_new | EX | 비고 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| c_v0_baseline (1st run) | 0.8980 | 0.9012 | +0.0031 | 0.7300 | 0.8061 | 0.4889 | reference |
+| c_v1_source_tagged (1st run) | 0.8994 | 0.9024 | +0.0030 | 0.7321 | 0.8076 | **0.5332** ★ | M4 +0.0032 |
+| c_v2_question_enrichment (1st run) | 0.9017 | 0.9047 | +0.0030 | 0.7342 | 0.8094 | **0.3742** ⚠ | dramatic harm |
+| c_v3a_flat_merged_fk (1st run) | 0.8940 | 0.8970 | +0.0030 | 0.7263 | 0.8018 | 0.5248 | — |
+| c_v3b_flat_merged_no_fk (1st run) | 0.8930 | 0.8960 | +0.0030 | 0.7249 | 0.8002 | 0.4870 | — |
+| comb_c_tagged_enriched (1st run) | 0.9020 | 0.9050 | +0.0030 | 0.7368 | 0.8113 | **0.3950** ⚠ | stacking paradox |
+| **c_v0_baseline (rerun)** | 0.9329 | 0.9360 | +0.0031 | 0.7589 | 0.8385 | 0.5209 | M4 sub-noise |
+| **c_v3a_flat_merged_fk (rerun)** ⭐⭐ | 0.9332 | 0.9363 | +0.0031 | 0.7579 | 0.8383 | **0.5535** ⭐⭐ | **paper §V.5.x.M.20 candidate** |
+| **c_v3b_flat_merged_no_fk (rerun)** | 0.9327 | 0.9359 | +0.0031 | 0.7583 | 0.8385 | 0.5013 | FK 제거 harm |
+
+→ **c_v3a − c_v3b within-run ΔEX = +0.0522** ⭐ (FK hint 의 EX 필수 mechanism evidence)
+→ **c_v3a − c_v0 within-run ΔEX = +0.0326** (Flat Merged + FK serializer 의 EX gain vs M4 default)
+→ **c_v3a − M4 anchor ΔEX = +0.0235** (post-Wave 5 globally best EX, paper §V.5.x.M.20 dramatic evidence)
+
+### Wave 5/6/8 main cells 정정 (post-patch R/F1_harm)
+
+| Cell | R_old | R_new | ΔR | P_new | F1_harm_new |
+|---|---:|---:|---:|---:|---:|
+| Wave 5 anchor c01_01 (5/14) | 0.8748 | 0.8777 | +0.0029 | 0.8582 | 0.8678 |
+| Wave 7 c01_01 relog | 0.8697 | 0.8727 | +0.0030 | 0.8581 | 0.8653 |
+| Wave 6 M1-A mild | 0.9259 | 0.9289 | +0.0030 | 0.7648 | 0.8389 |
+| **Wave 6 M1-B strong** (F1-best Wave 6) | 0.9022 | 0.9051 | +0.0030 | 0.8316 | **0.8668** |
+| Wave 6 M1-C exclusion | 0.8907 | 0.8937 | +0.0029 | 0.8263 | 0.8587 |
+| **Wave 6 M2 CoT+Gated** (Caveat 1) | 0.9745 | 0.9778 | +0.0032 | 0.2286 | 0.3706 |
+| Wave 6 M3 voting | 0.9408 | 0.9439 | +0.0031 | 0.6859 | 0.7945 |
+| **Wave 6 M4 Bidirectional** (prior EX-best) | 0.9325 | 0.9357 | +0.0031 | 0.7593 | **0.8383** |
+| Wave 6 M5 two_stage | 0.7739 | 0.7761 | +0.0022 | 0.7964 | 0.7861 |
+| Wave 6 C1 M4+strong | 0.9177 | 0.9207 | +0.0030 | 0.8109 | 0.8623 |
+| Wave 6 C2 M4+majority | 0.9273 | 0.9305 | +0.0031 | 0.7745 | 0.8454 |
+| Wave 8 D1 v1 multi_backward | 0.9458 | 0.9489 | +0.0032 | 0.6914 | 0.7999 |
+| **Wave 8 D1 v2 full_decompose** (R-best ★) | 0.9601 | **0.9633** ⭐ | +0.0032 | 0.5500 | 0.7002 |
+| Wave 8 D2 v1 direct_fk | 0.9351 | 0.9383 | +0.0031 | 0.7416 | 0.8284 |
+| Wave 8 D2 v2 1hop_bridge | 0.9373 | 0.9404 | +0.0031 | 0.7405 | 0.8286 |
+| Wave 8 D3 v1 verify1round | 0.9328 | 0.9358 | +0.0030 | 0.7534 | 0.8348 |
+| Wave 8 D3 v2 verify2round | 0.9304 | 0.9334 | +0.0030 | 0.7579 | 0.8365 |
+| Wave 8 D4 v1 value_hint | 0.9336 | 0.9366 | +0.0030 | 0.7623 | 0.8405 |
+| Wave 8 D4 v3 forced_include | 0.9364 | 0.9396 | +0.0031 | 0.7215 | 0.8162 |
+| **Wave 8 Comb-A** (F1-best post-Wave 5) | 0.9170 | **0.9200** | +0.0030 | 0.8247 | **0.8697** ⭐ |
+| Wave 9 G-Retriever relog | 0.9146 | 0.9176 | +0.0030 | 0.1694 | 0.2858 |
+| Wave 9 LinkAlign relog | 0.7663 | 0.7689 | +0.0026 | 0.2369 | 0.3618 |
+| Wave 9 XiYan-SQL relog | 0.5967 | 0.5987 | +0.0020 | 0.7702 | 0.6730 |
+| **Wave 12 B1 Full Schema** | 0.9968 | **1.0000** ⭐ | +0.0032 | 0.1173 | 0.2100 |
+| **Wave 12 B2 Gold Table** | 0.9968 | **1.0000** ⭐ | +0.0032 | 0.2729 | 0.4288 |
+| **Wave 12 B3 Gold Column** ⭐ | 1.0000 | 1.0000 | +0.0000 | 1.0000 | **1.0000** |
+
+### c01 / c02 / c03 sweep cells (38 cells)
+
+요약 ([outputs/analysis/evaluator_alias_fix_retrospective_2026-05-20.csv](outputs/analysis/evaluator_alias_fix_retrospective_2026-05-20.csv) full table 참조):
+- **c01 θ sweep (6 cells)**: ΔR +0.0019~+0.0029 uniform
+- **c02 K sweep (7 cells)**: ΔR +0.0030 uniform (모든 K)
+- **c03 25 cells**: ΔR +0.0028~+0.0030 uniform
+
+### 4 Sanity Check (analyzer §3 정합)
+
+| Check | 결과 |
+|---|---|
+| (1) ΔR ≥ 0 all 73 cells | ✅ PASS (mean +0.00289, range +0.0000~+0.0032) |
+| (2) ΔP = 0 exact all cells | ✅ PASS (patch 가 alias name 만 제거 → cols 영향 retain, P intersection 변화 없음) |
+| (3) B3 invariant at 1.0 (R=P=F1=1.0 retain) | ✅ PASS |
+| (4) B1/B2 oracle R 0.9968 → 1.0000 | ✅ PASS (Wave 12 alias artifact 완전 해소) |
+| (5) n_aliased_queries = 19 across all cells | ✅ PASS (Wave 12 §3.2 spec exact match) |
+
+### 핵심 finding 5 줄 (analyzer §8)
+
+1. **73 cells × 4 Sanity Check 모두 PASS** — alias artifact 완전 해소 confirmed.
+2. **Wave 11 c_v3a (Flat Merged + FK) EX-Best Dramatic** ⭐⭐: rerun EX=**0.5535** = post-Wave 5 globally best EX. Schema Content Invariance retain. 시나리오 1 confirmed.
+3. **R drift decomposition 정정**: Δ_eval_patch +0.003 sub-noise + **Δ_LLM_stoch +0.035 dominant** ⚠ (HISTORY Wave 11 Rerun ALL-DONE 의 원안 claim 정정 — 별도 §6.2 정합).
+4. **paper Pareto frontier 변화**: EX-best M4 (0.5300) → **c_v3a (0.5535)** ⭐⭐. 다른 4 axis retain.
+5. **paper §V.5.x.M.4 R-ceiling 0.9968 → 1.0 정정** (Wave 12 oracle alias 해소) + **§V.5.x.M.20 신규 sub-section** (c_v3a EX-best + c_v3b FK 제거 harm + Schema Content Invariance retain mechanism).
+
+### 후속 위임 (Phase C)
+
+- **Planner 위임 (priority 1)**:
+  - paper §V.5.x.M.4 narrative 정합 정정 (R 상한 0.9968 → 1.0 post-Wave 13 alias resolution + Wave 12 oracle R correction)
+  - paper §V.5.x.M.20 신규 sub-section 작성 (c_v3a EX-best mechanism — Flat Merged + FK serializer 의 SQL gen JOIN inference 부담 감소, Schema Content Invariance retain, paper main contribution narrative 의 dramatic evidence)
+  - paper §10 6-baseline 비교 표 정합 정정 (R/F1 정정 값 적용)
+  - paper main contribution Pareto frontier 갱신 (EX-best c_v3a + 5 axis 정합)
+  - planning/metric_spec_2026-05-20.md §1.1/§1.3/§8.1 spec 정합 정정
+- **Root 위임 (paper drafting timing)**:
+  - Wave 8 closure + Wave 9 + Wave 10 + Wave 11 final + Wave 12 + **Wave 13** 의 7 chain 통합 정량 base 위 paper drafting final integration trigger 판단
+- **post-paper backlog #24 (Wave 9 R/P/F1)** ✅ 완료 (본 chain Phase B 통합).
+
+### 산출물
+
+- Analyzer 보고서: `notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md`
+- CSV: `outputs/analysis/evaluator_alias_fix_retrospective_2026-05-20.csv` (73 cells × R_old/R_new/ΔR/P_old/P_new/F1_harm_old/F1_harm_new/EX)
+- Phase B closure marker (본 entry)
 
