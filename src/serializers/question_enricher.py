@@ -8,6 +8,13 @@ Schema 제약). enriched question 이 SQL Generator 의 query 자리를 대체.
   - Enrichment 결과 캐싱 (동일 question 의 enrichment 한 번만)
 
 LLM call/q: +1 (per query, cache miss). cache hit 시 0.
+
+**Immutability contract (Wave 11 Debug 2026-05-20)**:
+본 함수는 m4_schema / few_shot_examples 입력을 read-only 사용. dict mutation 없음
+(format_schema_for_enrichment 는 새 str, ENRICHMENT_*_TEMPLATE 도 새 str 반환).
+EnrichmentCache 는 process-level memoization — caller 의 final_nodes 등 외부 dict
+mutation 없음. C-v2/Comb-C 의 R/P/F1 invariance sub-noise (Wave 11 Phase B 의
+c_v1 cell) 와 정합.
 """
 import hashlib
 import json

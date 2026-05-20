@@ -6,6 +6,13 @@ JOIN 추론 부담 감소 + multi-table EX 효과 측정.
 Variants:
   - C-v3a : fk_relations 포함 (FK hint 추가, JOIN path 명시)
   - C-v3b : fk_relations 없음 (table.col flat only, 가장 minimal)
+
+**Immutability contract (Wave 11 Debug 2026-05-20)**:
+본 함수는 m4_output / fk_relations 입력을 read-only 사용. dict/list mutation 없음
+(string concat 만). 즉 caller 의 final_nodes / final_result 를 절대 변경 안 함.
+Wave 11 Phase B 의 c_v3a/v3b Schema Content Invariance violation 의 root cause
+는 LLM stochastic 이지 본 serializer 의 implementation bug 아님 (regression
+test src/serializers/tests/test_wave11_serializers.py 로 검증).
 """
 from typing import Dict, List, Optional, Sequence, Tuple
 

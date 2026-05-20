@@ -10,6 +10,12 @@ Tag legend (학술 agent §3.2):
 
 Schema Content Invariance retain: 같은 M4 union → 같은 column 집합 (R/P/F1
 identical, ΔR/ΔP/ΔF1 ±0.0001 허용). EX 만 직렬화 방식 차이로 변화 측정.
+
+**Immutability contract (Wave 11 Debug 2026-05-20)**:
+본 함수는 m4_output / forward_set / backward_set 입력을 read-only 사용. dict/set
+mutation 없음 (tag_columns 의 union_set 도 새 dict 반환, _normalize_set 도 새 set
+반환). 즉 caller 의 final_nodes / filter_info 를 절대 변경 안 함. Wave 11 Phase B
+의 c_v1 invariance OK (R/P/F1 sub-noise) 와 정합.
 """
 from typing import Dict, List, Set, Tuple
 

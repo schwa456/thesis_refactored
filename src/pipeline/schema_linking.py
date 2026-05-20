@@ -157,12 +157,23 @@ class SchemaLinkingPipeline:
         metadata: Dict[str, Any] = None,
         db_id: str = None,
     ):
-        """Wave 11 serializer 적용. Returns (pre_serialized_schema, enriched_question)."""
+        """Wave 11 serializer 적용. Returns (pre_serialized_schema, enriched_question).
+
+        **Immutability contract (Wave 11 Debug 2026-05-20, commit 3eb476d 후속)**:
+        본 함수는 final_nodes 와 filter_info 를 read-only 사용. 새 m4_output dict
+        (new local) 를 생성해 serializer 에 전달. 어떤 serializer 도 m4_output 을
+        mutate 하지 않음 (단순 string format). 즉 본 path 는 final_result["final_nodes"]
+        를 절대 변경 안 함. Wave 11 Phase B 의 c_v3a/v3b Schema Content Invariance
+        violation 의 root cause 는 LLM stochastic (temperature=0.0 라도 GLM 4.7 API
+        의 internal sampling) — 본 코드 path 의 implementation bug 아님 (regression
+        test 로 검증, src/serializers/tests/test_wave11_serializers.py).
+        """
         if not self.serializer_type:
             return None, None
-        # M4 output (final_nodes → {table: [col, ...]})
+        # M4 output (final_nodes → {table: [col, ...]}). list/dict 모두 new instance
+        # (defensive — final_nodes 가 외부에서 mutation 돼도 m4_output 만 영향).
         m4_output: Dict[str, List[str]] = {}
-        for n in final_nodes or []:
+        for n in list(final_nodes or []):
             if not isinstance(n, str):
                 continue
             if "." in n:

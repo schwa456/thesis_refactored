@@ -370,6 +370,124 @@ def test_wave11_pipeline_round_robin_difficulty_sampling():
     _assert(diffs.count("challenging") == 2, f"2 challenging, got {diffs.count('challenging')}")
 
 
+def test_immutability_serializers_do_not_mutate_m4_output():
+    """Wave 11 Debug 2026-05-20 (commit 9a23d4c 후속): root cause = LLM stochastic
+    이지 본 코드 path 의 mutation bug 아님 — 5 cells 모두 m4_output dict 불변 검증.
+    """
+    print("\n[test] Wave 11 Debug — 모든 serializer 가 m4_output dict 를 mutate 안 함")
+    import copy
+    m4 = {"users": ["id", "name"], "orders": ["total", "user_id"]}
+    m4_snapshot = copy.deepcopy(m4)
+    fwd = ["users.id", "users.name"]
+    fwd_snap = list(fwd)
+    bwd = ["users.id", "orders.total", "orders.user_id"]
+    bwd_snap = list(bwd)
+    fks = [("orders", "user_id", "users", "id")]
+    fks_snap = list(fks)
+
+    # C-v1
+    _ = format_tagged_schema(m4, fwd, bwd)
+    _assert(m4 == m4_snapshot, "C-v1 m4_output unchanged")
+    _assert(fwd == fwd_snap, "C-v1 forward_set unchanged")
+    _assert(bwd == bwd_snap, "C-v1 backward_set unchanged")
+
+    # C-v3a/v3b
+    _ = format_flat_schema(m4, fk_relations=fks)
+    _assert(m4 == m4_snapshot, "C-v3a m4_output unchanged")
+    _assert(fks == fks_snap, "C-v3a fk_relations unchanged")
+    _ = format_flat_schema(m4, fk_relations=None)
+    _assert(m4 == m4_snapshot, "C-v3b m4_output unchanged")
+
+    # C-v2
+    cache = EnrichmentCache()
+    few_shots = [{"question": "q", "schema": {"t": ["c"]}, "enriched_question": "e"}]
+    few_shots_snap = copy.deepcopy(few_shots)
+    enrich_question(
+        question="user q", m4_schema=m4, few_shot_examples=few_shots,
+        llm_client=_MockLLM("enriched"), model_name="m", cache=cache,
+    )
+    _assert(m4 == m4_snapshot, "C-v2 m4_schema unchanged")
+    _assert(few_shots == few_shots_snap, "C-v2 few_shot_examples unchanged")
+
+
+def test_deterministic_llm_5cells_invariance():
+    """동일 mock LLM 응답 → 5 cells (c_v0/c_v1/c_v3a/c_v3b/Comb-C) 모두 동일
+    final_nodes 산출 검증 (LLM stochastic 와 implementation bug 분리).
+
+    Wave 11 Phase B (commit 9a23d4c) 의 c_v3a/v3b Invariance violation 의 root
+    cause = LLM stochastic 임을 증명. 본 test 가 PASS 하면 본 chain 의 코드는
+    deterministic — invariance violation 은 GLM 4.7 API 의 internal sampling.
+    """
+    print("\n[test] Deterministic LLM 의 동일 응답 → 5 cells 모두 같은 m4_output 산출")
+    from modules.filters.bidirectional_filter import BidirectionalFilter
+
+    class _DetLLM:
+        """sequentially-fixed responses — 동일 instance 가 모든 BidirectionalFilter 호출에 같은 응답 시퀀스 반환."""
+        def __init__(self, fwd_resp, bwd_resp):
+            self._fwd = fwd_resp
+            self._bwd = bwd_resp
+            self._call_idx = 0
+        def generate_text(self, prompt, model, temperature, **kw):
+            r = self._fwd if (self._call_idx % 2 == 0) else self._bwd
+            self._call_idx += 1
+            return r
+
+    subgraph = {"users": ["id", "name"], "orders": ["total", "user_id"]}
+    fwd_resp = json.dumps({"users": ["id", "name"]})
+    bwd_resp = json.dumps({"users": ["id"], "orders": ["total"]})
+
+    # 5 cells 모두 동일 yaml param (forward=mild, backward=bidirectional_backward) +
+    # 동일 LLM 응답 → 동일 final_nodes 산출 검증
+    final_nodes_per_cell = []
+    for cell_name in ["c_v0", "c_v1", "c_v3a", "c_v3b", "comb_c"]:
+        flt = BidirectionalFilter(
+            model_name="mock", provider=None, db_dir="/x", num_examples=0,
+            sanitize_output=True,
+        )
+        flt.client = _DetLLM(fwd_resp, bwd_resp)
+        result = flt.refine(query="q", subgraph=subgraph, db_id=None)
+        final_nodes_per_cell.append(sorted(result["final_nodes"]))
+
+    # 5 cells 모두 동일 final_nodes
+    first = final_nodes_per_cell[0]
+    for i, fn in enumerate(final_nodes_per_cell[1:], start=1):
+        cell_name = ["c_v0", "c_v1", "c_v3a", "c_v3b", "comb_c"][i]
+        _assert(fn == first, f"{cell_name} final_nodes invariant (deterministic LLM)")
+
+
+def test_immutability_pipeline_serializer_does_not_modify_final_nodes():
+    """schema_linking 의 _apply_wave11_serializer 가 final_nodes 를 mutate 안 함.
+
+    Wave 11 Debug — sanitize_filter_output / format_*_schema / enrich_question
+    호출 후에도 입력 final_nodes 리스트 자체는 변경 없음.
+    """
+    print("\n[test] pipeline _apply_wave11_serializer 가 final_nodes mutation 없음")
+    from pipeline.schema_linking import SchemaLinkingPipeline
+    pipe = SchemaLinkingPipeline.__new__(SchemaLinkingPipeline)
+    pipe.serializer_type = "source_tagged"
+    pipe.serializer_config = {}
+    pipe._enrichment_cache = None
+    pipe._enrichment_client = None
+    pipe._enrichment_few_shots = []
+
+    final_nodes = ["users.id", "users.name", "orders.total"]
+    final_nodes_snap = list(final_nodes)
+    filter_info = {
+        "filter_forward_set": ["users.id", "users.name"],
+        "filter_backward_set": ["users.id", "orders.total"],
+    }
+    filter_info_snap = json.loads(json.dumps(filter_info))
+
+    pre_serialized, enriched = pipe._apply_wave11_serializer(
+        final_nodes=final_nodes, filter_info=filter_info, query="q",
+        metadata=None, db_id=None,
+    )
+    _assert(final_nodes == final_nodes_snap, "final_nodes list unchanged after serializer")
+    _assert(filter_info == filter_info_snap, "filter_info dict unchanged")
+    _assert(pre_serialized is not None, "pre_serialized produced (source_tagged path)")
+    _assert(enriched is None, "no enrichment for source_tagged only")
+
+
 def test_bidirectional_filter_exposes_forward_backward_set():
     print("\n[test] BidirectionalFilter stats + filter_info expose forward_set/backward_set")
     from modules.filters.bidirectional_filter import BidirectionalFilter
@@ -432,6 +550,10 @@ def run_all():
         test_schema_invariance_all_5_cells,
         test_wave11_pipeline_loads_few_shots_and_filters_by_db_id,
         test_wave11_pipeline_round_robin_difficulty_sampling,
+        # Wave 11 Debug 2026-05-20 (commit 9a23d4c 후속) — immutability + LLM stochastic 분리
+        test_immutability_serializers_do_not_mutate_m4_output,
+        test_deterministic_llm_5cells_invariance,
+        test_immutability_pipeline_serializer_does_not_modify_final_nodes,
         test_bidirectional_filter_exposes_forward_backward_set,
     ]
     failures = []

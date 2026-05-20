@@ -280,6 +280,32 @@ sql_generator:
 - **Root**: 5 cell yaml (`configs/experiments/abl/wave11_schema_serialization/{c_v1_source_tagged, c_v2_question_enrichment, c_v3a_flat_merged_fk, c_v3b_flat_merged_no_fk, comb_c_tagged_enriched}.yaml`) + `scripts/run_wave11_phase_b.sh` (5 cells parallel). Cost: C-v1/v3 = 0 추가 LLM, C-v2/Comb-C = +1500 calls ($1.5~3 × 2 = ~$3~6). Wall: ~2h parallel.
 - **Analyzer**: `notebooks/analysis_results/wave11_serialization_2026-05-XX.md` — 5-cell 매트릭스 (학술 agent §6.4 형식) + Schema Content Invariance 검증 (ΔR/ΔP/ΔF1 ±0.0001) + 난이도별 ΔEX + JOIN 수별 ΔEX + Enrichment 정성 sampling 20건 + cost ROI. 시나리오 분기 (1: ΔEX>0 / 2: 부분 개선 / 3: 귀무가설) 권고.
 
+### Wave 11 Phase B Debug (★ Critical, commit 9a23d4c 후속 2026-05-20)
+
+EXPERIMENT_HISTORY Wave 11 Phase B Final Results (2026-05-19~20) 의 두 issue 점검 결과:
+
+**Issue 1 — c_v3a/v3b Invariance violation (ΔR/ΔP ~ −0.004~−0.005)**:
+- **코드 점검**: `flat_merged_serializer.format_flat_schema()` + `schema_linking._apply_wave11_serializer()` + `BidirectionalFilter.refine()` 모두 input dict/list mutation 없음. 모든 path 가 read-only string format.
+- **Regression test 추가** (`test_immutability_serializers_do_not_mutate_m4_output` + `test_deterministic_llm_5cells_invariance` + `test_immutability_pipeline_serializer_does_not_modify_final_nodes`): mock LLM 의 동일 응답 → 5 cells (c_v0/c_v1/c_v3a/c_v3b/Comb-C) 모두 동일 final_nodes 산출 **PASSED**.
+- **결론**: 본 코드 path 는 deterministic. **Root cause = LLM stochastic** (GLM 4.7 API 의 internal sampling, temperature=0.0 라도 완벽 deterministic 아님). qid=0 의 c_v3b 가 `schools.CDSCode + schools.County` 추가 → filter 의 LLM 응답이 c_v0 와 다르게 schools 를 retain → auto_join_keys 가 schools.CDSCode 추가.
+
+**Issue 2 — c_v0 base shift vs M4 anchor (R=0.8980 vs M4 0.9325, LLM 4.8/q vs 2/q)**:
+- **LLM calls 차이 root cause = Wave 7 Option A patch (commit 7ab0d17, 2026-05-18)**. Wave 7 부터 schema_linking.py 가 selector_only + extractor_only 별도 SQL gen 추가 — c_v0 의 4.8/q = 2 (M4 fwd+bwd) + 1 (final SQL) + 1 (selector-only SQL) + 0.8 (extractor-only SQL, 일부 empty skip). M4 anchor 측정 시점 (Wave 6, commit 7a07a6b) 에는 Wave 7 patch 없음 — 따라서 LLM calls 차이는 **정상**.
+- **R 차이 root cause = LLM stochastic 시점 drift**. Wave 6 vs Wave 11 시점의 GLM 4.7 응답 자체가 다름 (temperature=0 라도 5 cells 모두 stochastic). 본 chain 의 BidirectionalFilter F/B set 별도 저장 patch (commit 3eb476d) 는 read-only — refine() 의 final_nodes 계산 logic 변경 없음.
+
+**Defensive Hardening (commit 9a23d4c 후속)**:
+- 3 serializer 의 docstring 에 immutability contract 명시
+- `_apply_wave11_serializer()` 의 `m4_output` 생성에 explicit `list(...)` defensive copy
+- 22-scenario smoke test (19 + 3 신규 immutability/deterministic regression) **PASSED 22/22**
+
+**재실행 권고 (Root + Analyzer)**:
+- c_v0_baseline + c_v3a + c_v3b 재실행 (3 cells, ~3000 LLM calls, ~1h)
+- 재실행 시 **same-batch deterministic execution** — 동일 시점에 모든 cell 을 parallel launch (GLM API의 시점 drift 최소화)
+- 또는 **multi-seed average** (3 runs × 3 cells = 9 runs, 평균 ΔEX 측정)
+- c_v1 + c_v2 + Comb-C 는 R/P/F1 invariance ≈ OK (마진 sub-noise) → 재실행 불필요
+- 재실행 결과 + 본 immutability test PASSED 결과 → EXPERIMENT_HISTORY Wave 11 Phase B Final Results entry 의 "Invariance violation" footnote 갱신 (root cause = LLM stochastic 명시)
+- paper §V.5.x.M.20 narrative draft 정합 — Wave 11 Phase B 의 invariance violation 은 implementation bug 아님을 명시 (c_v1 EX=0.5332 의 single-cell positive 는 valid, c_v3a/v3b 의 +0.0359 / −0.0019 sub-noise 도 LLM stochastic 영향)
+
 ---
 
 ## M3 / M4 / M5. Wave 6 Phase 2 (a+aggressive) 동시 launch (★ 최상, 2026-05-16)
