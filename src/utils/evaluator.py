@@ -1,5 +1,5 @@
 import sqlglot
-from sqlglot.expressions import Table, Column
+from sqlglot.expressions import Alias, Column, Table
 from typing import Set, Tuple, List
 import pandas as pd
 from utils.logger import get_logger
@@ -7,15 +7,32 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
-    """SQL을 파싱하여 명시된 Table 명과 Column 명 집합을 반환"""
+    """SQL을 파싱하여 명시된 Table 명과 Column 명 집합을 반환.
+
+    Wave 13 patch (DECISIONS 2026-05-20 §2): SQL alias (derived/computed column)
+    는 schema linking target 의 real DB column 아님 — sqlglot 의 find_all(Alias)
+    로 alias name 식별 후 columns set 에서 제외. alias 의 inner expression 의
+    real columns 는 find_all(Column) 으로 동시 추출 정합 위 retain.
+    """
 
     if not sql:
         return set(), set()
-    
+
     try:
         parsed = sqlglot.parse_one(sql, read="sqlite")
         tables = set(node.name.lower() for node in parsed.find_all(Table) if node.name)
-        columns = set(node.name.lower() for node in parsed.find_all(Column) if node.name)
+
+        # alias names 식별 (sqlglot Alias AST nodes)
+        alias_names = set()
+        for alias_node in parsed.find_all(Alias):
+            if alias_node.alias:
+                alias_names.add(alias_node.alias.lower())
+
+        # columns 추출 시 alias 제외 (alias name = derived/computed column, NOT real DB column)
+        columns = set(
+            node.name.lower() for node in parsed.find_all(Column)
+            if node.name and node.name.lower() not in alias_names
+        )
         return tables, columns
 
     except Exception as e:

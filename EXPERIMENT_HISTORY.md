@@ -5418,3 +5418,72 @@ Wave 8 Comb-A 의 F1-EX Decoupling paradox (F1 +0.0314 + EX −0.0183 simultaneo
   - c_v2 enrichment harm + Comb-C stacking paradox 의 narrative 처리 (paper cautionary evidence 또는 post-paper 위임)
   - Wave 11 closure 결정 + paper drafting trigger 시점
 
+
+## Wave 13 Phase A — Evaluator Alias Resolution Patch (DECISIONS 2026-05-20 (Wave 13) §2+§3 Phase A, 2026-05-20, 🎯 evaluator artifact fix complete + smoke test 5/5 PASS, Phase B retrospective analyzer chain trigger 준비)
+
+### 목적
+
+Wave 12 Oracle Baseline analyzer finding (R=0.9968 root cause = SQL alias artifact) 의 정합 정정 — `src/utils/evaluator.py:9-23` 의 `parse_sql_elements` 의 sqlglot `find_all(Column)` 가 SQL alias 도 Column AST 로 추출 → gold_cols 에 18 unique alias names 포함 → 본 framework 모든 cell 의 R 상한 = 0.9968 (NOT 1.0). 사용자 spec (Option B, 5/20 34th turn): "alias 여도 원래 컬럼 이름으로 다 맞춰서 Recall 을 재야할 것 같은데".
+
+### Patch Spec (DECISIONS §2 정확 정합)
+
+```python
+from sqlglot.expressions import Alias, Column, Table
+
+def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
+    # ... (alias_names 식별 + columns 추출 시 alias 제외)
+```
+
+- `from sqlglot.expressions` import 에 `Alias` 추가
+- `parsed.find_all(Alias)` → alias name set 식별
+- `find_all(Column)` 결과에서 alias name 제외 (`node.name.lower() not in alias_names`)
+- alias 의 inner expression real columns 는 `find_all(Column)` 으로 동시 추출 → 자동 retain
+
+### Smoke Test 5 종 결과 (★ all PASS)
+
+| Test | 결과 |
+|---|---|
+| **(a) functional** | ✓ PASS — no-alias SQL columns 정확 추출, alias SQL 의 rnk 제외 + inner col (county, avgscrread) retain, COUNT(*) AS cnt 의 cnt 제외 |
+| **(b) 19 alias queries × 18 alias names** | ✓ PASS exact match DECISIONS Wave 12 §3.2 spec (`a, cnt, count_uuid, match_count, max_count, max_reputation, min_time_in_seconds, monthlyconsumption, num, oxygen_count, post_count, rank, result, rnk, single_bond_count, time_in_seconds, time_seconds, total_amount`) |
+| **(c) 18 alias DB col false positive** | ✓ PASS — `rank` alias가 `formula_1.results.rank` real col 와 충돌 단 formula_1 의 174 queries 중 alias `rank` + real col `rank` 동시 사용 = **0 queries**. patch 후 real col `rank` retain (6 queries 정확) |
+| **(d) alias inner expression cols retain (19 queries)** | ✓ PASS — 19 queries 모두 removed == expected (alias names only), retained 2-6 inner cols (예: qid=41 의 rnk 제거 + 6 inner cols retain) |
+| **(e) regression — 10 random no-alias queries** | ✓ PASS — **10/10 invariant** (alias 없는 query 의 R 정합 변경 없음) |
+
+### False Positive 정밀 분석 — `rank` alias vs `formula_1.results.rank`
+
+- formula_1 (174 queries 정합 분석):
+  - alias `rank` only (no real col reference): **0 queries**
+  - real col `rank` only (no alias): **6 queries** — patch 후 모두 retain ✓
+  - BOTH alias + real col: **0 queries** ✓
+- → 18 alias names 의 false positive 우려 = **0** confirmed (BIRD-Dev gold SQL 정합)
+
+### 다음 phase trigger
+
+- **Phase B (Analyzer 위임)**: retrospective R 재측정 chain (~50~70 cells × R recompute), 본 framework 의 모든 active cells (Wave 5~12) 의 `final_nodes` → 새 evaluator 로 R 재계산
+- **Phase C (Planner + Root, Phase B 후)**:
+  - paper §V.5.x.M.4 narrative R-ceiling 정합 정정 (0.9968 → ~1.0 with alias resolution)
+  - paper §10 6-baseline 표 R/P/F1 갱신
+  - planning/metric_spec_2026-05-20.md §1.1/§1.3/§8.1 spec 정합 정정
+  - EXPERIMENT_HISTORY 의 모든 cells (Wave 5~12) R 값 정정 (root 위임)
+
+### Wave 10/11/12 와의 정합
+
+| Chain | 정합 |
+|---|---|
+| Wave 10 Phase B (Spec A 단일 채택) | ✅ patch = Spec A evaluator 자체의 정확화, Spec A 통일 retain |
+| Wave 11 (진행 중, Rerun) | ⚠ patch 후 evaluator 사용 — Wave 11 Rerun 의 R 결과는 patch 후 metric (cross-run variance 의미 약간 변경 단 final_nodes 에 alias matching col 거의 없으므로 영향 sub-noise expected) |
+| Wave 12 (B1/B2/B3 oracle) | ✅ B3 spec invariance retain, B1/B2 R 0.9968 → ~1.0 정합 정정 candidate |
+| post-paper backlog #24 (Wave 9 R/P/F1) | ✅ 본 chain Phase B 통합 — ✅ 완료 reclassify |
+
+### 산출물
+
+- Patch: `src/utils/evaluator.py:1-37` (Alias import + parse_sql_elements alias resolution)
+- Phase A commit (본 entry): src/utils/evaluator.py + EXPERIMENT_HISTORY.md
+- Smoke test 산출 (transcript inline, 5/5 PASS)
+
+### 후속 위임 (chain handoff)
+
+- **Analyzer 위임 (Phase B, priority 1)**: retrospective R 재측정 chain — `notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-XX.md` + `outputs/analysis/evaluator_alias_fix_retrospective_2026-05-XX.csv` (cells × R_old / R_new / ΔR + summary)
+- **Planner 위임 (Phase C, analyzer 후, planner 직접)**: paper §V.5.x.M.4 + §10 + planning/metric_spec_2026-05-20.md 정합 정정
+- **Root 위임 (Phase C 병렬)**: EXPERIMENT_HISTORY 의 모든 cells R 값 정정 + HISTORY Wave 13 closure marker
+
