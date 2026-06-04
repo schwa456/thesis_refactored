@@ -270,6 +270,75 @@ class HybridFKPriorPCSTExtractor(BasePCSTExtractor):
 - [notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-XX.md](../../../notebooks/analysis_results/) (root + analyzer 단계).
 - paper §3.5 axis #5/#6/#7 narrative 보강 candidate.
 
+## V7 Extractor 개편 — Connectivity-Preserving Family (2026-06-04, 학술 Agent RFP)
+
+> Source: [planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md](../../../planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md) (§1 STE GRAST-SQL + §2 FKP SchemaGraphSQL) + [planning/extractor/extractor_redesign_v7_plan_2026-06-04.md](../../../planning/extractor/extractor_redesign_v7_plan_2026-06-04.md) (§2 정정).
+
+### 동기
+- 현 anchor (`MSTPCSTUnionExtractor` / `MSTKruskalExtractor`) 는 `score > θ=0.1` 인 모든 노드를 induced spanning → over-extract (no_filter cell P=0.1268, ~95% Full Schema 복구). "Extractor 의 학술 가치 약화 + LLM input 사실상 Full Schema" 라는 사용자 의문에 대한 직접 대응.
+- top-K terminal 정의 + 연결성 보존 mechanism (Steiner tree / FK pathfinding) 으로 P 강화 — over-extract 를 Filter 에 떠넘기지 않고 Extractor 단계에서 compact 화.
+
+### 본 framework 정합 정정 (RFP 코드 spec → 실제 dict interface)
+학술 Agent RFP 의 객체 method 가정 (`graph_data.node_types` / `.nodes(ntype)` / `.edges(etype)` / `.node_name(nid)`) 은 본 framework 미존재. 실측 정합:
+- **graph_data = metadata dict** ([pipeline/schema_linking.py:416](../../pipeline/schema_linking.py) 가 `metadata` 를 `graph_data` 자리에 전달).
+- **node type = flat-index range** (builder [graph_builder.py:433-444](../builders/graph_builder.py)): `table [0, num_t)` → `column [num_t, num_t+num_c)` → `fk_node [num_t+num_c, num_nodes)`. `num_t=len(table_to_id)`, `num_c=len(col_to_id)`, `num_nodes=len(node_scores)`.
+- **query 노드 없음** — node_scores index 공간은 table+column+fk_node 만 (RFP §1.10 query terminal 제외 권고 자동 충족).
+- **edges/edge_types** = `graph_data['edges']` (List[(u,v)] flat) + `graph_data['edge_types']` (값 ∈ {belongs_to, is_source_of, points_to, table_to_table}) parallel list. column 간 FK join = `column → fk_node → column` 2-hop.
+- import: `from modules.base import BaseExtractor` (src prefix 없음) + `@register("extractor", "<ClassName>")`.
+
+### V7-W3 — SteinerTreeExtractor ([steiner_tree_extractor.py](steiner_tree_extractor.py))
+- top-K terminal (column/table) → connected component 별 `networkx.algorithms.approximation.steiner_tree` (Mehlhorn 2-approx, nx 3.4.2) → Steiner point minimal 추가.
+- GRAST-SQL edge weight: FK-adjacent (is_source_of/points_to) `w=0`, 그 외 `w=1` (`edge_weight_mode='grast'`). `'uniform'` = 모든 edge 1.
+- `cap_to_k`: terminal 우선 + Steiner point 점수순 채워 총 k cap. STE-08 은 `cap_to_k=False` (Steiner point 무제한, P 하한 확인).
+- 파라미터: `k`, `terminal_mode ∈ {topk, threshold}`, `score_threshold`, `terminal_node_types` (기본 [column, table]), `cap_to_k`, `edge_weight_mode`, `fk_edge_types` (grast w=0 set, 기본 [is_source_of, points_to]).
+- 게이트: R ≥ 0.9000 AND P ≥ 0.3000 AND EX ≥ baseline − 0.0050.
+- last_info telemetry: `ste_num_terminals`, `ste_pre_cap_node_count`, `ste_capped`, `ste_steiner_components`, `extractor_selected_by_type`.
+
+| Run ID | k | terminal_mode | score_threshold | terminal_node_types | cap_to_k | 비고 |
+|--------|---|---------------|-----------------|---------------------|----------|------|
+| STE-00 | 20 | (MSTKruskal baseline) | θ=0.1 | all | — | V7-W0 측정 재사용 |
+| STE-01 | 5 | topk | — | column+table | True | R 급락 위험 — EX 주의 |
+| STE-02 | 10 | topk | — | column+table | True | — |
+| STE-03 | 15 | topk | — | column+table | True | — |
+| STE-04 | 20 | topk | — | column+table | True | 기본 설정 |
+| STE-05 | 20 | threshold | 0.5 | column+table | True | threshold 비교 |
+| STE-06 | 20 | threshold | 0.3 | column+table | True | — |
+| STE-07 | 20 | topk | — | column only | True | terminal 타입 비교 |
+| STE-08 | 20 | topk | — | column+table | False | Steiner point 무제한 — P 하한 |
+
+### V7-W2 — FKPathfindingExtractor ([fk_pathfinding_extractor.py](fk_pathfinding_extractor.py))
+- FK-only subgraph (edge_type ∈ {is_source_of, points_to, table_to_table}) 위 top-K terminal pair 의 `nx.shortest_path` union → 남은 budget 을 고점수 노드로 채워 k cap (단 FK union 이 k 초과 시 trim 안 함, RFP §2.10).
+- `use_fk_paths=False` = FKP-06 mode (FK 경로 미수행, 순수 상위 K). EX(FKP-03) − EX(FKP-06) = FK 경로 순기여.
+- O(K²) 경로 조합 guard `max_terminal_pairs` (기본 2000, topk K≤20 → C(20,2)=190 미발동) + truncate 시 `fkp_pairs_truncated` telemetry.
+- 파라미터: `k`, `terminal_mode`, `score_threshold`, `terminal_node_types` (기본 [column]), `fk_edge_types`, `use_fk_paths`, `max_terminal_pairs`.
+- 게이트: R ≥ 0.9000 AND P ≥ 0.2500 (STE 보다 보수적) AND EX ≥ baseline − 0.0050.
+- last_info telemetry: `fkp_num_terminals`, `fkp_paths_found`, `fkp_fk_union_count`, `fkp_budget_filled`, `fkp_pairs_truncated`, `extractor_selected_by_type`.
+
+| Run ID | k | terminal_mode | terminal_types | use_fk_paths | 비고 |
+|--------|---|---------------|----------------|--------------|------|
+| FKP-00 | 20 | (MSTKruskal baseline) | — | — | STE-00 과 동일 재사용 |
+| FKP-01 | 10 | topk | column | True | — |
+| FKP-02 | 15 | topk | column | True | — |
+| FKP-03 | 20 | topk | column | True | 기본 설정 |
+| FKP-04 | 20 | topk | column+table | True | terminal 확장 |
+| FKP-05 | 20 | threshold (0.5) | column | True | threshold 비교 |
+| FKP-06 | 20 | topk | column | False | FK 경로 미포함 — FK 기여 분리 |
+
+### 단위 테스트
+[tests/test_v7_extractors.py](tests/test_v7_extractors.py) — 합성 heterograph 위 10 cases 통과:
+- STE: bridge fk_node Steiner point 발견 + cap_to_k 우선순위 + 3-terminal connectivity + uniform weight.
+- FKP: FK 최단경로 bridge union + use_fk_paths=False 기여 분리 + budget fill + threshold mode.
+- registry 등록/build + invalid param ValueError.
+```
+PYTHONPATH=src conda run -n base python src/modules/extractors/tests/test_v7_extractors.py
+```
+
+### seed 방침 + 산출
+- V6 chain single-seed (s11) 정합 — V7 도 single seed 권장. FKP/STE 게이트는 point threshold (R≥0.9 / P≥0.3(STE)/0.25(FKP) / EX≥baseline−0.005) 라 single-seed 판단 가능. 최종 seed 수는 root config 단계 확정 (클래스 구현은 seed-agnostic).
+- 클래스 구현 + 단위 테스트 = module:extractors (완료). **config + 학습 launch = root** (ablation matrix: STE-00~08 + FKP-00~06, GPU `CUDA_VISIBLE_DEVICES=0,1`).
+- 분석 산출: `notebooks/analysis_results/v7_ste_ablation_2026-06-XX.md` + `v7_fkp_ablation_2026-06-XX.md` (analyzer).
+- 닫힌 영역 retain: PCST cost tuning (방안 A/B) / Product Cost / Component-Aware — 재변형 금지.
+
 ## 검증 방법 (모듈 내)
 - **Recall/Precision/F1 4소수점**.
 - **3-table JOIN 특화 분석**: 이 쿼리군에서 bridge 포함 비율, PCST✗ 복구율.
