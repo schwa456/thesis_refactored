@@ -20,6 +20,22 @@ Builder/Selector/Extractor 내부는 가급적 언급하지 않고,
 - **d2_steiner_filter.py** `D2SteinerFilter` — Wave 8 D2: M4 위에 FK/PK Connectivity Steiner Closure (LLM 0× 추가, direct_fk / bridge_1hop variants). 의존: `steiner_closure.py` algorithm utility + `builders/db_fk_extractor.py` 메타데이터.
 - **tools/graph_tools.py** — F3용 graph-native tool (get_neighbors, get_fk_path, get_gat_score, get_column_examples, get_tier)
 
+## V7-W1 FKH (FK Hint 직렬화, 2026-06-05)
+RFP #3 spec ([planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md §3](../../../planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md)) 정합 — Extractor 수정 없이 LLM prompt 의 schema 부분 위 FK 관계 명시.
+- **구현 위치**: `XiYanFilter` 위 `fk_hint_format`/`fk_hint_position` 옵션 (default `"none"`/`"inline"` = baseline 호환). `_serialize_schema()` helper 가 base mschema 위 [src/utils/schema_serializer.py](../../utils/schema_serializer.py) 의 `serialize_schema_with_fk_hints()` 호출.
+- **5 cells × 5 seeds = 25 configs**: `configs/experiments/abl/v7_extractor_redesign/fkh_*_seed*.yaml`. cell 정의:
+  | cell_id | fk_hint_format | fk_hint_position |
+  |---------|----------------|------------------|
+  | fkh_00  | none           | inline           |
+  | fkh_01  | explicit       | inline           |
+  | fkh_02  | explicit       | prefix           |
+  | fkh_03  | compact        | inline           |
+  | fkh_04  | compact        | suffix           |
+- **게이트**: EX ≥ baseline c01_01_wave7_relog (0.5176) + 0.0030, 5 seeds 평균 p < 0.05. R/P/F1 동일 보장 (extracted_nodes/edges 자체 변경 없음 — 변화 시 구현 버그).
+- **smoke test**: `scripts/smoke_test_v7_w1_fkh.py` (LLM 0×, CPU only, 6/6 PASS — fkh_00~04 + invariance).
+- **launcher**: `scripts/run_v7_w1_fkh_sweep.sh` (25 configs 순차, GPU 0,1 외부 export).
+- **FK 정보 소스**: `metadata['fk_to_id']` keys (`"src_t.src_c->dst_t.dst_c"` 형식, builder `_generate_fk_descriptions()` 정합) → extracted_subgraph 위 양쪽 column 모두 존재하는 FK 만 hint 위 포함 (context window 보호).
+
 ## XiYan Filter 핵심
 - **Value Retrieval**: DB에서 실제 값 샘플을 프롬프트에 포함
 - prompt에 column-level 예시값 제공하여 LLM이 schema-value 연결 판단

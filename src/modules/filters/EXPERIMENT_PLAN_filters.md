@@ -1358,3 +1358,35 @@ a05 라인 연장선. **anchor는 a03_17 (Direct 최고) + abl_ens_basic_xiyan (
 - a05_02 (Reflection) = 현 최고. FL-III Repair 결합으로 상한 재탐색.
 - a05_01 (AdaptiveMultiAgent 실패, −22.3%p) = JSON parsing 실패 원인 — 신규 필터 설계 시 반드시 parsing robust하게.
 - a05_04 (Verifier, −0.6%p) = NL unit test 한계 — FL-III symbolic Verifier와 stacked로 보완 기대.
+
+## V7-W1 FKH (FK Hint 직렬화, 2026-06-05)
+RFP #3 ([planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md §3](../../../planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md)) 정합. Extractor 미수정, prompt 의 schema 부분만 변경 → R/P/F1 동일 + EX 만 측정.
+
+**구현 위치**:
+- `src/utils/schema_serializer.py` — `serialize_schema_with_fk_hints(base_schema, extracted_subgraph, metadata, fk_hint_format, fk_hint_position)`
+- `XiYanFilter.__init__` 위 `fk_hint_format`/`fk_hint_position` 옵션 (default `"none"`/`"inline"` baseline 호환)
+- `XiYanFilter._serialize_schema()` — base mschema 위 hint 적용 entry. `refine()` 의 schema_str 자리 single source.
+
+**5 cells × 5 seeds = 25 configs** (`configs/experiments/abl/v7_extractor_redesign/fkh_{00..04}_seed{42,123,7,456,789}.yaml`):
+| cell_id | fk_hint_format | fk_hint_position | 비고 |
+|---------|----------------|------------------|------|
+| fkh_00  | none           | inline           | baseline (R/P/F1 동일 검증) |
+| fkh_01  | explicit       | inline           | "FK: src_t.src_c -> dst_t.dst_c" Columns 줄 뒤 |
+| fkh_02  | explicit       | prefix           | schema 앞 FK list block |
+| fkh_03  | compact        | inline           | "[FK src_t.src_c=dst_t.dst_c]" Columns 줄 뒤 |
+| fkh_04  | compact        | suffix           | schema 뒤 FK list block |
+
+**Stack**: anchor c01_01_wave7_relog (EnsembleSelector + MSTPCSTUnionExtractor + XiYanFilter glm-4.7 + LLMSQLGenerator glm-4.7, auto_join_keys=true, sql_gen=true).
+
+**게이트** (RFP §3.4 + V7 plan §1.3 정합):
+- EX ≥ baseline (0.5176) + 0.0030, 5 seeds 평균 p < 0.05 → 채택 (STE/FKP 위 FK hint 옵션 추가)
+- EX 향상 < +0.0030 또는 p ≥ 0.05 → 단독 채택 불가, STE/FKP 결합 위 retain
+- |ΔEX| < 0.0010 → H0 채택, negative result 보고 (Maamari 2024 정합)
+- R/P/F1 변화 감지 → 즉시 구현 중단 + bug fix (직렬화 함수 자체 가 extracted_nodes/edges mutate 시 발생)
+
+**FK 정보 소스**: `metadata['fk_to_id']` keys (`"src_t.src_c->dst_t.dst_c"` 형식, builder `_generate_fk_descriptions()` 정합). fallback: `metadata['fk_descriptions']` → `metadata['node_metadata']` 의 `'->'` 포함 entries. extracted_subgraph 위 양쪽 column 모두 존재하는 FK 만 hint 위 포함 (context window 보호, RFP §3.10 정합).
+
+**검증**:
+- smoke test `scripts/smoke_test_v7_w1_fkh.py` (LLM 0×, CPU only) — 6/6 PASS (fkh_00~04 직렬화 결과 + subgraph mutation invariance).
+- launcher `scripts/run_v7_w1_fkh_sweep.sh` — 25 configs 순차 (GPU 0,1 export 후 호출).
+- generator `scripts/_gen_v7_w1_fkh_configs.py` — 25 yaml 일괄 생성.

@@ -1,0 +1,58 @@
+# V7-W1 (FKH, RFP #3) — FK Hint serialization cell
+# cell=fkh_04 fk_hint_format=compact fk_hint_position=suffix seed=456
+# anchor stack = c01_01_wave7_relog (XiYanFilter glm-4.7, EX 0.5176 baseline)
+# Refs: planning/extractor/extractor_redesign_v7_plan_2026-06-04.md §1.3
+#       planning/extractor/scholar_agent_extractor_rfp_2026-06-04.md §3
+
+experiment_name: "v7_w1_fkh_04_seed456"
+seed: 456
+
+graph_builder:
+  name: "EnrichedHeteroGraphBuilder"
+  params:
+    include_views: false
+    run_leiden_clustering: true
+    tables_json_path: "data/raw/BIRD_dev/dev_tables.json"
+
+nlq_encoder:
+  name: "LocalPLMEncoder"
+  params:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+
+projection:
+  enabled: false
+
+seed_selector:
+  name: "EnsembleSelector"
+  params:
+    weight_path: "outputs/checkpoints/best_gat_qcond_nl3.pt"
+    alpha: 0.5
+    top_k: 20
+    query_conditioned: true
+    encoder_type: "plm"
+
+connectivity_extractor:
+  name: "MSTPCSTUnionExtractor"
+  params:
+    score_threshold: 0.1
+
+filter:
+  name: "XiYanFilter"
+  params:
+    provider: "glm"
+    model_name: "zai-org/glm-4.7"
+    max_iteration: 1
+    temperature: 0.0
+    fk_hint_format: "compact"
+    fk_hint_position: "suffix"
+
+post_processing:
+  auto_join_keys: true
+
+sql_generator:
+  enabled: true
+  name: "LLMSQLGenerator"
+  params:
+    provider: "glm"
+    llm_model: "zai-org/glm-4.7"
+    temperature: 0.0

@@ -10,6 +10,11 @@ from modules.base import BaseFilter
 from modules.filters.agents import AgentUtils
 from prompts.prompt_manager import PromptManager
 from utils.logger import get_logger
+from utils.schema_serializer import (
+    VALID_FK_HINT_FORMATS,
+    VALID_FK_HINT_POSITIONS,
+    serialize_schema_with_fk_hints,
+)
 
 logger = get_logger(__name__)
 
@@ -69,7 +74,7 @@ class XiYanFilter(BaseFilter):
       LLM 출력에서 input subgraph (extractor output) 에 없는 table/column 제거
     - 측정 메타: filter_prompt_mode / filter_prune_pct / filter_hallucination_removed_count
     """
-    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, num_examples: int = 3, prompt_mode: str = "default", sanitize_output: bool = True, cot_reasoning: bool = False, confidence_gated: bool = False, confidence_threshold: float = 0.5, gate_level: Optional[str] = None, **kwargs):
+    def __init__(self, model_name: str, max_iteration: int = 1, temperature: float = 0.0, db_dir: str = "./data/raw/BIRD_dev/dev_databases", api_key: Optional[str] = None, base_url: Optional[str] = None, provider: Optional[str] = None, num_examples: int = 3, prompt_mode: str = "default", sanitize_output: bool = True, cot_reasoning: bool = False, confidence_gated: bool = False, confidence_threshold: float = 0.5, gate_level: Optional[str] = None, fk_hint_format: str = "none", fk_hint_position: str = "inline", **kwargs):
         if prompt_mode not in _PROMPT_SECTION_BY_MODE:
             raise ValueError(
                 f"prompt_mode='{prompt_mode}' invalid. "
@@ -83,6 +88,17 @@ class XiYanFilter(BaseFilter):
         if gate_level is not None and gate_level not in _VALID_GATE_LEVELS:
             raise ValueError(
                 f"gate_level='{gate_level}' invalid. Expected one of {_VALID_GATE_LEVELS}."
+            )
+        # V7-W1 (FKH, RFP #3) — FK hint 직렬화 옵션. baseline 호환 default ("none").
+        if fk_hint_format not in VALID_FK_HINT_FORMATS:
+            raise ValueError(
+                f"fk_hint_format='{fk_hint_format}' invalid. "
+                f"Expected one of {VALID_FK_HINT_FORMATS}."
+            )
+        if fk_hint_position not in VALID_FK_HINT_POSITIONS:
+            raise ValueError(
+                f"fk_hint_position='{fk_hint_position}' invalid. "
+                f"Expected one of {VALID_FK_HINT_POSITIONS}."
             )
         self.model_name = model_name
         self.max_iteration = max_iteration
@@ -107,6 +123,9 @@ class XiYanFilter(BaseFilter):
         else:
             self._prompt_section = _PROMPT_SECTION_BY_MODE[prompt_mode]
         self.sanitize_output = bool(sanitize_output)
+        # V7-W1 FKH option storage
+        self.fk_hint_format = fk_hint_format
+        self.fk_hint_position = fk_hint_position
         self.prompt_manager = PromptManager()
         self.client = self._make_llm_client(api_key=api_key, base_url=base_url, provider=provider)
         logger.info(
@@ -115,7 +134,9 @@ class XiYanFilter(BaseFilter):
             f"prompt_mode: {self.prompt_mode}, sanitize: {self.sanitize_output}, "
             f"cot: {self.cot_reasoning}, confidence_gated: {self.confidence_gated}, "
             f"confidence_threshold: {self.confidence_threshold}, "
-            f"gate_level: {self.gate_level})"
+            f"gate_level: {self.gate_level}, "
+            f"fk_hint_format: {self.fk_hint_format}, "
+            f"fk_hint_position: {self.fk_hint_position})"
         )
 
     # ------------------------------------------------------------------
@@ -297,6 +318,28 @@ class XiYanFilter(BaseFilter):
             
         return "\n".join(schema_lines)
 
+    def _serialize_schema(
+        self,
+        schema_dict: Dict[str, List[str]],
+        db_id: Optional[str],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """schema 직렬화 entry — base mschema 위 V7-W1 FKH 옵션 적용.
+
+        본 함수는 LLM prompt 위 schema_str 자리 substitution 의 single source.
+        baseline (fk_hint_format='none') 시 _build_mschema_with_values 결과 그대로.
+        """
+        base_schema = self._build_mschema_with_values(schema_dict, db_id or "")
+        if self.fk_hint_format == "none":
+            return base_schema
+        return serialize_schema_with_fk_hints(
+            base_schema=base_schema,
+            extracted_subgraph=schema_dict,
+            metadata=metadata,
+            fk_hint_format=self.fk_hint_format,
+            fk_hint_position=self.fk_hint_position,
+        )
+
     def refine(self, query: str, subgraph: Dict[str, List[str]], db_id: str = None, **kwargs) -> Dict[str, Any]:
         t_start = time.perf_counter()
         if not subgraph:
@@ -343,8 +386,10 @@ class XiYanFilter(BaseFilter):
             logger.debug(f"[XiYanFilter] Iteration {i+1}/{self.max_iteration}")
             cols_before = sum(len(v) for v in current_schema.values())
 
-            # 1. M-Schema (Value 포함) 포맷팅
-            schema_str = self._build_mschema_with_values(current_schema, db_id)
+            # 1. M-Schema (Value 포함) 포맷팅 — V7-W1 FKH 분기 적용 (default 'none' = baseline)
+            schema_str = self._serialize_schema(
+                current_schema, db_id, metadata=kwargs.get("metadata"),
+            )
 
             # 2. Few-shot JSON 예시 동적 구성
             example_tables = list(current_schema.keys())[:2]
