@@ -319,3 +319,84 @@ E1/E2의 precision 상한(0.81) 유지가 선결 조건. 새 builder가 기존 �
 - **단위 smoke test**: `pytest tests/test_builders.py` — 각 builder에 대해 california_schools build 성공 + 필수 metadata 키 존재.
 - **정합성**: FK reachability가 gold SQL의 JOIN 관계를 포함하는 비율(coverage) > 95%.
 - **캐시 분리**: suffix 충돌 없는지 dry run (실제 저장 전 경로 출력만).
+
+---
+
+## V6-W3 (Phase 3 hub 차수 축소, 2026-06-06) — 그래프 구조 3 variants
+
+> **trigger**: planner DECISIONS 2026-06-06 + V6 plan §1 Phase 3 (P3 backlog → 🟢 활성, GAT-necessity 인과 검증 재설계). RFP H1 (hub-accelerated over-smoothing) + H2 (hub 테이블 컬럼 collapse, hi-deg L3 MAD=0.0046) 의 유일한 직접 검증 wave. **단순 disconnect 재확인 아니라 GAT-necessity causal test** (hub 차수 축소로 GAT 가 살아나는가).
+
+### Variants
+
+| Variant | Builder class | `extra_cache_suffix` | 핵심 mechanism |
+|---|---|---|---|
+| **A** | `V6W3VirtualSummaryBuilder` | `_v6w3_a` | `table_summary` virtual node (table↔summary↔column 2-hop 구조 — 1/d 희석 완화) |
+| **B** | `V6W3ColumnPoolingBuilder` | `_v6w3_b` | table feature override (column 위 weighted pooling, mode ∈ {uniform, cosine_softmax}) |
+| **C** | `V6W3HubLocalVNBuilder` | `_v6w3_c` | hub-only Local VN_G (degree > median 위 이질성 인지 short-circuit) |
+
+base = `EnrichedHeteroGraphBuilder` (M4 anchor 정합). 기존 metadata dict keys 모두 유지 (FK reachability / schema diameter / table_to_id 등) — downstream selector/extractor/filter 인터페이스 보존. 신규 keys 만 추가.
+
+### Variant A 신규 metadata + graph structure
+
+- node type: `table_summary` (수 = # tables)
+- edge types (4 신규):
+  - `(table, has_summary, table_summary)` / `(table_summary, summary_of, table)`
+  - `(table_summary, summarizes, column)` / `(column, aggregated_by, table_summary)`
+- summary feature init: 해당 table 위 column embedding mean (PLM)
+- 신규 metadata keys: `summary_to_id`, `summary_flat_offset`, `v6w3_variant='A'`
+- PCST flat 인덱싱: table → column → fk_node → **table_summary** (블록 마지막)
+
+### Variant B 신규 metadata
+
+- node/edge structure **유지** (새 node type 추가 X)
+- table.x 만 override (column embedding 위 weighted pool)
+- 신규 metadata keys: `table_pool_weights: Dict[int, np.ndarray]`, `table_pool_mode`, `v6w3_variant='B'`
+- pool_mode='cosine_softmax' 위 column 끼리 mean cosine similarity (semantic centrality) → softmax init
+
+### Variant C 신규 metadata + graph structure
+
+- node type: `local_vn` (수 = # hub tables)
+- edge types (4 신규):
+  - `(table, has_local_vn, local_vn)` / `(local_vn, serves_table, table)`
+  - `(local_vn, aggregates, column)` / `(column, feeds_into, local_vn)`
+- hub identification (per-DB): column count > median (default), `hub_min_columns` 절대 임계 옵션
+- Local VN feature: hub table 위 column embedding mean
+- 신규 metadata keys: `hub_tables`, `hub_threshold`, `hub_strategy`, `hub_min_columns`, `local_vn_to_id`, `local_vn_flat_offset`, `table_col_count`, `v6w3_variant='C'`
+
+### Hub identification 실측 (BIRD-Dev 사례)
+
+| DB | total tables | median | hubs (col count) |
+|---|---|---|---|
+| california_schools | 3 | 29.0 | schools (49) — 1 hub |
+| european_football_2 (RFP H2 natural test bed) | 7 | 7.0 | Player_Attributes (42), Team_Attributes (25), **Match (115)** — 3 hubs |
+
+european_football_2 의 **Match (115 cols)** — RFP H2 의 "complete collapse MAD=0.0000" 정확히 hub set 위 검출.
+
+### Cache 관리
+
+신규 node/edge type 추가 위 기존 `_enriched_*_graphs.pt` cache 무효화. `bird_dataset.py` 위 1줄 추가 (`+ getattr(builder, "extra_cache_suffix", "")`) — 모든 builder 자체 cache suffix 노출 가능. V6-W3 cache 파일명 예시:
+
+- `data/processed/train_enriched_v6w3_a_plm_graphs.pt` (Variant A 학습)
+- `data/processed/dev_enriched_v6w3_b_plm_graphs.pt` (Variant B 추론)
+- `data/processed/train_enriched_v6w3_c_plm_graphs.pt` (Variant C 학습)
+
+대용량 시 NAS (`/SSL_NAS/peoples/khj/thesis/data/processed/`) 위 저장 + 로컬 symlink (CLAUDE.md NAS rule). BIRD train 위 약 ~수 GB 예상 — 신규 cache 생성 시 NAS 우선 검토.
+
+### 게이트 (analyzer 측정)
+
+- **L1 mechanism**: hi-deg 테이블 intra-MAD L3 0.0046 → lo-deg 수준 (~0.04) 회복 방향
+- **L2 GAT-necessity (핵심)**: L1 회복 시 (a) GAT-only (α=0) selector 품질 hub-table 쿼리 위 상승, (b) GAT 순기여 % 증가 (현 +2.1%), (c) hub-heavy DB (european_football_2) e2e EX 상승 — 셋 중 유의 이동 시 **GAT rescuable 확정**
+
+### 산출물
+
+- [v6w3_builders.py](v6w3_builders.py) — 3 variants 한 파일
+- [tests/test_v6w3_builders.py](tests/test_v6w3_builders.py) — 22 cases (15 main + 3 helper + 4 hub DB)
+- `src/data/bird_dataset.py` cache suffix 분기 추가 (1줄)
+
+### 다음 단계 (cross-module 핸드오프)
+
+1. **module:selectors** — 신규 node type (`table_summary` / `local_vn`) 처리 가능한 selector 모델 통합. M4 anchor QCond GAT NL=3 base 정합 (EnsembleSelector 또는 DirectGATv2Selector 패턴, V6-W2 ckpt 형식)
+2. **root** — 학습 + inference launch (s11 단일 시드, GPU 0,1)
+3. **analyzer** — 2단계 게이트 측정 (L1 hi-deg/lo-deg intra-MAD + L2 GAT-necessity)
+
+> per-DB stratification 필수 — european_football_2 (Match 115-col, complete collapse) natural test bed 위 hub reduction 전후 GAT 기여 직접 비교.

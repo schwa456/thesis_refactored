@@ -6,6 +6,11 @@ from .graph_builder import (
 )
 from .line_graph_builder import LineGraphBuilder
 from .cached_builder import CachedGraphBuilder
+from .v6w3_builders import (
+    V6W3VirtualSummaryBuilder,
+    V6W3ColumnPoolingBuilder,
+    V6W3HubLocalVNBuilder,
+)
 
 __all__ = [
     "HeteroGraphBuilder",
@@ -14,4 +19,7 @@ __all__ = [
     "RFMCompatibleBuilder",
     "LineGraphBuilder",
     "CachedGraphBuilder",
+    "V6W3VirtualSummaryBuilder",
+    "V6W3ColumnPoolingBuilder",
+    "V6W3HubLocalVNBuilder",
 ]

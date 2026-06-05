@@ -35,9 +35,21 @@ class BIRDGraphDataset(Dataset):
         # PLMEncoder produces sentence-level [1, 384], TokenEncoder produces token-level [seq_len, 384]
         encoder_name = type(encoder).__name__
         encoder_suffix = "_plm" if encoder_name == "LocalPLMEncoder" else ""
+        # Wave 16 (2026-05-21): PLM model_name 별 cache 분리. all-MiniLM (384-dim) vs
+        # Qwen3-Embedding-0.6B (1024-dim) 등 PLM 변경 시 cache filename 충돌 방지 위 model name suffix 추가.
+        plm_suffix = ""
+        model_name = getattr(encoder, "model_name", "") or ""
+        if encoder_name == "LocalPLMEncoder" and "all-MiniLM-L6-v2" not in model_name:
+            slug = model_name.split("/")[-1].lower().replace(".", "_").replace("-", "_")
+            if slug:
+                plm_suffix = f"_{slug}"
+        # V6-W3 (2026-06-06): builder 가 자체 cache suffix 를 노출하면 합성 (e.g.,
+        # V6W3VirtualSummaryBuilder.extra_cache_suffix = "_v6w3_a"). 신규 node/edge
+        # type 추가 위 기존 _enriched cache 와 분리 필수.
+        extra_suffix = getattr(builder, "extra_cache_suffix", "") or ""
         # 모든 cache 는 로컬 data/processed/ 아래에 둔다 (offload NAS 로의 symlink 로 연결 권장).
         # 기존 동작 (/SSL_NAS/peoples/khj/thesis/train/ 에 직접 저장) 은 NFS 혼잡 시 42min+ stall 발생.
-        self.cache_path = f"/home/hyeonjin/thesis_refactored/data/processed/{file_name}{builder_suffix}{encoder_suffix}_graphs.pt"
+        self.cache_path = f"/home/hyeonjin/thesis_refactored/data/processed/{file_name}{builder_suffix}{extra_suffix}{encoder_suffix}{plm_suffix}_graphs.pt"
 
         # _process_data에서 데이터 리스트를 생성하거나 로드함
         self.data_list = self._get_or_create_data()

@@ -121,6 +121,26 @@ Builder는 `(HeteroData, metadata_dict)` 반환. metadata_dict는:
 
 `LineGraphBuilder` / `RFMCompatibleBuilder` 는 위 키들을 그대로 forward + 자체 키 추가 (line graph는 `edge_node_to_orig` 등, RFM은 `rfm_text` 등).
 
+## V6-W3 (Phase 3 hub 차수 축소, 2026-06-06) — 3 variants
+
+DECISIONS 2026-06-06 + V6 plan §1 Phase 3 정합. RFP H1 (hub-accelerated over-smoothing) + H2 (hub 테이블 컬럼 collapse, hi-deg L3 MAD=0.0046) 의 직접 검증. 게이트 = **GAT-necessity 2단계 인과** (L1 H2 회복 + L2 GAT 기여 / hub-DB e2e).
+
+- **A** `V6W3VirtualSummaryBuilder` ([v6w3_builders.py](v6w3_builders.py)) — `table_summary` virtual node (table↔summary↔column 2-hop, 1/d 희석 완화). 신규 4 edge types + node type `table_summary`. cache `_v6w3_a`.
+- **B** `V6W3ColumnPoolingBuilder` (같은 파일) — table feature override (column 위 weighted pooling, `pool_mode ∈ {uniform, cosine_softmax}`). node/edge structure 유지, table.x 만 override. cache `_v6w3_b`. 신규 metadata: `table_pool_weights`.
+- **C** `V6W3HubLocalVNBuilder` (같은 파일) — hub-only Local VN_G (degree > median table 위 short-circuit). 신규 node type `local_vn` + 4 edge types. cache `_v6w3_c`. 신규 metadata: `hub_tables`, `hub_threshold`, `local_vn_to_id`, `table_col_count`.
+
+base = `EnrichedHeteroGraphBuilder` (M4 anchor 정합) — 모든 기존 metadata keys 유지 (downstream 호환). cache 분리 위 `bird_dataset.py` 위 `extra_cache_suffix` getattr 분기 추가 (모든 builder 자체 cache suffix 노출 가능).
+
+**Hub 식별 실측** (BIRD-Dev):
+- california_schools 3 tables / median 29 / hub=schools(49)
+- european_football_2 7 tables / median 7 / hubs=Player_Attributes(42), Team_Attributes(25), **Match(115)** — RFP H2 "complete collapse" target 정확히 검출
+
+**Smoke 검증**: `CUDA_VISIBLE_DEVICES="" PYTHONPATH=src conda run -n base python -m pytest src/modules/builders/tests/test_v6w3_builders.py -v` → **22/22 PASSED** (3 helper + 5 Variant A + 5 Variant B uniform + 2 Variant B cosine_softmax + 5 Variant C + 2 Variant C hub DB).
+
+**다음 단계 (cross-module 핸드오프)**: module:selectors 위 신규 node type 처리 가능 selector 통합 → root 학습/inference launch (s11, GPU 0,1) → analyzer 2단계 게이트 측정 (L1 hi-deg/lo-deg intra-MAD + L2 GAT-necessity: GAT-only 품질 / 순기여 % / hub-DB e2e EX).
+
+[EXPERIMENT_PLAN_builders.md](EXPERIMENT_PLAN_builders.md) "V6-W3" 섹션 + [planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md §1 Phase 3](../../../planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md) + [DECISIONS 2026-06-06](../../../planning/DECISIONS.md) 참조.
+
 ## Wave 8 D2 선결 utility (db_fk_extractor, 2026-05-18)
 
 filters 모듈 Wave 8 Direction 2 (FK/PK Connectivity Steiner Closure) 가 소비하는 DB DDL FK/PK 메타데이터 추출기. builders 영역 책임으로 분리 (DB DDL 파싱 = builder), filters 모듈은 algorithm 만 담당.
