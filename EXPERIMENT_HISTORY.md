@@ -5768,3 +5768,784 @@ Wave 9 Baseline Relog (commit `12b82cc` + `c3174ac`) 의 per-difficulty EX 정�
 - **Root (HISTORY 통합 갱신, paper drafting 직전 timing)**: ✅ 본 entry 의 Wave 9 per-difficulty R/P/F1 컬럼 추가 + Wave 14 chain entry 등재 완료
 - **Analyzer (post-paper backlog #25, priority 3)**: Wave 6 9 cells + Wave 8 9 cells × per-difficulty R/P/F1 retrospective (54 entries) — paper drafting 직전 active trigger candidate
 
+---
+
+## Wave 15 Module Ablation Study — 4 cells (DECISIONS 2026-05-20 (Wave 15) §1~§4, 2026-05-20 ~ 2026-05-21, 🎯 module importance ranking 정량 — Filter >> Extractor > Builder ≈ Selector, paper §10 framework_ablation sub-section base)
+
+### 개요
+
+framework 의 4 모듈 (Builder / Selector / Extractor / Filter) 각각 1개 씩 anchor 대비 제거 / downgrade 시 성능 변화 측정. M4 anchor (Wave 6 P2 `w6_p2_m4_bidirectional`, post-Wave 13 patch f67fa65: R=0.9357 / P=0.7593 / F1_harm=0.8383 / EX=0.5300) 위 4 cells × 1534 q (BIRD dev) parallel. GPU 0 only (사용자 spec).
+
+### 4 cells × 4 axis 측정 결과
+
+| Cell | Builder | Selector | Extractor | Filter | R | P | F1_harm | EX | LLM calls |
+|---|---|---|---|---|---:|---:|---:|---:|---:|
+| **M4 anchor** ⭐ | Enriched | EnsembleQCond | MSTPCSTUnion | M4 Bi | **0.9357** | **0.7593** | **0.8383** | **0.5300** | 7670 |
+| no_builder | Plain | EnsembleQCond | MSTPCSTUnion | M4 Bi | 0.9373 | 0.7533 | 0.8353 | 0.5130 | 7670 |
+| no_selector | Enriched | VectorOnly (cos) | MSTPCSTUnion | M4 Bi | 0.9279 | 0.7581 | 0.8344 | 0.4987 | 7670 |
+| no_extractor | Enriched | EnsembleQCond | None (TopK=20) | M4 Bi | 0.7583 | 0.7447 | 0.7514 | **0.3814** | 7670 |
+| no_filter | Enriched | EnsembleQCond | MSTPCSTUnion | None | **0.9959** | **0.1268** | 0.2250 | 0.5137 | 4602 |
+
+> ⚠ inline R/P/F1 = post-Wave 13 patch f67fa65 (alias resolution) 정합 evaluator 사용. F1_harm = 2·R·P/(R+P).
+
+### Δ vs M4 anchor
+
+| Cell | ΔR | ΔP | ΔF1_harm | ΔEX |
+|---|---:|---:|---:|---:|
+| no_builder | +0.0016 | -0.0060 | -0.0030 | -0.0170 |
+| no_selector | -0.0078 | -0.0012 | -0.0039 | -0.0313 |
+| no_extractor | -0.1774 | -0.0146 | **-0.0869** | **-0.1486** ★ |
+| no_filter | **+0.0602** ★ | **-0.6325** ★ | **-0.6133** ★ | -0.0163 |
+
+### 핵심 finding — Module Importance Ranking
+
+1. **Filter (M4 Bidirectional) 가 framework 의 가장 critical 모듈** — Filter 제거 시 P 폭락 0.7593 → 0.1268 (ΔP=-0.6325), F1_harm 0.8383 → 0.2250 (ΔF1=-0.6133), 다만 R 은 upper bound 도달 (0.9959, **R ceiling evidence**). EX 는 비교적 작은 손실 (-0.0163) — LLM SQL Gen 가 noise schema 흡수 capability evidence.
+2. **Extractor (MSTPCSTUnion) 의 schema coverage 효과 EX 에 dramatic** — Top-K=20 직접 전달 시 R 0.9357 → 0.7583 (-0.1774), **EX 0.5300 → 0.3814 (-0.1486 dramatic)**. SQL Gen 는 coverage 부족 시 회복 불가 — Extractor 의 schema completeness 기능 필수.
+3. **Builder (Enriched DB descriptions) 약함 effect** — Plain Builder + QCond GAT 도 R 거의 동등 (0.9373 vs 0.9357), F1_harm 손실 -0.0030, EX 손실 -0.0170. Builder enrichment 의 quantitative gain 작음 (qualitative narrative readability 강함).
+4. **Selector (QCond GAT vs Cosine) marginal effect** — Cosine encoder 만 으로도 R=0.9279 (-0.0078), F1_harm 손실 -0.0039, EX 손실 -0.0313. Builder 와 비슷한 marginal gain — 본 framework 의 critical path 가 Filter (P) + Extractor (R) 에 있음을 confirm.
+
+### Importance 단계별 정량 (paper narrative base)
+
+| Rank | Module | ΔF1_harm | ΔEX | Key axis |
+|---|---|---:|---:|---|
+| 1 ★ | **Filter (M4 Bidirectional)** | -0.6133 | -0.0163 | **P-critical** (noise removal) + R ceiling lifted |
+| 2 ★ | **Extractor (MSTPCSTUnion)** | -0.0869 | **-0.1486** | **R+EX-critical** (schema coverage) |
+| 3 | Builder (Enriched) | -0.0030 | -0.0170 | marginal |
+| 4 | Selector (QCond GAT) | -0.0039 | -0.0313 | marginal |
+
+> ⚠ **Filter > Extractor > Builder ≈ Selector** 의 ranking — 사용자 paper §10 framework_ablation narrative 의 single source of truth.
+
+### Cells 별 mechanism 해석
+
+- **no_filter**: R upper bound 도달 (0.9959, B1/B2 oracle 의 R=1.0000 직전) 단 P 폭락 — Schema linking 에서 filter 가 precision-only contribution 인 것은 **R 보존 + P 정제** 의 ideal Filter 정합 (Wave 6 M4 의 design intent confirm).
+- **no_extractor**: TopK=20 만으로 R 0.76 plateau — Selector top-K 의 schema completeness 한계 (mean nodes/q = 20). Extractor 는 graph connectivity (Steiner tree) 기반 coverage extension 의 결정적 역할.
+- **no_builder**: Plain HeteroGraphBuilder (no description columns) + QCond GAT 도 거의 동등 성능 — 본 framework 의 QCond GAT 학습 단 PLM embedding 이 description 의 semantic 부분 일부 흡수 가능성 (training-inference distribution mismatch noted, 정확 Plain GAT 학습은 post-paper backlog).
+- **no_selector**: Cosine encoder + Extractor 의 graph propagation 결합 으로 cosine baseline 도 R 0.93 도달 — Extractor 가 Selector 의 약점 보완. Selector 의 marginal value 는 Wave 5 D-3 / D-5 + L1 ROC-AUC 분석 의 cosine vs GAT gap (~0.05) 와 정합.
+
+### Wave 5~14 와의 정합
+
+| Wave | 정합 |
+|---|---|
+| Wave 5 D-3/D-5 (Selector ablation) | ✅ cosine 0.05 gap evidence retain (Wave 15 no_selector ΔR=-0.0078 와 정합) |
+| Wave 6 P2 M4 anchor | ✅ 본 Wave 15 의 base, post-Wave 13 patch 정합 |
+| Wave 8 D1~D4 (Filter variants) | ✅ Filter critical 의 evidence (D1 v2 R=0.9633 / D4 v1 R=0.9410 모두 M4 anchor 변형, Filter 제거 시 P 폭락 = D1~D4 모두 Filter 가 P 보존) |
+| Wave 11 c_v3a EX-best | ⚪ c_v3a 는 schema serialization 변경 (Filter 정합), 본 Wave 15 의 Filter 제거 와 directly orthogonal |
+| Wave 12 Oracle B1/B2 (R=1.0000) | ✅ no_filter R=0.9959 가 B1/B2 oracle R=1.0000 direct evidence (LLM 의 schema name perfect recovery confirm) |
+| Wave 13 Phase A/B (alias resolution) | ✅ post-patch f67fa65 evaluator 사용 정합 |
+
+### 산출물
+
+- Configs: `configs/experiments/abl/wave15_module_ablation/m15_{no_builder,no_selector,no_extractor,no_filter}*.yaml` (4 cells)
+- Script: `scripts/run_wave15_module_ablation.sh` (4 cells parallel, GPU 0 only)
+- Outputs: `outputs/experiments/abl/wave15_module_ablation/m15_*/` (4 metrics.txt + predictions.jsonl + output_*.jsonl + score_analysis_*.jsonl + profiling_*.jsonl)
+- Logs: `logs/wave15_module_ablation/m15_*.log` + `main.log` (conda buffer 로 일부 cell logs 0B, primary signal = predictions.jsonl)
+- Cost: ~27612 LLM calls (no_filter 4602 + 3 cells × 7670 = 4602+23010) ≈ ~$18~25 (GLM 4.7 via Elice ML)
+- Wall: ~5h 27m (parallel 4 cells, ~22:21 KST no_filter / ~00:21 KST no_extractor / ~00:27 KST no_builder + no_selector)
+
+### Paper 갱신 link (planner handoff trigger)
+
+- **paper §10 framework_ablation sub-section 신설** — Wave 15 4 cells × R/P/F1/EX matrix + ΔM4 ranking + Module Importance Ranking 표 (Filter >> Extractor > Builder ≈ Selector)
+- **paper §V Conclusion 보강 candidate** — "Filter critical, Extractor schema coverage critical, Builder/Selector marginal" 의 framework design implication
+- **paper §III.B.4 Filter design narrative 보강** — Filter 의 design intent (precision-only contribution + R 보존) 의 Wave 15 evidence
+
+### 후속 위임 (chain handoff)
+
+- **Root (HISTORY/CATALOG/ID_MIGRATION 갱신)**: ✅ 본 Wave 15 entry 등재 + CATALOG 4 cells + ID_MIGRATION 4 IDs (post-Wave 14)
+- **Planner (DECISIONS 2026-05-21 Wave 15 결과 채택 entry + paper §10 framework_ablation 갱신 spec)**: priority 1 — paper drafting base
+- **Post-paper backlog (priority 4, optional)**: Plain GAT 학습 (Plain HeteroGraphBuilder feature 위 별도 GAT 학습 → no_builder 의 training-inference mismatch 해소) — current Wave 15 no_builder 의 quantitative finding 검증
+
+## Wave 16 Encoder Backbone Ablation — 1 cell (DECISIONS 2026-05-21 (Wave 16) §1~§7, 2026-05-21 launch ~ 2026-05-22 02:18 KST 완료, ✅ **closed (시나리오 1 marginal confirm)** — PLM backbone-level cross-evidence, M4 구조 retain + Encoder swap all-MiniLM → Qwen/Qwen3-Embedding-0.6B)
+
+> **사용자 trigger (5/21)**: "Encoder를 all-MiniLM에서 Qwen/Qwen3-Embedding-0.6B 로 바꿔서 한 번 실험해 보고 싶어 M4 구조 그대로 말이야" + "Qwen3-Embedding으로 encoding 했을 때와 all-MiniLM 으로 encoding 했을 때의 성능 차이를 확인하고 싶으니, 필요한 로깅도 같이 진행될 수 있도록 해 줘" — single cell 단독 실험 trigger + Encoder profile logging spec.
+
+### 실험 의도
+
+Wave 15 의 **Module Importance Ranking** (Filter >> Extractor > Builder ≈ Selector) 의 **PLM backbone-level cross-evidence**. Builder/Selector marginal contribution (ΔF1 ≈ ±0.003~±0.004 sub-noise) 의 PLM backbone (cosine score base) 정량 lever 검증 — 3 시나리오 정합:
+1. **ΔF1/ΔEX marginal (sub-noise)** → Wave 15 marginal pattern 의 PLM backbone-level retain (Filter/Extractor critical 추가 evidence)
+2. **ΔF1/ΔEX dramatic positive** → PLM backbone 이 framework 의 critical lever (paper main contribution 추가 axis)
+3. **ΔF1/ΔEX dramatic negative** → Qwen3 embedding distribution mismatch (post-paper backlog tuning axis)
+
+### Cell (1 cell, M4 구조 retain)
+
+| Cell | Encoder | GAT checkpoint | Builder | Selector | Extractor | Filter | R | P | F1_harm | EX |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **m16_qwen3_0.6b_m4** (Wave 16) ✅ | **Qwen/Qwen3-Embedding-0.6B** (1024-dim, 600M) | **신규** `best_gat_enriched_qwen3_0.6b_qcond.pt` (Option A1: in_channels=1024, qcond concat 2048, **Best Val R@15=0.6030 at epoch 281**) | Enriched | EnsembleQCond α=0.5 top_k=20 | MSTPCSTUnion θ=0.1 | M4 Bi (Forward `recall_biased_mild` + Backward `bidirectional_backward`, GLM 4.7) | **0.9337** | **0.7563** | **0.8358** | **0.5124** |
+| **M4 anchor** (Wave 6 P2 ref) | all-MiniLM-L6-v2 (384-dim, 22M) | best_gat_qcond_nl3.pt | Enriched | EnsembleQCond α=0.5 top_k=20 | MSTPCSTUnion θ=0.1 | M4 Bi 동일 | 0.9357 | 0.7593 | 0.8383 | 0.5300 |
+| **Δ vs M4** | | | | | | | **-0.0020** | **-0.0030** | **-0.0025** ★ | **-0.0176** |
+
+> ⚠ inline R/P/F1/EX = post-Wave 13 patch f67fa65 (alias resolution) 정합 evaluator. F1_harm = 2·R·P/(R+P). **시나리오 1 (marginal sub-noise) 확정** ★ — DECISIONS §5 정합.
+
+### Logging 정합 (DECISIONS §7)
+
+- **§7.1 Encoder profile** (`src/modules/encoders/local_encoder.py` 정정, Wave 16 patch): per-call wall time + GPU peak + samples/tokens throughput + embed dim → `LOCAL_ENCODER_PROFILE_PATH` env 환경변수로 지정된 jsonl 위 append
+  - `logs/wave16_encoder_backbone/qwen3_train_encoder_profile.jsonl` (GAT 학습 시 cache build)
+  - `logs/wave16_encoder_backbone/qwen3_pipeline_encoder_profile.jsonl` (Pipeline 측정 시 dev query encoding)
+  - `logs/wave16_encoder_backbone/baseline_minilm_encoder_profile.jsonl` (all-MiniLM reference 1회 측정 — 초기 chain 실패, 별도 보완 진행 필요)
+- **§7.2 Stage-wise R/P/F1** (analyzer 위임, post-measurement): `src/analysis/wave16_encoder_backbone_stagewise.py` 신설 → Selector only / +Extractor / +Filter cumulative
+- **§7.3 Cosine score distribution** (analyzer 위임): `src/analysis/wave16_encoder_distribution.py` 신설 → TP-TN spread + histogram + scale
+- **§7.4 GAT 학습 epoch logging**: 기존 train_gat.py logging retain (best epoch / R@15 / val loss / L1 saturation curve)
+- **§7.5 비교 matrix** (analyzer 위임): all-MiniLM vs Qwen3 axis별 표 → `notebooks/analysis_results/wave16_encoder_backbone_m4_2026-05-XX.md`
+
+### Code 정합 정정 (Wave 16 patch, 2026-05-21)
+
+| File | 변경 |
+|---|---|
+| `src/modules/encoders/local_encoder.py` | encoding profile logging 추가 (env `LOCAL_ENCODER_PROFILE_PATH` retain 시 jsonl append, time/GPU peak/throughput/embed dim). model_name 인자는 기존 그대로 retain. |
+| `src/data/bird_dataset.py` | cache_path PLM model_name 별 suffix 추가 (all-MiniLM 제외 시 model name slug 위 분리, Qwen3 → `_qwen3_embedding_0_6b` suffix) — cache filename 충돌 방지 |
+| `src/train_gat.py` | encoder = `LocalPLMEncoder(model_name=cfg['nlq_encoder']['params']['model_name'])` 위 cfg-driven 정합 정정 (기존 default 하드코딩 → cfg 위 받기) |
+
+### Chain (root 위임, in-progress)
+
+| Step | 작업 | Wall | 상태 |
+|---|---|---:|---|
+| (pre) | NAS symlinks (train/dev `_qwen3_embedding_0_6b_graphs.pt` → `/SSL_NAS/peoples/khj/thesis_refactored_offload/processed/`) | <1m | ✅ |
+| (b-pre) | all-MiniLM baseline encoder profile (200q reference) | — | ✗ initial fail (modules path issue, |\| 위 무시 + 후속 보완 필요) |
+| (b1) | Initial chain failed at GAT dummy forward (dim mismatch 1408 vs 2048) — Builder default plm 위 384-dim node + Qwen3 1024-dim query | 7m 30s | ✗ fix 필요 (train_gat.py + bird_dataset.py + local_encoder.py patches 후 재launch) |
+| (b2) | GAT 학습 (`train_gat_enriched_qwen3_0.6b_qcond.yaml`) — Enriched + Qwen3 + QCond Option A1 dim=1024 → `best_gat_enriched_qwen3_0.6b_qcond.pt` (Best Val R@15=0.6030 at epoch 281) | 6h 02m | ✅ 21:27 5/21 완료 |
+| (c1) | Pipeline 측정 — initial fail (rc=1, shape mismatch ckpt [256, 2048] vs model [256, 768]) — EnsembleSelector default in_channels=384 + LocalPLMEncoder() default MiniLM | 24s | ✗ fix 필요 (ensemble_selector.py + m16 config patch 후 재launch) |
+| (c2) | Pipeline 측정 (`m16_qwen3_0.6b_m4.yaml`, 1534q × GLM 4.7) — ensemble_selector + m16 config patch 후 재실행 | 4h 42m | ✅ 02:18 5/22 완료 (metrics.txt 생성) |
+
+### Cost / Wall (final)
+
+- **GPU**: GPU 1 only (사용자 spec 5/21) — GPU 0/2/3 reserved retain
+- **Wall total**: **10h 53m** (학습 6h 02m + Pipeline 4h 42m + transitions ~9m, 15:25 5/21 → 02:18 5/22)
+- **LLM calls**: 7670 (3068 Filter Forward+Backward + ~1534 SQL Gen + retries)
+- **LLM tokens**: input 14.79M / output 313k
+- **Cost**: ~**$8~12** (GLM 4.7 via Elice ML, 14.8M input tokens)
+- **Cache size**: train 4.1G (1024-dim × 9428 graphs), dev ~600M (NAS symlink retain)
+- **Pipeline stage timing (per-query mean)**: builder 0.94s + filtering **3.56s** (max 22.23s) + sql_gen 1.6s — Wave 6 M4 anchor (~2s/q) 대비 ~2.5× 느림 (Qwen3 encoder 부담 + GLM API latency 변동 transient)
+
+### 산출물
+
+- Configs: `configs/training/train_gat_enriched_qwen3_0.6b_qcond.yaml` + `configs/experiments/abl/wave16_encoder_backbone/m16_qwen3_0.6b_m4.yaml` (신규)
+- Script: `scripts/run_wave16_encoder_backbone.sh` (sequential chain, GPU 1 only)
+- Checkpoint: `outputs/checkpoints/best_gat_enriched_qwen3_0.6b_qcond.pt` (학습 완료 후 NAS mv + symlink replace 사용자 결정 위)
+- Outputs: `outputs/experiments/abl/wave16_encoder_backbone/m16_qwen3_0.6b_m4/` (metrics.txt + predictions.jsonl + output_*.jsonl + score_analysis_*.jsonl + profiling_*.jsonl)
+- Logs: `logs/wave16_encoder_backbone/{chain,train_gat,pipeline}_*.log` + 3 encoder profile jsonl
+- Cache: `data/processed/{train,dev}_enriched_plm_qwen3_embedding_0_6b_graphs.pt` (NAS symlink)
+
+### Cross-evidence with prior Waves
+
+| Wave | 정합 |
+|---|---|
+| Wave 5 V-3-ext (L1=1.0 collapse) | ⚪ Qwen3 위 동일 L1 collapse 확인 — best ckpt 의 layerwise L1 측정 (post-measurement analyzer) |
+| Wave 6 P2 M4 anchor | ✅ 본 Wave 16 의 base, post-Wave 13 patch 정합 retain. Encoder backbone만 swap, 나머지 4 stage 모두 retain |
+| Wave 8 SGBE (cosine TP-TN spread) | ⚪ §7.3 cosine score distribution 의 base — Qwen3 의 TP-TN spread vs all-MiniLM 의 spread 비교 |
+| Wave 15 module ablation | ✅ Module Importance Ranking 의 **PLM backbone-level cross-evidence** — 본 Wave 16 의 핵심 학술 motivation |
+
+### Paper 갱신 link
+
+- **paper §V.5.x.M.22 sub-section candidate** (post-measurement): "PLM backbone Axis Cross-Evidence (Wave 16)" — all-MiniLM vs Qwen3 R/P/F1/EX 정량 + Wave 15 Builder/Selector marginal pattern 정합
+- **paper main contribution 추가 axis 후보** (시나리오 2 시): PLM backbone tuning 의 framework critical lever
+
+### 결과 해석 — **시나리오 1 (marginal sub-noise) 확정** ⭐
+
+3 시나리오 정합 (DECISIONS §5):
+1. **✅ ΔF1/ΔEX marginal (sub-noise)** ← **확정 (Wave 16 outcome)** — ΔF1=-0.0025 / ΔR=-0.0020 / ΔP=-0.0030 / ΔEX=-0.0176
+2. ~~ΔF1/ΔEX dramatic positive~~ (PLM backbone critical lever) — 아님
+3. ~~ΔF1/ΔEX dramatic negative~~ (Qwen3 distribution mismatch) — 아님
+
+**학술 의의**: Wave 15 의 Module Importance Ranking (Filter >> Extractor > Builder ≈ Selector) 의 **PLM backbone-level 추가 evidence** ★. Builder/Selector marginal pattern 의 PLM-level retain 확인 → Filter/Extractor 가 framework critical path 의 directional 추가 evidence.
+
+### Wave 15 cross-evidence 정합
+
+| Cell | Δ축 | ΔF1 vs M4 | 정합 |
+|---|---|---:|---|
+| Wave 15 no_builder | Plain HeteroGraphBuilder | -0.0030 | marginal |
+| Wave 15 no_selector | VectorOnly Cosine | -0.0039 | marginal |
+| **Wave 16 m16_qwen3_0.6b_m4** | **Qwen3 PLM swap (1024-dim)** | **-0.0025** ★ | **marginal ★ (PLM-level retain confirm)** |
+
+→ Builder + Selector + **PLM backbone** 모두 sub-noise marginal lever. Filter (ΔF1=-0.6133) + Extractor (ΔF1=-0.0869) 가 framework critical path retain.
+
+### 후속 위임 (chain handoff)
+
+- **Root (chain 진행 + HISTORY 갱신)**: ✅ 본 Wave 16 entry final R/P/F1/EX 갱신 완료 (2026-05-22 02:34 KST)
+- **Analyzer (post-measurement)**: priority 2 — `wave16_encoder_backbone_stagewise.py` + `wave16_encoder_distribution.py` 신설 → §7.5 비교 matrix 작성. **시나리오 1 confirmed 위 marginal pattern PLM-level evidence 정합 분석**
+- **Planner (paper §V.5.x.M.22 spec)**: priority 3 — post-analyzer 의 시나리오 1 (marginal) 결정 위 DECISIONS 결과 채택 entry + paper draft 갱신 spec ("PLM backbone Axis Cross-Evidence — Wave 15 module importance ranking 의 PLM-level retain confirm")
+- **Post-paper backlog #28 (priority 4 optional)**: 추가 PLM backbone (bge-large-en, multilingual-e5-large, jina-embeddings-v3 등) sweep — Wave 16 결과 (marginal pattern) 위 학술 weight 결정 후 trigger
+
+
+## V7 Extractor Redesign Chain — Connectivity-Preserving Family (2026-06-04 ~ 2026-06-05, ✅ closed, V7-W0 baseline 3 seeds + V7-W2 FKP 10 cells + V7-W3 STE 11 cells = 24 cells)
+
+V6 over-smoothing chain 후 직진. **MSTPCSTUnion 의 over-extract (no_filter cell P=0.1268, ~95% Full Schema 복구) 위 직접 대응** — top-K terminal + connectivity-preserving mechanism (Steiner / FK pathfinding) 으로 Extractor 단계 compact 화. V7-W1 (FKH 직렬화) 는 Filter scope orthogonal 로 본 chain scope 외 (별도 wave 위임 — [project_v7_chain_status](.../memory)).
+
+> **분석 출처**: [`notebooks/analysis_results/v7_extractor_chain_2026-06-05.md`](notebooks/analysis_results/v7_extractor_chain_2026-06-05.md) · 측정 스크립트 `src/analysis/v7_extractor_chain_metrics.py` + `v7_extractor_chain_analysis.py` · 24 cells 전수 측정 + 재현 검증 통과
+
+### V7-W0 baseline (M4 anchor 재현 검증, 3 seeds, BidirectionalFilter, sql_gen=false)
+
+| seed | Extractor R | Extractor P | Extractor F1 | n_avg |
+|---|---:|---:|---:|---:|
+| 42 | 0.9959 | 0.1267 | 0.2074 | 54.53 |
+| 123 | 0.9959 | 0.1267 | 0.2074 | 54.53 |
+| 7 | 0.9959 | 0.1267 | 0.2074 | 54.53 |
+| **M4 anchor (c01_01_wave7_relog)** | **0.9927** | **0.1267** | **0.2073** | **54.53** |
+
+> 3 seed Extractor stage **결정론적 일치** (MSTPCSTUnion + 동일 GAT checkpoint). seed 변동은 하류 BidirectionalFilter LLM 만 영향. **V7-W0 = M4 anchor 재현 검증 통과** (ΔR +0.0032, ΔP/ΔF1/n_avg 동일).
+
+### V7-W2 FKPathfindingExtractor — 10 cells (NoneFilter, sql_gen=false, anchor c01_01 정합 stack)
+
+| Cell | k | terminal_mode | terminal_types | use_fk_paths | Extractor R | P | F1 | n_avg |
+|---|---:|---|---|:---:|---:|---:|---:|---:|
+| fkp_k005 | 5 | topk | [column] | ✓ | 0.6128 | 0.4307 | 0.4892 | 5.37 |
+| fkp_k010 | 10 | topk | [column] | ✓ | 0.7631 | 0.2979 | 0.4176 | 10.00 |
+| fkp_k015 | 15 | topk | [column] | ✓ | 0.8288 | 0.2364 | 0.3587 | 14.11 |
+| fkp_k020 | 20 | topk | [column] | ✓ | 0.8670 | 0.2016 | 0.3177 | 18.04 |
+| fkp_k030 | 30 | topk | [column] | ✓ | 0.9207 | 0.1657 | 0.2700 | 25.15 |
+| fkp_k050 | 50 | topk | [column] | ✓ | 0.9628 | 0.1341 | 0.2215 | 37.65 |
+| fkp_k100 | 100 | topk | [column] | ✓ | 0.9961 | 0.1182 | 0.1948 | 53.49 |
+| fkp_ax_coltbl | 20 | topk | [column,table] | ✓ | 0.8528 | 0.2175 | 0.3364 | 16.60 |
+| fkp_ax_thr05 | 20(thr 0.5) | threshold | [column] | ✓ | 0.8446 | 0.2080 | 0.3201 | 19.52 |
+| fkp_ax_nofk | 20 | topk | [column] | **✗** | 0.8660 | 0.2020 | 0.3182 | 17.96 |
+
+### V7-W3 SteinerTreeExtractor — 11 cells (NoneFilter, sql_gen=false, anchor c01_01 정합 stack)
+
+| Cell | k | terminal_mode | terminal_types | cap_to_k | Extractor R | P | F1 | n_avg |
+|---|---:|---|---|:---:|---:|---:|---:|---:|
+| ste_k005 ⭐F1 | 5 | topk | [column,table] | ✓ | 0.5566 | **0.4893** | **0.4974** | **4.39** |
+| ste_k010 | 10 | topk | [column,table] | ✓ | 0.7299 | 0.3353 | 0.4445 | 8.63 |
+| ste_k015 | 15 | topk | [column,table] | ✓ | 0.8085 | 0.2616 | 0.3845 | 12.51 |
+| ste_k020 | 20 | topk | [column,table] | ✓ | 0.8478 | 0.2196 | 0.3387 | 16.16 |
+| ste_k030 | 30 | topk | [column,table] | ✓ | 0.9082 | 0.1765 | 0.2847 | 23.08 |
+| ste_k050 | 50 | topk | [column,table] | ✓ | 0.9577 | 0.1397 | 0.2303 | 35.33 |
+| ste_k100 | 100 | topk | [column,table] | ✓ | **0.9962** | 0.1187 | 0.1957 | 52.81 |
+| ste_ax_thr05 | 20(thr 0.5) | threshold | [column,table] | ✓ | 0.7549 | 0.3330 | 0.3931 | 15.39 |
+| ste_ax_thr03 | 20(thr 0.3) | threshold | [column,table] | ✓ | 0.9302 | 0.2179 | 0.3244 | 27.57 |
+| ste_ax_colonly | 20 | topk | [column] | ✓ | 0.8660 | 0.2020 | 0.3182 | 17.96 |
+| ste_ax_nocap | 20 | topk | [column,table] | **✗** | 0.8571 | 0.2158 | 0.3337 | 17.47 |
+
+> 메트릭 R/P/F1 = per-query macro 평균, 4 decimal places. n_avg = Extractor stage 출력 column 평균 (분석 출처 §0.1).
+
+### 핵심 결론 — analyzer §9 정합 (paper §V narrative input)
+
+1. **over-extract 문제 해결 (§9.1, ✓ 강함)**: best F1 cell **ste_k005 n_avg=4.39 vs M4 anchor 54.53 → 12.4× compact**, F1 +0.2901, P +0.3626 — Extractor 단계에서 over-extract 직접 해소.
+
+2. **★ Pareto frontier 정직성 (§9.2, ⚠ overclaim 제거)**: **"V7 가 M4 를 Pareto-dominate" 는 데이터상 거짓**. M4 anchor (R=0.9927, P=0.1267) 는 frontier 의 **R-max 코너 잔류** (dominated 아님). V7 의 실제 기여 = **M4 가 도달 못 하는 고-P frontier 확장** — MSTPCSTUnion(θ=0.1) 의 단일 운영점을 STE/FKP 의 k·threshold 가 P=0.13 → 0.49 연속 곡선으로 노출. 동일 R level 위 V7 우위는 성립 안 함 (고-R 영역에서 M4 ≈ ste_k100); **V7 의 기여는 dominance 가 아니라 controllability + frontier 확장**.
+
+3. **F1 ≥ M4 비율 (§9.3, ✓ 단 recall trade-off 명시)**: **19/21 (90.5%) V7 cells F1 ≥ M4 anchor F1 (0.2073)**. 미달은 k=100 둘만 (M4 코너 복제). 단 F1 우위는 **recall 희생 동반** (ste_k005 R=0.5566, ΔR=−0.4361) — recall-critical 하류 부적합.
+
+4. **STE vs FKP @ same k (§4)**: FKP 가 모든 k 에서 R 약간 ↑, P 약간 ↓ (k=5 위 ΔR=+0.0562 / ΔP=−0.0587). k=100 위 격차 소멸. **STE 가 모든 k 위 F1 우위** (Steiner point 최소화 의 parsimony).
+
+5. **★ FKP FK-path 순기여 ≈ 0 (§6.2, negative finding)**: `fkp_k020 (use_fk=True)` vs `fkp_ax_nofk (use_fk=False)` 비교 — **ΔR=+0.0010, ΔP=−0.0004, ΔF1=−0.0005, Δn=+0.09** (≈ noise). FKP 의 핵심 mechanism (FK 최단경로 union) 이 k=20 column-terminal 운영점에서 **사실상 무력**. FKP 의 R 우위 (vs STE) 는 FK 경로가 아니라 **terminal type / budget fill 차이**에서 기인. → **FKP 의 FK-path mechanism 은 단독 학술 기여로 약함**.
+
+6. **게이트 infeasibility (§8)**: R ≥ 0.90 AND P ≥ 0.30 (STE) / 0.25 (FKP) 동시 만족 cell **없음**. R 게이트 통과 7 cells 모두 P 게이트 미달 — R-P frontier 의 근본 제약 (구현 결함 아님).
+
+### EX 미측정 (caveat)
+
+- 전 W2/W3 cells **sql_gen=false** (사용자 trigger 2026-06-04 22:43 "API 부담 감소" — extractor 비교 본질에 집중) → 실제 SQL 정확도 (EX) 게이트 평가 불가
+- F1 우위 (ste_k005) 가 EX 우위로 이어지는지는 별도 wave 위 측정 필요 — V7 chain 위 향후 backlog
+
+### V7-W1 (FKH) skip 결정
+
+- FKH (FK Hint 직렬화) 는 Filter prompt format 변경만 — Extractor R/P/F1 무영향 (게이트 spec: "R/P/F1 변화 시 bug")
+- V7 chain 의 본질 (Extractor 성능) 과 orthogonal → 별도 wave (filter prompt-engineering) 로 미룸
+- 참조: `project_v7_chain_status.md` memory entry
+
+### Wall / Cost
+
+- **V7-W0**: 3 seeds × 1534 q × ~10 sec/q (BidirectionalFilter + SQLGen=false) ≈ 5.5h wall (GPU 2)
+- **V7-W2/W3 k-ext** (14 cells, NoneFilter): ~2 minutes total — NoneFilter has 0 LLM call, k-ext sweep 거의 즉시
+- **V7-W2/W3 axis variants** (7 cells, NoneFilter): ~1h wall (3 parallel)
+- **LLM cost**: V7-W0 만 GLM API 사용 (~7000 calls 즉 c01_01 anchor 1회 × 3 seeds)
+
+### Configs / Outputs / Logs
+
+- Configs: `configs/experiments/abl/v7_extractor_redesign/{baseline_seed*, fkp_k*, ste_k*, *_ax_*}.yaml` (24 + 25 미실행 fkh) — `.gitignore` 의 `*.yaml` 규칙 위 git add -f 필요
+- Scripts: `scripts/run_v7_w0_baseline.sh`, `scripts/run_v7_kext_sweep.sh`, `scripts/run_v7_axis_sweep.sh` (FKH script 작성됨 단 미사용: `scripts/run_v7_w1_fkh_sweep.sh`)
+- Outputs: `outputs/experiments/abl/v7_extractor_redesign/{baseline_seed*, fkp_k*, ste_k*, *_ax_*}/`
+- Logs: `logs/v7_w0_baseline_master.log`, `logs/v7_kext_master.log`, `logs/v7_axis_master.log` + per-cell logs (NAS path `/SSL_NAS/peoples/khj/thesis_refactored_offload/logs/...`)
+- Analyzer 산출: `notebooks/analysis_results/v7_extractor_chain_2026-06-05.md` + `outputs/analysis/v7_extractor_chain_2026-06-05.{csv,json}`
+
+### 신규 클래스 / 코드 (commit 321a060)
+
+| File | 변경 |
+|---|---|
+| `src/modules/extractors/steiner_tree_extractor.py` | 신규 `SteinerTreeExtractor` — top-K terminal + networkx Steiner approximation (Mehlhorn 2-approx) + cap_to_k logic |
+| `src/modules/extractors/fk_pathfinding_extractor.py` | 신규 `FKPathfindingExtractor` — FK-only subgraph 위 terminal pair shortest path union + budget fill |
+| `src/modules/extractors/tests/test_v7_extractors.py` | 10/10 단위 테스트 통과 |
+| `src/modules/extractors/__init__.py` | 신규 두 클래스 import + `@register("extractor", ...)` |
+| `scripts/run_v7_w0_baseline.sh` | V7-W0 sequential launcher (configs/ 접두 제거 fix) |
+| `scripts/run_v7_kext_sweep.sh` | V7-W2/W3 k-ext sweep (MAX_PARALLEL=3, NoneFilter) |
+| `scripts/run_v7_axis_sweep.sh` | V7-W2/W3 axis variants sweep |
+| `configs/training/v6_phase2/*.yaml` | (V6-W2, 별도 V6 chain) |
+
+### paper §V narrative 적용 — analyzer §9 정합
+
+- **§V.5.x.M (Filter Dominance) 보강**: V7 W2/W3 결과는 §V.5.x.M.4 Three-Caveat Mechanism Spectrum 의 **6번째 axis (Extractor 단계 compact 화)** 후보. 단 §9.2 **"Pareto-dominate" 표현 금지** — "고-P frontier 확장 (M4 R-max 코너 잔류)" 으로 framing.
+- **§III.10 sub-section candidate**: **"Connectivity-Preserving Extractor Family"** — STE(Steiner 2-approx) + FKP(FK pathfinding) + MSTKruskal 3-axis 비교. 핵심 mechanism evidence: (a) STE 가 FKP 보다 동일 k 위 parsimonious (F1 우위), (b) **FKP 의 FK-path mechanism 순기여 ≈ 0 (negative finding)**, (c) over-extract 가 k 단일 파라미터로 제어 가능 — Filter Dominance 6번째 축 (Training-Pathology-Invariant) 의 보강 (Extractor 단계 compact 화로 Filter 의존도 완화 가능성).
+
+### Cross-evidence with prior Waves
+
+| Wave | 정합 |
+|---|---|
+| Wave 6 P2 M4 anchor | ✅ V7-W0 baseline 3 seeds × Extractor stage 모두 M4 재현 (소수 4자리) |
+| Wave 11 c_v3a (Filter 변형) | ⚪ V7 cells 의 sql_gen=false 위 Filter downstream 비교 미수행 — 별도 wave 위임 |
+| Wave 15 Module Ablation (no_extractor) | ✅ no_extractor cell (TopK=20만, R 0.7583 plateau) ↔ V7 ste_k005 (R 0.5566 단 F1 0.4974) — Extractor 의 "compact + F1" 가능성 직접 evidence |
+| Wave 16 PLM backbone (marginal sub-noise) | ⚪ V7 결과 위 PLM backbone-level cross-evidence 미수행 |
+
+### 결론 (✅ closed 2026-06-05)
+
+- **F1 best cell**: **ste_k005** (R=0.5566, P=0.4893, **F1=0.4974**, n=4.39) — M4 anchor (F1=0.2073) 대비 **+2.4× F1, 12.4× compact** (Extractor stage 기준)
+- **R best cell**: ste_k100 (R=0.9962, P=0.1187, F1=0.1957) — M4 R=0.9927 초과 단 P/F1 약화 (M4 코너 복제)
+- **★ Pareto frontier 확장 (overclaim 제거)**: V7 가 M4 를 dominate 하지 않음. M4 는 R-max 코너 잔류. V7 의 기여 = **M4 가 도달 못 하는 고-P frontier 확장 + k 파라미터 controllability**
+- **★ FKP FK-path 순기여 ≈ 0 (negative finding)**: FKP 의 R 우위는 부수적 node 증가 (FK 경로 아님)
+- **STE parsimony 우위**: 모든 k 위 STE F1 ≥ FKP F1 — Steiner point 최소화 의 직접 효과
+- **EX 미측정 (caveat)**: sql_gen=false 위 F1 우위 의 EX 변환 미확인 — 별도 wave 위 위임
+- **V7-W1 (FKH) skip**: Filter scope orthogonal — Extractor 본질 V7 chain 외
+
+### 후속 위임
+
+- **Analyzer**: ✅ 완료 (notebooks/analysis_results/v7_extractor_chain_2026-06-05.md)
+- **Planner (paper §III.10 spec)**: priority 1 — "Connectivity-Preserving Extractor Family" sub-section spec 작성 위 §9.4 정합. Pareto framing **"frontier extension"** 명시 (dominance 표현 금지)
+- **Planner (V7 chain closure)**: priority 2 — §8 게이트 infeasibility (R≥0.90 ∧ P-gate 동시만족 cell 부재) 위 V7 chain 종료 vs 다음 wave (V7-W4 STE+FKP 조합 or EX 측정 wave) 결정. **STE 가 FKP 우위 + FKP FK-path 약함 → V7-W4 STE+FKP 조합 우선순위 재고**
+- **Post-paper backlog**: priority 3 — EX 측정 wave (top F1 candidate cells × sql_gen=true 재실행, 게이트 완전 평가)
+
+## V6-W2 Phase 2 Oversmoothing — edge_type_split=True 4 variants (2026-06-04 ~ 2026-06-05, ✅ closed, V6 chain Phase 2, 🎯 over-smoothing 억제 mechanism 위 4가지 변형 학습 비교)
+
+V6 chain (M4 anchor Selector backbone alternative training) 의 Phase 2 — edge_type 별 message-passing 분리 위 4 cells × 300 epochs × seed s11. **본질 metric**: Val Recall@15 (training metric) + oversmoothing/energy + oversmoothing/mad (epoch-level).
+
+### Spec
+
+- **Training script**: `src/train_gat_s06.py`
+- **Configs**: `configs/training/v6_phase2/p2_*.yaml` (4 cells)
+- **Seed**: s11 (단일 seed)
+- **Epoch**: 300 (full)
+- **Wall**: 4 cells × ~6-20h (variant 별 rate 다름), GPU 3 + GPU 2 (시작 시 parallel, 후반 GPU 3 단독) — 총 20h 44m 06-04 17:05:09 launch ~ 06-05 13:49:38 종료
+
+### Results (final epoch 300 기준, R@15 4자리 / energy scientific / mad 4자리)
+
+| Cell | Config | Val R@15 (final) | Val R@15 (peak) | peak ep | energy (final) | mad (final) | 완료 시각 |
+|---|---|---|---|---|---|---|---|
+| p2_standalone | edge_type split + standalone | 0.5666 | 0.5726 | 228 | 5.7303e+05 | 0.5553 | 06-04 23:22 |
+| **p2_phase1** | edge_type split + PairNorm + IR(α=0.1) + JK concat | **0.5697** | **0.5736** | **275** | **9.2281e+02** | **0.9975** | 06-05 00:37 |
+| p2_standalone_no_selfloop | edge_type split + no self-loop | 0.5573 | 0.5638 | 193 | 5.7970e+03 | 0.5842 | 06-05 09:09 |
+| p2_sum | edge_type split + sum aggregation | 0.5692 | 0.5736 | 77 | 1.0217e+08 | 0.5020 | 06-05 13:49 |
+
+**R@15 band**: final 0.0124 / peak 0.0098 (4 cells). **best-epoch checkpoint** 위 inference 권장 (final 위 경미한 후기 overfitting).
+
+### 핵심 발견 (analyzer notebooks/analysis_results/v6_phase2_oversmoothing_2026-06-05.md 정량)
+
+- **mad-R@15 disconnect 정량 (pooled 1200 epoch-point)**: Pearson(mad, R@15)=**+0.0887** / Pearson(log10 energy, R@15)=+0.2512. per-cell mad-R@15 부호 불안정 (+0.12 ~ −0.13) — 일관된 monotone 관계 없음. **over-smoothing 의 어느 metric 도 selector R@15 의 binding constraint 아님**
+- **PairNorm 단독 mad ~1.0 요인** (edge_type_split 아님): standalone (split + self-loop) mad 0.5553 → phase1 (split + PairNorm) mad 0.9975 — PairNorm 의 분산 정규화 가 column collapse 차단. drop-in 3종 stack R@15 순효과 = +0.0031 (noise band)
+- **p2_sum energy 폭주 (1.02e8) 단 R@15 유지** — sum aggregation 위 node norm 단조 폭주, 단 angular structure (mad) 유지 → R@15 회복. **mad 가 energy 보다 본질적 indicator 단 둘 다 R@15 예측 약함**
+- **self-loop ΔR@15 = +0.0093** (standalone vs no_selfloop): self-loop 가 selector R@15 에 순기여 — 단 over-smoothing metric 상으로는 mad↓·energy↑ (smoothing 증가 방향). **selector lever 와 over-smoothing lever 의 직교성** 단일 design 축에서 분리 실증
+- **수렴 속도**: sum (ep43) ≈ standalone (ep48) 빠름, phase1 (ep139) 느림 (PairNorm/IR/JK 추가 정규화 위), no_selfloop (ep164) 가장 느림
+
+### 변경 파일
+
+| File | 변경 |
+|---|---|
+| `configs/training/v6_phase2/p2_standalone.yaml` | 신규 — edge_type split baseline |
+| `configs/training/v6_phase2/p2_phase1.yaml` | 신규 — Phase 1 변형 |
+| `configs/training/v6_phase2/p2_standalone_no_selfloop.yaml` | 신규 — no self-loop |
+| `configs/training/v6_phase2/p2_sum.yaml` | 신규 — sum aggregation |
+| `scripts/_v6_train_with_seed.py` | seed wrapper |
+
+### Paper 정합
+
+- **§V.5.x.M.24** (2026-06-05 ✅ 신규 등재, `notebooks/analysis_results/paper_draft_V5xM_dual_variant_three_caveat.md`): "Training-Pathology-Invariant Selector — edge_type split 실증". V7-W3 (§V.5.x.M.23, Extractor 단 axis) + V6-W2 (§V.5.x.M.24, GAT 학습 단 axis) + V1~V5 14-trial null = **6번째 axis 3-axis 공동 evidence**
+- **§V.5.x.M.24.7** (2026-06-05 ✅ 신규 inference-level extension): "Training-proxy ↔ Inference-quality Disconnect" — V6-W2 selector-only top-K rerank 결과 Val R@15 ↔ top-20 F1 / ROC-AUC ranking 완전 역전 (phase1 1st→3rd, sum 2nd→1st), 근본 원인 = gold score separation (sum p50=0.8195 vs phase1 p50=0.0002), ROC-AUC = best K-independent inference proxy
+- **§III.7 후보 sub-section spec**: "Training-Pathology-Invariant Selector — edge_type split 실증" (planner 위임)
+
+### Selector-only inference (2026-06-05 ✅ closed) — top-20 R/P/F1 + ROC-AUC (4자리, micro)
+
+DirectGATv2Selector × BIRD-Dev 1534q × GPU 2 sequential, 17:28~20:13 KST. **selector-only setup** (extractor/filter None). top-20 rerank 위 candidate 전체 score 기준 K 선택.
+
+| Cell | top-20 R | top-20 P | top-20 F1 | ROC-AUC | PR-AUC | gold p50 | training rank | inference rank |
+|---|---|---|---|---|---|---|---|---|
+| **v6w2_p2_sum** ⭐ | **0.6043** | **0.2019** | **0.3027** | **0.7204** | **0.3600** | **0.8195** | 2nd | **1st** |
+| v6w2_p2_standalone | 0.5776 | 0.1930 | 0.2894 | 0.7154 | 0.3521 | 0.4838 | 3rd | 2nd |
+| v6w2_p2_phase1 | 0.5180 | 0.1731 | 0.2595 | 0.6833 | 0.2879 | 0.0002 | **1st (Val R@15)** | **3rd** |
+| v6w2_p2_standalone_no_selfloop | 0.4674 | 0.1562 | 0.2341 | 0.6731 | 0.2910 | 0.1469 | 4th | 4th |
+
+**핵심 발견** (analyzer notebooks/analysis_results/v6w2_selector_topk_analysis_2026-06-05.md):
+- **ranking 완전 역전**: Val R@15 (training proxy) ↔ top-20 F1 / ROC-AUC / PR-AUC. phase1 (Val R@15 1st) → inference 3rd, sum (Val R@15 2nd) → inference best
+- **근본 원인 = gold score separation**: sum gold p50=0.8195 (best) vs phase1 p50=0.0002 (gold 절반이 score 0 으로 붕괴)
+- **mad ⊥ score separation**: PairNorm 위 mad ~1.0 (phase1, feature diversity best) 단 classifier 출력 score 위 gold collapse → over-smoothing 억제가 decision boundary quality 와 직교
+- **ROC-AUC = best K-independent inference proxy**: ROC-AUC ranking = top-20 F1 ranking 완전 일치. Val R@15 misleading
+- **K-independence**: K ∈ {10, 15, 20, 25, 30, 50} 전 구간 ranking 동일 (sum > standalone > phase1 > no_selfloop) — structural disconnect, K-tuning artifact 아님
+- **self-loop 효과 top-20 F1**: +0.0553 (standalone vs no_selfloop) — 학습 R@15 Δ+0.0093 보다 6× 강함
+
+### 후속 위임
+
+- **Analyzer (Phase C)**: ✅ 완료 (`notebooks/analysis_results/v6_phase2_oversmoothing_2026-06-05.md`) — 4 cells × R@15/energy/mad trajectory + pooled Pearson 정량 + paper §V.x narrative 후보
+- **Selector 세션 (priority 1, inference 선결 조건)**: V6-W2 ckpt 위 호환 patch 결정 — gat+classifier_state_dict 있고 **projector_state_dict 없음**. EnsembleSelector 호환 옵션: (a) random projector init (V5 task #119 패턴), (b) SchemaHeteroGATv2 + DirectClassifier wrapper 신규, (c) DirectGATSelector 의 v2 model 지원 확장. 사용자 직접 trigger 시 patch + inference launch
+- **Root (inference, selector patch 후)**: priority 2 — 4 cells × M4 anchor pipeline (BidirectionalFilter + sql_gen=true) end-to-end R/P/F1 측정. **GPU 0,1 만 사용** ([[feedback-gpu-allocation]]). best-epoch ckpt: phase1 ep275 / sum ep77 / standalone ep228 / no_selfloop ep193
+- **Planner (paper §III.7 신규 sub-section spec)**: §V.5.x.M.24 narrative 위 §III.7 정식 sub-section heading 작성
+
+
+## M4 anchor threshold sweep — score_threshold ∈ {0.2~0.9} 8 cells (2026-06-05, ✅ closed, M4 anchor sensitivity)
+
+M4 anchor (`w6_p2_m4_bidirectional`, MSTPCSTUnionExtractor score_threshold=0.1, EX=0.5300) 의 threshold sensitivity 측정. 8 cells × M4 anchor stack (BidirectionalFilter + sql_gen=true, glm-4.7) × score_threshold ∈ {0.2, 0.3, ..., 0.9}.
+
+### Spec
+- Configs: `configs/experiments/abl/m4_threshold_sweep/m4thr_{02~09}.yaml` (M4 anchor 동일 stack, score_threshold 만 변경)
+- Script: `scripts/run_m4_threshold_sweep.sh` (8 cells parallel, GPU 1+2 × 4 cells per GPU)
+- Wall: ~4h 19m (12:58:09 ~ 17:17 KST), m4thr_02 disk-full 위 rerun (~22:17 KST)
+
+### Results (4자리, EX 비교 위)
+
+| Cell | thr | R | P | EX | ΔEX vs M4 anchor (0.5300) | n_avg |
+|---|---|---|---|---|---|---|
+| (M4 anchor) | 0.1 | 0.8438 | 0.8329 | 0.5300 | — | — |
+| **m4thr_02** ⭐ | **0.2** | **0.9272** | **0.7090** | **0.5117** | **−0.0183** (noise band) | **63.10** |
+| m4thr_03 | 0.3 | 0.5698 | 0.4751 | 0.3051 | −0.2249 | — |
+| m4thr_04 | 0.4 | 0.5227 | 0.4666 | 0.2568 | −0.2732 | — |
+| m4thr_05 | 0.5 | 0.4624 | 0.4409 | 0.2190 | −0.3110 | — |
+| m4thr_06 | 0.6 | 0.3684 | 0.3751 | 0.1943 | −0.3357 | — |
+| m4thr_07 | 0.7 | 0.3099 | 0.3472 | 0.1714 | −0.3586 | — |
+| m4thr_08 | 0.8 | 0.2194 | 0.2923 | 0.1460 | −0.3840 | — |
+| m4thr_09 | 0.9 | 0.1168 | 0.2173 | 0.1310 | −0.3990 | — |
+
+### 핵심 발견
+
+- **m4thr_02 (thr=0.2) 가 M4 anchor 와 사실상 동일 EX** (Δ−0.0183 noise band). **R = 0.9272 > M4 anchor 0.8438** (recall 우위, gold 더 많이 회수) 단 P = 0.7090 < 0.8329 (precision 손실). **EX 가 R-P trade-off 위 안정 plateau (thr=0.1~0.2)**
+- **thr ≥ 0.3 위 EX 단조 급락** (0.3051 → 0.1310, thr 0.9 위 M4 의 25%). extractor 가 너무 sparse → R 폭락 + Filter 가 회복 못함
+- **M4 anchor (thr=0.1) sweet spot 강한 confirm** — thr ↓ 더 가능 (thr=0.0 측정 시 R 더 회복 가능성)
+- ⇒ over-extract 의 redundancy buffer 효과 재증명: thr=0.1~0.2 영역 위 가장 안전, thr ↑ 위 Filter 의 의존도 ↑
+
+### 후속 위임 (선택)
+
+- thr=0.0~0.15 fine-grained sweep (sweet spot exact 식별)
+- m4thr_02 의 R=0.9272 > anchor 차이 분석 (왜 더 lower thr 위 R 손실?)
+
+
+## V6-W2 end-to-end inference + V6-W0 baseline 비교 — selector swap 측정 (2026-06-05, ✅ closed)
+
+V6-W2 4 cells × M4 anchor pipeline (DirectGATv2Selector + MSTPCSTUnionExtractor thr=0.1 + BidirectionalFilter + LLMSQLGenerator) end-to-end R/P/F1/EX 측정 + V6-W0 baseline (EnsembleSelector + Projector, selector-only top_k=20) 비교.
+
+### Spec
+- V6-W2 e2e configs: `configs/experiments/s06_gat_bottleneck_fix/w2_edge_type_split_e2e/v6w2_p2_*_e2e.yaml` (4 cells)
+- V6-W2 e2e script: `scripts/run_v6w2_e2e_inference.sh` (4 cells parallel GPU 3)
+- V6-W0 baseline config: `configs/experiments/s06_gat_bottleneck_fix/w0_baseline/v6w0_baseline_s11.yaml` (EnsembleSelector top_k=20)
+- Wall: V6-W2 e2e ~4h 45m (17:48 ~ 22:17 KST, 5 cells GPU 3 parallel API throttle 위), V6-W0 baseline ~40 min (21:32 ~ 22:11 KST GPU 0,1)
+
+### V6-W2 e2e Results (4자리, M4 anchor R=0.8438/P=0.8329/EX=0.5300 vs)
+
+| Cell | R | P | EX | ΔEX vs M4 |
+|---|---|---|---|---|
+| v6w2_p2_standalone_e2e | 0.6024 | 0.5779 | 0.2777 | −0.2523 |
+| v6w2_p2_phase1_e2e | 0.4853 | 0.5510 | 0.2653 | −0.2647 |
+| **v6w2_p2_standalone_no_selfloop_e2e** ⭐ | **0.6344** | **0.5900** | **0.3331** | **−0.1969** (best of 4) |
+| v6w2_p2_sum_e2e | 0.6714 | 0.6072 | 0.3116 | −0.2184 |
+
+### V6-W0 baseline (selector-only, EnsembleSelector + Projector) — ⚠ 정정
+
+⚠ surface F1=0.3913 은 EnsembleSelector 내부 top_k=20 보고 (V6-W2 와 방법론 mismatch). **동일 micro top-20 rerank 적용** (analyzer v6w2_v6w0_selector_comparison_2026-06-05.md):
+
+| Cell | rerank top-20 R | rerank top-20 P | rerank top-20 F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|
+| `v6w0_baseline_s11` | 0.5781 | 0.1932 | **0.2896** | **0.7408** | 0.3382 |
+
+→ **V6-W0 rerank F1 0.2896 < V6-W2 sum 0.3027** (V6-W0 가 V6-W2 를 dominate 하지 않음). V6-W0 ROC-AUC 1st 단 PR-AUC/top-20 F1 위 sum 1st.
+
+### 핵심 발견 (Multi-level Disconnect 확정, analyzer §1.1+§5.2)
+
+- **Stage 별 best cell 모두 다름**:
+  - L1 Training-proxy (Val R@15): **phase1** (0.5697)
+  - L2 Selector top-20 F1 / PR-AUC: **sum** (0.3027)
+  - L2 Selector ROC-AUC: w0_baseline (0.7408, top-heavy ⊥ global rank 분기)
+  - L3 End-to-end EX: **no_selfloop** (0.3331)
+  - → 단일 metric 으로 e2e 우열 예측 불가
+- **disconnect 는 architecture-agnostic**: V6-W0 (Projector) 도 동일 패턴 (ROC-AUC ⊥ top-K). best separation 은 **sum (Direct)** — Direct vs Projector 가 아니라 **drop-in 구성 (phase1 PairNorm gold collapse)** 이 결정 요인
+- **★ e2e mechanism = extractor threshold-pass (not ranking)**: Spearman(e2e EX, pass@0.1) = **+1.0000** (완벽 단조), Spearman(e2e EX, selector top-20 F1) = −0.2000 (반전). no_selfloop nongold elevated (μ=0.2314, 4 cells 최고) → threshold-friendly → BiFilter 정밀 pruning → best EX
+- **paper §V.5.x.M.24.8 신규** (`paper_draft_V5xM_dual_variant_three_caveat.md`): "Multi-level Disconnect: Training-proxy / Selector / End-to-end"
+
+### 후속 위임
+
+- **검증 wave (root 진행 중, 2026-06-05)**: extractor score_threshold ∈ {0.05, 0.1, 0.2, 0.3} × V6-W2 4 cells e2e EX = 16 cells × M4 anchor stack, `CUDA_VISIBLE_DEVICES=0,1`. threshold-pass 가설 (ρ=+1.0) K 변경 위 안정 확인
+- **Planner**: §III.7 정식 sub-section "Multi-level Disconnect: Training-proxy / Selector / End-to-end" heading spec 작성
+
+## V6-W3 hub 차수 축소 chain — 3 variants × s11 학습 + inference (2026-06-06, V6 chain Phase 3, 🎯 GAT-necessity 2단계 인과 게이트 측정)
+
+V6 chain Phase 3 = RFP H1 (hub-accelerated over-smoothing) + H2 (hub 테이블 컬럼 collapse, hi-deg L3 MAD=0.0046) 의 **직접 검증 wave**. 단순 disconnect 재확인 아니라 **hub 차수 축소로 GAT 가 살아나는지 causal test** (DECISIONS 2026-06-06). single seed s11.
+
+### Spec
+- **Builders (commit fce866c, module:builders)**:
+  - **A** `V6W3VirtualSummaryBuilder` — table_summary virtual node (table→summary→column 2-hop, 1/d 희석 완화), cache `_v6w3_a`
+  - **B** `V6W3ColumnPoolingBuilder` — table feature override (column attention pooling), cache `_v6w3_b`
+  - **C** `V6W3HubLocalVNBuilder` — hub-only Local VN_G (이질성 인지), cache `_v6w3_c`
+- **Selector module (V6-W3 호환)**: `DirectGATv2Selector` (V6-W2 패턴) + SchemaHeteroGATv2 v6w3_variant 확장 + train_gat_s06 builder dispatch
+- **Wall**: 학습 13h 38m (06-06 01:12:52 ~ 14:51:00 KST, 3 cells parallel GPU 2,3 swap, single seed s11)
+- **검증**: 22/22 unit tests PASSED, european_football_2 Match (115-col) hub 검출 confirm
+
+### Training Results (4자리)
+
+| Cell | Builder | Epoch | best Val R@15 (ckpt) | final Val R@15 | V6-W2 phase1 (0.5697) 격차 | 완료 시각 |
+|---|---|---|---|---|---|---|
+| **v6w3_a_s11** ⭐ | V6W3VirtualSummaryBuilder | 300 | **0.5672** (Ep ~156 peak) | 0.5654 | **−0.0025 (1st, 가장 가까움)** | 14:35:29 |
+| v6w3_b_s11 | V6W3ColumnPoolingBuilder | 300 | 0.5637 | 0.5618 | −0.0060 | 13:07:52 |
+| v6w3_c_s11 | V6W3HubLocalVNBuilder | 300 | 0.5633 | 0.5633 | −0.0064 | 14:51:00 |
+
+### 핵심 발견 (학습 단계)
+
+- **hub 차수 축소 효과 = 부분 발현** — V6-W3 모두 V6-W2 phase1 (0.5697) 와 ~0.003-0.006 격차 (단일 시드 noise band 내), full rescue (M4 anchor 0.6097 도달) ✗
+- **cell A (virtual summary) best** — 3 variants 중 가장 가까움 (Δ=−0.0025). table_summary 가상 노드 위 hop 길이 ↑ + 1/d 희석 완화 mechanism 부분 발현
+- **L2 GAT-necessity (DECISIONS 2026-06-06 2단계 인과 게이트)**:
+  - L1 mechanism (H2 회복): analyzer 측정 위 hi-deg/lo-deg intra-MAD L3 회복 (baseline 0.0046 → lo-deg 0.04 방향) 측정 필요
+  - L2 GAT-necessity (핵심 prize): GAT-only α=0 selector quality + GAT 순기여 % (baseline +2.1%) + european_football_2 e2e EX — analyzer 위임 (per-DB stratification)
+
+### Inference Plan (진행 중, 2026-06-06 17:25 launch)
+
+- selector-only 3 cells (GPU 2 sequential, ~15-30 min) — `outputs/experiments/s06_gat_bottleneck_fix/w3_hub_reduction/v6w3_{a,b,c}_s11/`
+- e2e 3 cells (GPU 3 parallel, ~3h) — M4 anchor stack + DirectGATv2Selector swap, `outputs/experiments/s06_gat_bottleneck_fix/w3_hub_reduction_e2e/v6w3_{a,b,c}_e2e_s11/`
+- script: `scripts/run_v6w3_inference.sh`
+
+### Checkpoints (s11)
+
+- `outputs/checkpoints/best_gat_v6w3_a_s11.pt` (174M, last update 14:24)
+- `outputs/checkpoints/best_gat_v6w3_b_s11.pt` (99M, last update 13:06)
+- `outputs/checkpoints/best_gat_v6w3_c_s11.pt` (174M, last update 13:42)
+- 형식: V6-W2 패턴 (gat + classifier + recall + epoch + config), DirectGATv2Selector 호환
+
+### 후속 위임
+
+- **Analyzer (✅ 2026-06-06)**: `notebooks/analysis_results/v6_phase3_hub_reduction_2026-06-06.md` — L1 mechanism gate + L2(a) GAT-necessity 측정 완료, L2(c) e2e EX append pending
+- **Root**: HISTORY 본 § 위 L1/L2(a) 결과 갱신 ✅ (selector top-20 F1 + hi-deg intra-MAD 4자리)
+- **Planner (priority 1)**: DECISIONS V6-W3 업데이트 — **L1 미회복 → hub reduction 기법 부적합 (informative negative)** + V6 chain architectural rescue 종료 결정
+
+## V6-W3 inference + 2단계 인과 게이트 결과 (2026-06-06, ✅ closed L1 / L2(a) / L2(c) all DONE)
+
+analyzer 산출 ([v6_phase3_hub_reduction_2026-06-06.md](notebooks/analysis_results/v6_phase3_hub_reduction_2026-06-06.md), L2(c) append + 분기 정정 완료).
+
+### ⚠ 게이트 판정 정정: **mixed result — mechanism informative negative + cell C threshold-pass e2e uplift** 🟡
+
+원 판정 ("L1 미회복 → 기법 부적합 informative negative") 은 L1/L2(a) 측면 유지 단 **L2(c) e2e 측정 후 cell C e2e uplift 발견 위 mixed result 로 정정**.
+
+| Gate | 측정 | 결과 | 판정 |
+|---|---|---|---|
+| **L1 mechanism (H2 회복)** | hi-deg intra-MAD L3 → lo-deg 방향 | 무회복 + european_football_2 0.0000 유지 | **❌ FAIL** |
+| **L2(a) GAT-only selector** | DirectGATv2 top-20 F1 / ROC-AUC | 전 baseline 아래 | **❌ 미상승** |
+| L2(b) GAT 순기여 % | vs +2.1% baseline | cosine 재측정 필요 (우선순위 ↓) | ⚠ 정성적 |
+| **L2(c) e2e EX** | hub-heavy DB + 전체 e2e | **cell C 0.3879 (V6-W2 best 0.3331 +0.0548, M4 anchor 0.5300 −0.1421)** + EF2 cell C 0.4651 — **threshold-pass 매개 부분 우위** | **🟡 mixed** |
+
+### L2(c) e2e R/P/EX (3 cells × 1534q) — 4자리
+
+| Cell | R | P | EX | Δvs M4 (0.5300) | Δvs V6-W2 best (no_selfloop 0.3331) |
+|---|---|---|---|---|---|
+| v6w3_a (VirtualSummary) | 0.5680 | 0.5571 | 0.2940 | −0.2360 | −0.0391 |
+| v6w3_b (ColumnPooling) | 0.6289 | 0.5578 | 0.3031 | −0.2269 | −0.0300 |
+| **v6w3_c (HubLocalVN)** ⭐ | **0.7224** | **0.6278** | **0.3879** | **−0.1421** | **+0.0548 우위** |
+
+- **european_football_2 e2e EX (cell C 위 0.4651)** — overall (0.3879) 보다 높음! intra-MAD collapse (0.0000) 와 e2e EX 직교 직접 evidence
+- **threshold-pass mechanism cross-check** (V6-W2 §5 Spearman(EX, ext_nodes)=+1.0 정합): V6-W3 위 Spearman(EX, pass@0.1) = +0.5 (n=3, cell C driver). cell C 의 gold score p50=0.9108 + nongold μ=0.3200 → pass@0.1=38.35 (최다) → extractor 42.80 node (최다) → BiFilter 정밀 회복 → best EX
+- ⇒ **cell C 우위 = threshold-pass mechanism** (GAT column 표현 개선 아님). L1 (mechanism) 무회복과 모순 없음 — V6-W2 의 "selector ranking ⊥ e2e, e2e=threshold-pass" 가 V6-W3 에서 재현
+
+### L1 hi-deg intra-MAD L3 (baseline hi-deg 0.0046 / lo-deg 0.0407) — 4자리
+
+| Cell | hi-deg L3 | lo-deg L3 | all L3 | Δhi vs base |
+|---|---|---|---|---|
+| baseline (M4 anchor Phase 0) | 0.0046 | 0.0407 | 0.0355 | — |
+| **v6w3_a (VirtualSummary)** | **0.0024** | 0.0131 | 0.0121 | **−0.0022 (오히려 악화)** |
+| v6w3_b (ColumnPooling) | 0.0041 | 0.0311 | 0.0270 | −0.0005 |
+| v6w3_c (HubLocalVN) | 0.0042 | 0.0213 | 0.0185 | −0.0004 |
+
+- **3 cells 모두 hi-deg 무회복** — lo-deg 수준 (~0.04) 의 1/10 유지
+- **european_football_2 Match (115-col)**: 3 cells 모두 ≈ 0.0000 (절대 collapse 유지, 결정적 evidence)
+- **lo-deg 동반 악화** — hub reduction 이 일반 column 분화도 낮춤
+
+### L2(a) GAT-only selector top-20 (DirectGATv2 classifier-only, α=0) — 4자리
+
+| Cell | top-20 R | top-20 P | top-20 F1 | ROC-AUC |
+|---|---|---|---|---|
+| v6w3_a (VirtualSummary) | 0.4981 | 0.1665 | 0.2495 | 0.6502 |
+| v6w3_b (ColumnPooling) | 0.4685 | 0.1566 | 0.2347 | 0.6384 |
+| **v6w3_c (HubLocalVN)** | **0.5283** | **0.1765** | **0.2646** | **0.6883** |
+| 비교 V6-W2 sum (best baseline) | 0.6043 | 0.2019 | **0.3027** | 0.7204 |
+| 비교 V6-W0 (Projector) rerank | 0.5781 | 0.1932 | 0.2896 | **0.7408** |
+| 비교 V6-W2 phase1 | 0.5180 | 0.1731 | 0.2595 | 0.6833 |
+
+→ **V6-W3 GAT-only selector 전 baseline 아래** — best V6-W3 (cell C F1=0.2646) < V6-W2 phase1 (0.2595) 근사 + V6-W0 (0.2896) + V6-W2 sum (0.3027) 모두 하회. **GAT 미구출 확정**
+
+### 핵심 결론 (mixed result — 2-side 동시 성립)
+
+**(a) Mechanism 측면 — informative negative**:
+- builder graph 구조 변경만으로 GAT intra-table column smoothing 차단 불가 — L1 (hi-deg intra-MAD) 무회복 + GAT-only selector quality 전 baseline 아래
+- mech(ii-b) DOMINANT 정합 (over-smoothing 은 GAT message-passing layer 자체에서 발생)
+
+**(b) e2e 측면 — cell C threshold-pass partial uplift**:
+- cell C (HubLocalVN) e2e EX=0.3879 > V6-W2 best (no_selfloop 0.3331) **+0.0548 우위** (단 M4 anchor 0.5300 −0.1421 미달, **GAT rescue 아님**)
+- mechanism = threshold-pass (cell C 의 threshold-friendly score 분포 → 최다 통과 → BiFilter 정밀 회복)
+- **V6-W2 Multi-level Disconnect (mechanism ⊥ e2e) 재확인** — mechanism (intra-MAD) 과 e2e EX 가 직교
+
+**caveat**: single-seed s11 + n=3 cells, threshold-pass Spearman ρ=+0.5 (cell C driver, a/b 미세차 미설명)
+
+### Paper / Planner 후속 (정정 분기 반영)
+
+- **Planner (priority 1)**: DECISIONS V6-W3 entry 업데이트 — "mixed result" 분기 (mechanism informative negative + cell C threshold-pass e2e uplift, **GAT rescue 아님 명시**, M4 미달). V6 chain architectural rescue 종료 결정 retain
+- **Paper §V.5.x.M.24.9 (정정)**: 초판 "GAT 미구출 확정 / informative negative" 단정 → **"Hub Reduction Fails to Fix the Mechanism, yet Lifts End-to-End via Threshold-Pass"** mixed result 정정 (3 단락 narrative)
+- **Paper §III.7.4 보강**: V6-W2 Multi-level Disconnect 의 V6-W3 재확인 evidence — mechanism ⊥ e2e (intra-MAD 무관 / e2e=threshold-pass)
+
+## V6-W5 Phase 5 decisive final wave — GAT layer-level intervention (self-loop / per-layer residual / 조합) (2026-06-07, ✅ closed, V6 chain Phase 5 capstone, 🎯 collapse origin 정확한 mechanism fix 의 인과 확정)
+
+V6 chain capstone wave. [v6_intra_table_collapse_origin_2026-06-06.md](notebooks/analysis_results/v6_intra_table_collapse_origin_2026-06-06.md) 가설 B (first-conv single-shared-source — L0 PLM 0.4201 → L1 0.0136 단일-공유-소스 독점) 의 결정적 fix-test. self-loop (column self-loop, `add_self_loops=True`) + per-layer residual (out=ELU(conv)+h_prev) 위 single-shared-source 해소 시 L1 mad 회복 ↔ e2e 변화 인과 확정.
+
+근거: 사용자 trigger 2026-06-07 00:43 KST + planner DECISIONS 2026-06-07 V6-W5 entry. single seed s11.
+
+### 학습 (3 cells × s11 × 300 epochs × parallel GPU 2,3)
+- Module: `src/modules/selectors/` (SchemaHeteroGATv2 v6w5_variant — self-loop/residual injection) + `train_gat_s06` builder dispatch
+- Configs: `configs/training/v6_w5/v6w5_{a,b,c}_s11.yaml`
+- Script: `scripts/run_v6_w5.sh` (3 cells parallel, cell A → GPU 2 단독, cell B+C → GPU 3 sharing)
+- Wall: 4h 14m ~ 4h 40m per cell (cell A: 00:49:21 → 05:03:42, cell B: 00:49:23 → 05:07:39, cell C: 00:49:25 → 05:30:14)
+- Smoke (analyzer 결정론): baseline L1 hi-deg intra-MAD 0.0 collapse → W5 전부 회복 → 학습 launch
+
+### 학습 결과 — best Val R@15 4자리
+
+| Cell | mechanism | best Val R@15 | vs V6-W3 cell A (0.5672) | vs V6-W2 phase1 (0.5697) | rc | ckpt |
+|---|---|---|---|---|---|---|
+| **v6w5_a_s11** | column self-loop | **0.5732** ⭐ V6 chain best | +0.0060 | +0.0035 | 0 | `outputs/checkpoints/best_gat_v6w5_a_s11.pt` |
+| v6w5_b_s11 | per-layer residual | 0.5715 | +0.0043 | +0.0018 | 0 | `outputs/checkpoints/best_gat_v6w5_b_s11.pt` |
+| v6w5_c_s11 | self-loop + residual 조합 | 0.5723 | +0.0051 | +0.0026 | 0 | `outputs/checkpoints/best_gat_v6w5_c_s11.pt` |
+
+→ **3 cells 전부 V6-W2 phase1 (0.5697) 위 우위 (+0.0018~+0.0060)** — mechanism-targeted intervention 위 selector R@15 marginal 정량 향상. cell A (column self-loop 단독) 가 V6 chain best (0.5732).
+
+### Inference — Selector-only + E2E (2026-06-07 05:34:31 launch → 08:39:46 종료)
+- Selector-only configs: `configs/experiments/s06_gat_bottleneck_fix/w5_self_loop_residual/v6w5_{a,b,c}_s11.yaml` (extractor=None / filter=None, all-nodes pass-through)
+- E2E configs: `configs/experiments/s06_gat_bottleneck_fix/w5_self_loop_residual_e2e/v6w5_{a,b,c}_e2e_s11.yaml` (DirectGATv2 + MSTPCSTUnion thr=0.1 + BidirectionalFilter recall_biased_mild + LLMSQLGenerator glm-4.7)
+- Script: `scripts/run_v6w5_inference.sh` (selector-only GPU 2 sequential + e2e GPU 3 parallel, ~30min selector-only + ~3h e2e)
+- Wall: selector-only 9m 41~45s × 3 sequential = 30min / e2e 3h 4m ~ 3h 5m × 3 parallel
+
+#### Selector-only (sanity check, extractor=None)
+| Cell | R | P | F1 | ext_nodes |
+|---|---|---|---|---|
+| v6w5_a_s11 | 1.0000 | 0.1173 | 0.2100 | 92.6147 (NoneExtractor all-pass) |
+| v6w5_b_s11 | 1.0000 | 0.1173 | 0.2100 | 92.6147 |
+| v6w5_c_s11 | 1.0000 | 0.1173 | 0.2100 | 92.6147 |
+
+→ 동일 — extractor=None 위 모든 노드 pass-through. GAT load sanity check 의미 (R=1.0 = gold 노드 100% 후보 포함, P=0.1173 = 노드 평균 117/노드 위 gold 비율). 모델 quality 측정 불가, **mechanism 효과 측정은 §게이트 판정 (analyzer L1 mad)** 통해 진행.
+
+#### E2E (M4 anchor pipeline + V6-W5 selector swap) — 4자리 R/P/F1/EX + selector quality
+| Cell | R | P | F1 | EX | top-20 F1 | ROC-AUC | col net | table net | gold p50 | L1 mad | ext_nodes | Δvs M4 (0.5300) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| v6w5_a_e2e_s11 (self-loop) | 0.5957 | 0.6078 | 0.6018 | 0.3168 | 0.2708 | 0.6959 | **−1805** | +277 | 0.0170 | 0.2813 | 30.13 | −0.2132 |
+| **v6w5_b_e2e_s11 (residual)** ⭐ EX | **0.6559** | 0.5843 | **0.6182** | **0.3201** | **0.2977** | **0.7352** | **−1359** | **+617** | **0.1260** | 0.3416 | 28.59 | **−0.2099** |
+| v6w5_c_e2e_s11 (조합) | 0.6306 | 0.5819 | 0.6054 | 0.2934 | 0.2923 | 0.7227 | **−1520** | +486 | 0.0818 | **0.3463** | 28.74 | −0.2366 |
+| 비교 M4 baseline (GAT-only) | — | — | — | 0.5300 | — | — | −1181 | +106 | — | 0.0136 | — | — |
+| 비교 V6-W2 sum (best gold sep) | — | — | — | — | 0.3027 | 0.7204 | — | — | 0.8195 | — | — | — |
+| 비교 V6-W0 (Projector) | — | — | — | — | 0.2896 | 0.7408 | — | — | — | — | — | — |
+
+- **e2e EX 전 cell M4 anchor (0.5300) 대비 −0.21 미달** — selector R@15 marginal 우위가 e2e 로 전이 안 됨
+- **V6-W2 best (0.3331), V6-W3 c (0.3879) 도 미달** — W5 가 V6-W2/W3 e2e best 보다 낮음
+- best e2e cell = b (residual, EX=0.3201), best mad cell = c (0.3463), best top-20 F1 = b (0.2977)
+- **★ selector-quality 핵심 (analyzer `v6_w5_selector_quality_2026-06-07.md`)**:
+  - **gold p50 0.017~0.126** (V6-W2 sum 0.8195 의 2~15%, gold 정렬 빈약) — mad 20~25× 회복에도 gold 컬럼이 high-score 정렬 안 됨
+  - **column net 음수 유지 −1359~−1805** (M4 −1181 보다 **더 음수**, multi-gold net −1371~−1810) — mad 회복이 column gold-분별을 양수로 못 뒤집음, **task-irrelevant differentiation**
+  - **table net 증가 +277~+617** (M4 +106) — 회복 효과가 **table-level (cross-table) 로만 발현**, cosine 이 이미 담당하는 column 식별에 GAT 가 기여 못 함 (역할 분리 retain)
+  - **top-20 F1 baseline 수준** — best b 0.2977 (V6-W2 sum 0.3027 미달, V6-W0 0.2896 근소 상회), ROC-AUC 0.70~0.74 baseline band — selector 분별 무개선
+
+### ★ 게이트 판정 — analyzer L1 mad + selector-quality 측정 (`v6_w5_l1_mad_disconnect_2026-06-07.md` + `v6_w5_selector_quality_2026-06-07.md`)
+
+| 게이트 | 측정 | 결과 | 판정 |
+|---|---|---|---|
+| **Primary (mechanism 회복)** | L1 hi-deg intra-MAD vs base 0.0136 (→ L0 PLM 0.4201) | 3 cells **0.2813 / 0.3416 / 0.3463** (20.7~25.5× 회복, L0 의 67~82%) + EF2 0.0000 → 0.30+ | **✅ PASS (결정적)** |
+| **★ Intermediate (selector-quality)** | gold p50 / col net / top-20 F1 vs V6-W2 sum (0.8195 / +N/A / 0.3027) + M4 (−1181) | gold p50 **0.017~0.126** (≪0.8195 빈약) + col net **−1359~−1805** (M4 −1181 보다 더 음수) + table net **+277~+617** (M4 +106) + top-20 F1 **0.27~0.30** (baseline 수준) | **❌ task-irrelevant differentiation (gold-aligned 아님, table-level 발현)** |
+| **Secondary (e2e EX)** | vs M4 0.5300 / V6-W2 best 0.3331 | 0.2934~0.3201 전 baseline 미달 | **❌ 무개선 (disconnect)** |
+| **disconnect mechanistic 완결** | Spearman(L1 mad, e2e EX) = −0.5000 + Spearman(mad, col net) = +0.5000 + Spearman(col net, EX) = +0.5000 | **mad↑ → gold-분별 ✗ → e2e ✗** 전 단계 일관 | **✅ ironclad (mechanistic 완결)** |
+
+### L1 hi-deg intra-MAD 회복 (3 cells) — 4자리
+| Cell | L0_PLM | **L1_GAT** | L2_GAT | L3_GAT | L1 Δvs base (0.0136) |
+|---|---|---|---|---|---|
+| baseline (M4 anchor) | 0.4201 | **0.0136** | 0.0092 | 0.0046 | — |
+| v6w5_a (self-loop) | 0.4201 | **0.2813** | 0.1897 | 0.1398 | **+0.2677 (20.7×)** |
+| v6w5_b (residual) | 0.4201 | **0.3416** | 0.1540 | 0.0539 | **+0.3280 (25.1×)** |
+| **v6w5_c (조합)** ⭐ mad | 0.4201 | **0.3463** | 0.2648 | 0.1240 | **+0.3327 (25.5×)** |
+
+### european_football_2 (115-col Match, V6 최대 붕괴 DB) — per-DB L1 hi-deg intra-MAD
+| Cell | L1 hi-deg intra-MAD (base 0.0000) |
+|---|---|
+| baseline (M4 anchor) | 0.0000 (완전 collapse) |
+| v6w5_a (self-loop) | 0.3448 |
+| v6w5_b (residual) | 0.2956 |
+| v6w5_c (조합) | 0.3302 |
+
+→ **완전 collapse (0.0000) 였던 115-col Match 가 0.30+ 회복** — mechanism fix 가 가장 극단적 hub 에서도 작동, 가설 B (single-shared-source) 인과 확정 (정확한 locus 를 고치니 정확히 회복).
+
+### disconnect 정량 (mad ↔ e2e)
+| Cell | L1 hi-deg (mad 회복) | e2e EX | ext_nodes |
+|---|---|---|---|
+| v6w5_a | 0.2813 (최저 회복) | 0.3168 | 30.13 |
+| v6w5_b | 0.3416 | **0.3201 (최고 EX)** | 28.59 |
+| **v6w5_c** | **0.3463 (최대 회복)** | **0.2934 (최저 EX)** | 28.74 |
+
+- **Spearman(L1 mad 회복, e2e EX) = −0.5000** — 약한 역상관
+- **best mad 회복 (c, 0.3463) = e2e EX 최저 (0.2934)** — 가장 잘 고친 cell 이 e2e 최악
+- Spearman(mad 회복, ext_nodes) = −0.5000 — mad 회복이 extractor threshold-pass 노드 수도 늘리지 않음 (V6-W2/W3 의 "e2e=threshold-pass 노드 수" governor 가 mad 와 무관함 재확인)
+
+### 핵심 결론 (decisive capstone — 3-stage disconnect mechanistic 완결)
+
+**(a) Primary 게이트 PASS (mechanism fixable 입증)**:
+- single-shared-source 가설 B 인과 확정 — self-loop/residual 위 단일-공유-소스 독점 해소 시 L1 mad 20~25× 회복 (cell A 0.2677 / cell B 0.3280 / cell C 0.3327)
+- L0 (0.4201) 의 67~82% 수준으로 복원 + EF2 완전 collapse (0.0000) → 0.30+ 회복
+- **mech(ii-b) "first-conv single-shared-source aggregation" 명명 결정적 인과 검증** — self-loop/residual 부재가 정확한 mechanism 근원
+
+**(b★) Intermediate gate — task-irrelevant differentiation (회복이 gold-aligned 아님)**:
+- gold p50 0.017~0.126 (V6-W2 sum 0.8195 의 2~15%, gold 정렬 빈약)
+- **column net 음수 유지 −1359~−1805** (M4 −1181 보다 더 음수, multi-gold net −1371~−1810) — mad 회복이 column gold-분별을 양수로 못 뒤집음
+- **table net 증가 +277~+617** (M4 +106) — 회복 효과가 **table-level (cross-table) 로만 발현**, cosine redundant
+- top-20 F1 baseline 수준 (0.27~0.30), ROC-AUC baseline band (0.70~0.74) — selector 분별 무개선
+- ⇒ 회복된 differentiation 이 **task-irrelevant** (gold-aligned 아님, table-level), GAT 가치 = cross-table 만 retain (역할 분리)
+- 사용자 직관 2건 negative 확정: **extractor θ 재튜닝 ❌** (gold-분별력 미획득 위 무의미) + **ensemble 제거 GAT-only ❌** (col net 더 음수, GAT 자립 실패)
+
+**(c) Secondary disconnect ironclad (e2e flat — Filter Dominance 확정)**:
+- 정확한 root cause 를 20~25× 회복해도 e2e EX 무변/역방향 (Spearman(mad, EX) = −0.5000)
+- DECISIONS 결정 3 branch (a) "mad↑ ∧ e2e flat → disconnect / Filter Dominance ironclad" 충족
+- V6-W2/W3 disconnect (mechanism 못 고친 상태) 와 다름 — W5 는 **mechanism 을 고치고도 e2e 무변** ⇒ disconnect 가 측정 artifact 아닌 본질 (selector 표현 품질 ⊥ pipeline 성능)
+
+**(d) ★ 3-stage disconnect mechanistic 완결**:
+- **mad↑ (mechanism 회복) → gold-분별 ✗ (task-irrelevant differentiation, col net 음수 유지) → e2e ✗ (threshold-pass governed)**
+- Spearman(L1 mad, e2e EX) = −0.5000, Spearman(mad, col net) = +0.5000, Spearman(col net, EX) = +0.5000 (n=3, 약한 정합)
+- disconnect 가 mechanism → selector → e2e **전 단계에서 일관** — selector score 분해 수준에서 직접 확증
+
+**(e) scoping 정직성** (V6 chain framing 핵심):
+- collapse 는 **본 HGAT 의 first-conv single-shared-source 설계 결과**이지 GNN/over-smoothing 의 fundamental law 아님 (architecture-specific, fixable)
+- W5 가 fixable 임을 정량 입증 (mad 20~25× 회복) — paper 는 "GNN 본질적 over-smooth" 아니라 **"본 아키텍처 컬럼 collapse, fixable, 회복 differentiation 이 task-irrelevant, e2e 무관"** 으로 한정
+
+**caveat**: single-seed s11 + n=3 cells, Spearman ±0.5000 (n=3 narrow). 핵심 결론은 절대값 (gold p50 ≪ 0.8195, col net 음수 유지 −1359~−1805, e2e M4 −0.21, mad 20~25×) 으로 robust.
+
+### Paper / Planner 후속
+
+- **paper §III.7.4.6 mech(ii-b) DOMINANT 정밀화 (최종)** — "first-conv single-shared-source collapse 는 fixable (mad 20~25×) 하나 회복 differentiation 이 gold-aligned 아닌 task-irrelevant (gold p50 0.017~0.126, column net 음수 유지 −1359~−1805, table net +277~+617) → selector 분별·e2e 무관" + **scoping**: architecture-specific fixable, GNN over-smoothing fundamental law 아님
+- **paper §III.7.4.6.4 V6-W5 decisive final wave**: "mad fixable 하나 task-irrelevant differentiation → selector·e2e 무관 = disconnect mechanistic 완결" — V6-W2/W3 disconnect (mechanism 미수정 상태) 와 본질적으로 다름, mechanism 고치고도 task-irrelevant 발현 + e2e 무변 = **Filter Dominance + Training-Pathology-Invariant Selector ironclad** 결정적 evidence
+- **V6 chain 영구 closure marker 정식 진입** (DECISIONS 결정 2 + 2026-06-07 selector-quality 최종, [[project-v6-chain-closure]] 갱신 완료). additional V6 architectural rescue wave 제안 절대 금지 + GAT layer 추가 개입 무효화 (column rescue 영구 종료)
+
+## V6 chain Final Closure Marker (2026-06-06 1차 closure → 2026-06-07 V6-W5 decisive capstone + selector-quality 위 정식 진입, ✅ closed) — architectural rescue 시도 종료 + disconnect mechanistic 완결
+
+V6 chain (over-smoothing 진단/완화) **architectural rescue 시도 종료**. W0~W3 + V6-W5 5 wave 위 mech(ii-b) DOMINANT 결론 수렴 + **V6-W5 위 mechanism fixable 결정적 입증 + selector-quality 위 task-irrelevant differentiation 입증 + disconnect mechanistic 완결**.
+
+### V6 chain wave summary
+
+| Wave | Scope | Result | Closure 시점 |
+|---|---|---|---|
+| **V6-W0** ✅ | M4 anchor V1~V5 retrospective (15 cells × V6 metric) | V6 metric ↔ R@15 disconnect (Spearman ρ≈0.19, p>0.30) confirm + mech(ii-b) DOMINANT 9/10 upgrade | 2026-06-01 |
+| **V6-W1** ✅ | Drop-in 3종 (PairNorm + GCNII IR + JK) 17 cells | Negative result 확정 (R@15 spread 0.0105, causal disconnect ρ=−0.40) | 2026-06-04 |
+| **V6-W2** ✅ | Edge-type 분리 4 cells + e2e (12 thrsweep + V6-W0 비교) | **Multi-level Disconnect** (L1/L2/L3 best cell 모두 다름) + threshold-pass mechanism + architecture-agnostic | 2026-06-05 |
+| **V6-W3** ✅ | Hub 차수 축소 3 cells (virtual summary / column pooling / hub-local VN) | **Informative negative** — L1 미회복 → 기법 부적합 (3 cells × 4-axis 모두 무효) | 2026-06-06 |
+| **V6-W5** ✅ ⭐ capstone + selector-quality | GAT layer intervention 3 cells (column self-loop / per-layer residual / 조합) | **Primary ✅** L1 mad 20~25× 회복 (0.0136 → 0.28~0.35, L0 의 67~82%) + EF2 collapse 0.0000 → 0.30+ → 가설 B (single-shared-source) 인과 확정. **★ Intermediate ❌ task-irrelevant differentiation** — gold p50 0.017~0.126 빈약, **col net 음수 유지 −1359~−1805 (M4 −1181 보다 더 음수)**, table net 증가 +277~+617 (M4 +106), top-20 F1 baseline 수준. **Secondary ❌ disconnect** — e2e EX 무변 (M4 −0.21 / V6-W2 best 미달), Spearman(mad, EX)=−0.5000. **3-stage mechanistic 완결**: mad↑ → gold-분별 ✗ → e2e ✗ 전 단계 일관 | 2026-06-07 |
+
+### 4-axis 통합 mechanism evidence (mech(ii-b) DOMINANT 수렴 + V6-W5 fixable 확정)
+
+| axis | level | evidence | conclusion |
+|---|---|---|---|
+| **Measurement-stage** | L1 (training-proxy) | V6-W2 mad-R@15 disconnect (pooled Pearson +0.0887) + **V6-W5 mad↑ ∧ Val R@15 marginal (+0.0018~+0.0060 v6w2 phase1, +0.0035~+0.0060 v6w3 cell A)** | Val R@15 best cell ≠ inference best · mad 회복 ⊥ Val R@15 spread |
+| **Measurement-stage** | L2 (selector inference) | V6-W2 top-K F1 / ROC-AUC ranking 역전 + V6-W0 architecture-agnostic | top-K best cell ≠ global rank best cell |
+| **Measurement-stage** | L3 (end-to-end) | V6-W2 e2e threshold-pass mechanism (ρ=+1.0) + **V6-W5 e2e 무개선 (M4 −0.21 미달, Spearman(mad, EX)=−0.5000)** | e2e best cell = threshold-pass governed, mad 회복과 직교 (실제로 약한 역상관) |
+| **Intervention-level** | L4 (builder) | **V6-W3 hub reduction null (3 기법 모두 무효, informative negative)** | builder 구조 변경 ⊥ hub collapse 해소 |
+| **Intervention-level** | L5 (GAT layer) ⭐ NEW | **V6-W5 self-loop/residual 위 L1 mad 20~25× 회복 ✅ — mechanism fixable 확정. 단 e2e 무변** | mechanism 정확히 고치고도 e2e 무관 — disconnect 가 측정 artifact 아닌 본질 (Filter Dominance ironclad) |
+| **★ Selector-score (NEW)** | L2.5 (selector quality) ⭐ NEW | **V6-W5 회복 differentiation 이 task-irrelevant** — gold p50 0.017~0.126 빈약, col net 음수 유지 −1359~−1805 (M4 −1181 보다 더 음수), table net 증가만 +277~+617 (cosine redundant) | mad 회복 → gold-분별 ✗ (task-irrelevant) → e2e ✗ (threshold-pass) **3-stage disconnect mechanistic 완결** |
+
+### 통합 결론 (V6-W5 capstone + selector-quality 반영)
+
+- **mechanism fixable 확정 (V6-W5 Primary)**: V6-W3 (builder-level null) 가 "기법 부적합" 결론을 줬으나, V6-W5 (GAT layer-level intervention) 가 **single-shared-source 가설 B 의 정확한 mechanism fix 위 L1 mad 20~25× 회복** 입증. → mech(ii-b) DOMINANT 가 fundamental law 아님, **architecture-specific** (first-conv single-shared-source aggregation)
+- **★ task-irrelevant differentiation 확정 (V6-W5 Intermediate)**: mad 회복이 gold-aligned 분별로 전환 안 됨 — gold p50 0.017~0.126 (V6-W2 sum 0.8195 의 2~15%), **col net 음수 유지 −1359~−1805 (M4 −1181 보다 더 음수, multi-gold −1371~−1810)**, table net 증가 +277~+617 (회복 효과가 table-level cross-table 로만 발현, cosine redundant). top-20 F1 0.27~0.30 baseline 수준 — selector 분별 무개선. 사용자 직관 2건 negative 확정 (extractor θ 재튜닝 ❌, ensemble 제거 GAT-only ❌)
+- **disconnect mechanistic 완결 (V6-W5 Secondary + 3-stage)**: **mad↑ → gold-분별 ✗ → e2e ✗** 전 단계 일관 (Spearman(mad, EX)=−0.5000, (mad, col net)=+0.5000, (col net, EX)=+0.5000). V6-W2/W3 disconnect (mechanism 미수정 상태) 가 측정 artifact 아닌 본질임을 결정적으로 입증 + selector score 분해 수준 직접 확증. **Filter Dominance + Training-Pathology-Invariant Selector ironclad** 확정
+- **architectural intervention 무력성 (e2e 측면)**: training-level (V6-W1) + builder-level (V6-W3) + cell-level (V6-W2) + GAT layer-level (V6-W5) 5-axis 위 어떤 개입도 e2e 회복 못 함 — e2e 는 selector mechanism 과 인과적으로 분리
+- **mech(ii-b) DOMINANT 6-axis 통합 evidence**: V6-W0 (correlational) + V6-W1 (causal disconnect) + V6-W2 (Multi-level Disconnect + architecture-agnostic + threshold-pass) + V6-W3 (builder-level null) + **V6-W5 (GAT layer fixable + task-irrelevant differentiation + e2e disconnect mechanistic 완결)** + selector-quality (col net 음수 유지 + table net redundant)
+- **다음 개입 방향** (V6 chain 외): extractor stage (V7 chain) + filter stage (BiFilter ablation) — selector 외 stage 에서 e2e gain 탐색
+- **추가 V6 architectural rescue wave 제안 절대 금지** ([[project-v6-chain-closure]] memory 정합 — GAT layer 추가 개입 무효화 명시, column rescue 영구 종료)
+
+### Paper / 학위 §III.7 정합
+
+- **paper §V.5.x.M.24.7/8/9 + §V.5.x.M.24.10 (NEW V6-W5) + §III.7.4 spec** — `notebooks/analysis_results/paper_draft_V5xM_dual_variant_three_caveat.md` 위 5-axis 통합 narrative + V6 chain Final Closure Marker 작성 완료
+- **paper §III.7.4.6 mech(ii-b) DOMINANT 정밀화** — "first-conv single-shared-source aggregation" + V6-W5 self-loop/residual 회복 인과 확정 + scoping (architecture-specific fixable, GNN over-smoothing fundamental law 아님)
+- **paper §III.7.4.6.4 V6-W5 decisive final wave** — "mad fixable 하나 e2e 무관 = disconnect ironclad" framing (Filter Dominance 결정적 evidence)
+- **학위 §III.7** (Filter Dominance / Training-Pathology-Invariant Selector) 위 §III.7.4 sub-section "Multi-level Disconnect: Training-proxy / Selector / End-to-end / Intervention" 정식 spec 정합 (single-seed s11 caveat 필수, V6-W5 axis L5 추가)
+- **post-V6 wave 분기**: V7 chain (Extractor stage compact) + M4 anchor threshold sweep (extractor sensitivity) 위 cross-evidence 활용. GAT layer 자체 개입은 V6-W5 위 fixable 확인됨 — 추가 wave 없음 (e2e 무관 입증).

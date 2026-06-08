@@ -1,0 +1,29 @@
+M4 Graph-RAG Schema Linking — Reproducibility Package
+=====================================================
+
+Copyright (c) 2026 the authors.
+
+본 패키지의 소스 코드는 학술 연구·재현 목적으로 제공됩니다.
+(코드 라이선스: 저자 문의 / 논문 supplementary 정책에 따름.)
+
+------------------------------------------------------------------
+포함/참조된 외부 자산의 라이선스
+------------------------------------------------------------------
+
+1. BIRD 데이터셋 (BIg Bench for LaRge-scale Database grounded
+   text-to-SQL evaluation)
+   - 본 패키지는 BIRD 데이터를 **포함하지 않으며**, 사용자가 공식 출처에서
+     직접 내려받아야 합니다 (data/README.md 참조).
+   - BIRD 데이터의 사용은 BIRD 의 원 라이선스/이용약관(CC BY-SA 4.0 계열)을
+     따릅니다. 공식: https://bird-bench.github.io/
+
+2. M-Schema (utils/mschema/)
+   - 스키마 직렬화 유틸리티. 원 저장소의 라이선스를 따릅니다.
+   - 해당 라이선스 원문: src/utils/mschema/LICENSE
+
+3. 사전학습 모델
+   - sentence-transformers/all-MiniLM-L6-v2 (Apache-2.0, Hugging Face).
+   - GLM-4.7 (zai-org) — 외부 API(Elice ML 등 OpenAI-compatible endpoint)를 통해
+     호출되며, 해당 서비스/모델의 이용약관을 따릅니다.
+
+각 외부 자산을 사용할 때는 위 원 라이선스를 반드시 확인·준수하십시오.

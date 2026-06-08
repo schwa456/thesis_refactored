@@ -1,0 +1,19 @@
+# --- 외부 자산 (배포에 포함 안 함; 사용자가 직접 준비) ---
+.env
+checkpoints/*.pt
+data/raw/
+data/processed/
+
+# --- 실행 산출물 ---
+outputs/
+logs/
+
+# --- python ---
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+*.egg-info/
+
+# --- 학습 로깅 ---
+wandb/

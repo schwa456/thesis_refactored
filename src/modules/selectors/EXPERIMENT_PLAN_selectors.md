@@ -1192,6 +1192,352 @@ Direction B 의 fine-tuned encoder 가 anchor 의 EnsembleSelector 의 encoder �
 
 ---
 
+#### 단계 10. Mitigation V6-W1 — Drop-in 3종 격리 + 조합 ablation (2026-06-01 selector module Phase A ownership)
+
+> **사용자 trigger 위 격하 retract → 🟢 활성 launch** (DECISIONS 2026-06-01 §V6-W1 격하 retract + 활성 launch). motivation = V6-W0 retrospective 의 predicted disconnect 위 actual measurement 의 confirm/refute evidence base 강화. 학위 본 심사 §III chapter §III.3 (Mitigation null) / §III.4 (mech(ii-b) DOMINANT) / §III.9 (V5 deep extension) 의 single-cell evidence 추가 강화.
+
+> **Source**:
+> - planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md §1 Phase 1 활성 sub-section + §4 Ablation Matrix
+> - planning/DECISIONS.md 2026-06-01 §V6-W1 격하 retract + 활성 launch sub-section
+> - V6-W0 retrospective: notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md §6.2 priors
+
+##### Phase A — module:selectors 코드 구현 (본 단계)
+
+`src/models/gat_network_v2.py` 위 V5-A/B/C 와 같은 axis 의 V6-W1 drop-in 4 classes 신규 추가 (2026-06-01 완료):
+
+| Class | V6-W1 cell | 근거 paper | Hyperparameter |
+|---|---|---|---|
+| **`PairNormGATv2Conv`** | P1a (PairNorm 단독) | Zhao & Akoglu (ICLR 2020) arXiv:1909.12223 | `pairnorm_scale` ∈ {0.5, 1.0, 2.0} |
+| **`GCNIIIRGATv2Conv`** | P1b (GCNII IR 단독) | Chen et al. (ICML 2020) arXiv:2007.02133 + Peng et al. (CIKM 2024) | α = `initial_residual_alpha` ∈ {0.05, 0.1, 0.2} + optional β = log(λ/l+1) via `gcnii_beta_lambda` |
+| **`JKGATv2Conv`** | P1c (JK 단독) | Xu et al. (ICML 2018) arXiv:1806.03536 | `jk_mode` ∈ {concat, max} (outer `jumping_knowledge` 자동 활성화) |
+| **`DropInComboGATv2Conv`** | P1d (P1a+P1b+P1c 조합) | 위 3개 paper combo | 위 3개 hyperparameter 동시 |
+
+**핵심 design**:
+- **V5-B `GCNIIGATv2Conv` reuse 단 격리 단독 측정 cell 구분 위 별개 class name 유지** — `GCNIIIRGATv2Conv` 는 V5-B subclass + V6 capture hook 추가. 본질 동일 단 ablation matrix 의 axis classification 명확화 위.
+- **JK marker 패턴** — JK aggregation 은 multi-layer outer process 이므로 conv-level 에서는 standard GATv2Conv 와 indistinguishable. `JKGATv2Conv` 는 marker subclass + outer `SchemaHeteroGATv2.jumping_knowledge` 자동 활성화 신호 (`jk` / `dropin_combo` 선택 시 ctor 위 jumping_knowledge='none' → v6w1_jk_mode 로 자동 설정).
+- **P1d combo sequential application** — 한 forward call 안: (1) GATv2 attention softmax (2) GCNII IM `(1-β)·out + β·W·out` (3) PairNorm scale-individually (4) outer JK aggregation.
+- **Layer-wise output + attention capture hook** — 모든 V6-W1 classes 의 forward 후 `_captured_output` / `_captured_alpha` 보관. SchemaHeteroGATv2 의 `capture_layerwise_outputs=True` 옵션 + `get_captured_layer_outputs()` / `get_captured_layerwise_alpha()` API — analyzer 의 Dirichlet/MAD/attention entropy 측정 위.
+
+**Validation raise** (smoke 5/5 통과):
+- `v6w1_pairnorm_scale <= 0.0` → ValueError
+- `v6w1_jk_mode` ∉ {concat, max} → ValueError
+- `gat_layer_type='jk'` + conflicting `jumping_knowledge` → ValueError
+- V6-W1 layer type + `drop_message_p > 0` 또는 `use_layernorm_pre_softmax=True` → ValueError (V4/V5 와 같은 격리 원칙)
+- V6-W1 layer type + `aggregation_type='gin'` → ValueError
+
+##### 변경된 파일 (단계 10 Phase A 산출물)
+
+| 파일 | 변경 |
+|------|------|
+| `src/models/gat_network_v2.py` | V6-W1 4 신규 class (`PairNormGATv2Conv` / `GCNIIIRGATv2Conv` / `JKGATv2Conv` / `DropInComboGATv2Conv`) + alias (`*GATConv`) + `GAT_LAYER_TYPES` 4 신규 enum 추가 (`pairnorm`/`gcnii_ir`/`jk`/`dropin_combo`) + `_make_gatv2_conv` 4 dispatch + `SchemaHeteroGATv2` ctor V6-W1 hyperparameter (`v6w1_pairnorm_scale`/`v6w1_jk_mode`/`capture_layerwise_outputs`) + 5 validation raise + forward layer loop capture hook + `get_captured_layer_outputs()` / `get_captured_layerwise_alpha()` API |
+| `src/modules/selectors/EXPERIMENT_PLAN_selectors.md` | 본 단계 10 entry 추가 |
+
+##### Phase B/C 위임 — root + analyzer (본 module 외부)
+
+**Phase B (root — config + 학습 launch)**:
+- Config 작성: `configs/training/v6_phase1/{p1a_pairnorm_scale{0.5,1.0,2.0}, p1b_gcnii_alpha{0.05,0.1,0.2}, p1c_jk_{concat,max}, p1d_combo}.yaml` × 3 seeds
+- 학습 script: `scripts/run_v6_phase1.sh` 단일 명령 위 sequential 또는 parallel (GPU 0,1 retain, no LLM cost — 학습 만)
+- 병행 sweep (저비용): InfoNCE temperature {0.05, 0.1, 0.2} + hard negative on/off + BCE:InfoNCE 비율 {0.5:0.5, 0.7:0.3, 0.3:0.7}
+- 학습 완료 후 analyzer 위임
+
+**Phase C (analyzer — V6 metric 측정 + 결과 리포트)**:
+- V6-W0 script `src/analysis/v1_v5_retrospective_v6_metrics.py` reuse + 신규 V6-W1 cells 추가 (15 cells matrix → 27+ cells 확장)
+- Dirichlet energy + MAD + attention entropy 측정 — `capture_layerwise_outputs=True` 위 forward 후 `get_captured_layer_outputs()` / `get_captured_layerwise_alpha()` 로 추출
+- R@15 ↔ V6 metric Spearman correlation 갱신 (확장 표본 위)
+- predicted prior vs actual outcome confirm/refute matrix
+- 산출: `notebooks/analysis_results/v6_phase1_dropin_ablation_2026-06-XX.md` + CSV/JSON/JSONL
+
+##### 학술 위치 + 예상 outcome (V6 plan §7.3 + DECISIONS 2026-06-01 §V6-W1 §근거 정합)
+
+- **paper §V.5.4 narrative 무영향 retain** — V1~V5 의 14-trial null + mech(ii-b) DOMINANT 5/5 → 9/10 absolute upgrade + V6-W1 격리 evidence 추가 강화
+- **학위 본 심사 §III chapter §III.3/§III.4/§III.9 single-cell evidence 추가 강화**
+- **supplementary artifact §A.x 신규 raw data table** (격리 ablation matrix actual outcome)
+
+**Predicted prior (측정 후 confirm/refute)**:
+- P1a PairNorm 단독: Δ ≤ ±0.01 매우 작은 예상
+- P1b GCNII IR 단독: V5B_GCNII_L2 R@15 = 0.6072 본질 동일 cell, α 스윕 axis 만 추가 — predicted R@15 ≈ 0.605-0.608
+- P1c JK 단독: column differentiation 회복 (MAD intra > 0.1) 단 R@15 회복 무 disconnect 예상 (V6-W0 §2.2 V5C_full 정합)
+- P1d 조합: B5 fusion subset → R@15 ≈ 0.6018 (Phase2_B5) 유사 예상
+
+---
+
+#### 단계 11. Mitigation V6-W2 — Edge-Type 분리 메시지 패싱 (2026-06-04 selector module Phase A ownership)
+
+> **사용자 trigger 위 활성 launch** (DECISIONS 2026-06-04 §V6-W2~W4 활성 launch — "나는 W2~4 를 다 해 보고 싶어"). V6-W1 negative result evidence base 강화 motivation 연장 — architectural intervention 의 actual outcome 직접 측정 위. 진행 순서 W2 → W3 → W4, 각 wave 게이트 판단 후 진입. **single seed (s11) retain, multi-seed 금지**.
+
+> **Source**:
+> - planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md §1 Phase 2 (Edge-Type 분리, 🟢 활성)
+> - planning/oversmoothing/oversmoothing_rfp_2026-06-01.md §4 Phase 2 + §1.3 (self-loop / 역방향 방침)
+> - planning/DECISIONS.md 2026-06-04 §V6-W2~W4 활성 launch sub-section
+
+##### Phase A — module:selectors 코드 구현 (본 단계, 2026-06-04 완료)
+
+`src/models/gat_network_v2.py` 위 edge-type 분리 class 신규 (V5/V6-W1 과 같은 axis 의 별개 conv):
+
+| Class | 역할 | 근거 |
+|---|---|---|
+| **`_CaptureGATv2Conv`** | edge-type-split 내부 per-relation conv — standard GATv2 + softmax 직후 `_captured_alpha` capture | V6-W1 capture 프로토콜 정합 |
+| **`EdgeTypeSplitHeteroConv`** (alias `EdgeTypeSplitConv`) | PyG `HeteroConv` (관계별 fully-separate GATv2Conv) wrap + **per-node-type self-loop 별도 파라미터 주입** | RFP §4 Phase 2 |
+
+**구조적 진단 (V6-W2 가 메우는 gap)**:
+- 기존 `SchemaHeteroGATv2` 는 이미 `HeteroConv` + 관계별 GATv2Conv (5 base edge type 각각 별도 파라미터) 사용 — base relation 분리는 이미 존재.
+- **gap (g1)**: `add_self_loops=False` — conv 내부 self-loop 전무. 테이블 hub 가 컬럼 30개를 `belongs_to` 로 평균할 때 자기 신호 weight = 0 (within-conv). hub identity collapse 의 직접 원인.
+- **V6-W2 핵심 개입**: per-node-type self-loop 관계 `(nt, "self_loop_<nt>", nt)` 별도 파라미터 forward 주입 → 각 노드가 degree-diluted neighbor aggregation 과 분리된 **undiluted self-channel** 획득. 테이블 hub 의 cross-relation mean = {belongs_to(컬럼 평균), table_to_table, self_loop} 평균 → self 가 1/(관계 수) weight (1/degree 아님) → **hub 1/d 희석 완화 직접 기제**.
+
+**HeteroConv vs RGATConv 선택 근거**: HeteroConv (관계별 fully-separate 파라미터) 채택. RGATConv 은 basis/block decomposition 으로 관계 간 파라미터 *공유* → RFP "관계별 분리 극대화" 의도와 반대. 또한 본 모델 heterograph-native — HeteroConv 가 V-track/supernode/capture/Phase 1 과 무손실 합성.
+
+**self-loop 처리 방침 (RFP §1.3)**: per-node-type 명시 self-loop 관계를 별도 GATv2Conv 파라미터로 forward 주입 (GATv2Conv `add_self_loops` 미사용 — bipartite 관계에서 src≠dst node type 이므로 PyG auto self-loop 불가). 근거: undiluted self-channel.
+
+**역방향 엣지 처리 방침 (RFP §4 Phase 2)**: base graph 가 이미 forward/reverse 쌍 별도 관계 + 각각 별도 파라미터 (`has_column`↔`belongs_to` = rev_belongs_to 역할 / `is_source_of`↔`points_to` = FK 역방향 / `table_to_table` = FK-derived inter-table). 별도 rev_* 관계 추가 불필요 — 명시 문서화 + self-loop 분리만 추가.
+
+**PK/FK 세분 관계 typing**: 현 graph 는 PK 컬럼 미구분 (모두 belongs_to). PK 별도 typing 은 Builder per-column key mask metadata 의존 → cross-module. `edge_type_split_key_relations=True` 는 미배선 상태에서 NotImplementedError (honest fail, forward-compat flag). **root 경유 module:builders escalation 필요** — V6-W2 1차 launch 는 self-loop 분리 단독으로 진행.
+
+**두 변형 비교 (전제 = Phase 1 위 적용 또는 standard 단독)** — hyperparameter flag 조합:
+- **P2_standalone**: `edge_type_split=True` (Phase 1 flags off) — edge-type 분리 단독 효과
+- **P2_phase1**: `edge_type_split=True` + `pairnorm_mode='pairnorm'` + `initial_residual_alpha=0.1` + `jumping_knowledge='concat'` — RFP P2 row (PairNorm+IR+JK+edge-split)
+- 보조 변형: `edge_type_split_self_loops` (on/off) + `edge_type_split_aggr` (mean/sum)
+
+**Layer-wise capture hook**: `capture_layerwise_outputs=True` + `get_captured_layer_outputs()` / `get_captured_layerwise_alpha()` — self-loop 관계 포함 모든 관계의 alpha 가 layer 별 snapshot 보관 (analyzer Dirichlet/MAD/attention entropy 측정 위, V6-W0/W1 정합).
+
+##### 변경된 파일 (단계 11 Phase A 산출물)
+
+| 파일 | 변경 |
+|------|------|
+| `src/models/gat_network_v2.py` | `_CaptureGATv2Conv` + `EdgeTypeSplitHeteroConv` (alias `EdgeTypeSplitConv`) 신규 class + `SchemaHeteroGATv2` ctor V6-W2 flags (`edge_type_split` / `edge_type_split_self_loops` / `edge_type_split_aggr` / `edge_type_split_key_relations`) + validation 4종 (gat_layer_type='standard' 강제 / gin 비결합 / aggr enum / key_relations NotImplementedError) + conv 생성 loop dispatch (`EdgeTypeSplitHeteroConv` branch) + capture 호환 |
+| `src/modules/selectors/EXPERIMENT_PLAN_selectors.md` | 본 단계 11 entry 추가 |
+
+**Verification (9-step, max-effort, 2026-06-04 통과)**: 2 변형 forward (standalone / Phase1) / self-loop injection (alpha shape = node 수) / gradient flow 4 변형 / ckpt round-trip bit-exact / backward compat (split=False → HeteroConv 무회귀) / V6-W0 analyzer hook 호환 (5 layers) / validation 4종 raise / **핵심 기제 통제 실험 (이웃 신호 0 시 hub 자기신호 보존 4.7x)**.
+
+##### Phase B/C 위임 — root + analyzer (본 module 외부)
+
+**Phase B (root — config + 학습 launch, single seed s11)**:
+- Config 작성: `configs/training/v6_phase2/{p2_standalone, p2_phase1, p2_standalone_no_selfloop, p2_sum}.yaml` (single seed s11 retain, multi-seed 금지)
+- anchor base = `configs/training/diameter_layers/train_qcond_nl3.yaml` (M4 anchor QCond NL3, `best_gat_qcond_nl3.pt`)
+- 신규 ctor flags: `edge_type_split` / `edge_type_split_self_loops` / `edge_type_split_aggr` / `capture_layerwise_outputs` + Phase 1 flags (`pairnorm_mode` / `initial_residual_alpha` / `jumping_knowledge`)
+- `src/train_gat_s06.py` 위 V6-W2 ctor flags forwarding 추가 필요 (현재 V4/V5/V6-W1 kwargs 만 forward)
+- 학습 script: `scripts/run_v6_phase2.sh` 단일 명령 (GPU 0,1 retain, no LLM cost)
+- 학습 완료 후 analyzer 위임
+
+**Phase C (analyzer — V6 metric 측정 + 게이트)**:
+- V6-W0 script `src/analysis/v1_v5_retrospective_v6_metrics.py` reuse + V6-W2 cells 추가
+- **고차수 vs 저차수 테이블 분리 집계** (RFP §3 H2 검증) — 차수 30 초과 테이블 vs 30 이하 각각 별도 MAD
+- self-loop 관계의 attention entropy 별도 측정 (self vs neighbor weight 비율)
+- 산출: `notebooks/analysis_results/v6_phase2_edge_type_2026-06-XX.md`
+
+##### Selector inference 경로 (Phase B 후속 — 2026-06-05 selector module 추가)
+
+학습 4 cells ckpt (`outputs/checkpoints/v6_phase2/best_gat_v6w2_{cell}_s11.pt`) 가
+모두 `SchemaHeteroGATv2 + DirectClassifierHead` 형식 (`gat_state_dict` 168 + `classifier_state_dict` 18 + `config['model']`) 으로 저장됨을 root 위 확인 → 신규 selector class 로 **ckpt 그대로 호환** (추가 patch / 재학습 불필요).
+
+- **신규 class**: `src/modules/selectors/direct_gatv2_selector.py` `DirectGATv2Selector` (`__init__.py` register).
+  - `DirectGATSelector` (v1 `SchemaHeteroGAT`) 의 Direct(BCE) 추론 경로를 계승 + backbone 을 `SchemaHeteroGATv2` 로 swap.
+  - **`auto_config_from_ckpt=True` (기본)**: ckpt `config['model']` 블록을 읽어 모델 구조 파라미터 (`edge_type_split` / `self_loops` / `aggr` / `pairnorm_mode` / `initial_residual_alpha` / `jumping_knowledge` / `query_conditioned` 등) 자동 복원 → 4 cells 가 **동일 selector + 다른 ckpt** 만으로 정확 호환. 명시 kwargs 가 ckpt 값을 override (호출자 강제 가능). 추론 경로는 `capture_layerwise_outputs=False` 강제 (버퍼 누적 방지).
+  - lazy GATv2Conv (관계별 conv + self-loop 관계 포함) dummy forward 초기화 후 `load_state_dict` — query_conditioned 2x in_channels 복원 로직 유지.
+- **Smoke (2026-06-05 통과)**: `tests/test_direct_gatv2_selector.py` — (1) 4 cells auto-config 로딩 + state_dict 정합, (2)+(3) p2_phase1 × 5q forward 무오류 + score ∈ [0,1] (NaN/Inf 없음, q4 max=0.9999 변별력 확인).
+- **Inference config 4종 (selector-only 격리 측정)**: `configs/experiments/s06_gat_bottleneck_fix/w2_edge_type_split/v6w2_{p2_standalone, p2_phase1, p2_standalone_no_selfloop, p2_sum}.yaml`
+  - `connectivity_extractor: None` + `filter: None` — V6-W2 가 selector 구조 개입(노드 임베딩 self-channel)이므로 selector score quality 격리 측정 (R@15 ranking, V6-W0/W1 정합). end-to-end R/P/F1 필요 시 root/planner 가 anchor extractor (`MSTPCSTUnionExtractor`) + XiYan 추가 가능.
+  - **GPU**: 2026-06-05 사용자 swap 지시 — lab partner 가 0,1 점유, 사용자가 2,3 할당 → 본 launch 는 `CUDA_VISIBLE_DEVICES=2,3` 사용. (기본 규칙은 0,1 이나 현 swap 유효, partner 복귀 재확인 시 0,1 환원.)
+
+##### 게이트 (V6 plan §1 Phase 2 + DECISIONS 2026-06-04 §V6-W2~W4)
+
+- **게이트 충족**: Phase 1 (또는 standard arch) 대비 R@15 추가 향상 또는 **고차수 테이블 컬럼 분산 회복** → V6-W3 진입
+- **negative result**: 시드 변동 폭 (V6-W0 retrospective spread 0.0526 또는 V6-W1 pseudo-B0 ±0.007) 내 변화만 → §III chapter null evidence 추가 + V6-W3 진입 (사용자 W2~W4 전체 trigger)
+- **예상 prior (측정 후 confirm/refute)**: V6-W1 의 V6 metric ↔ R@15 disconnect (ρ=-0.40) 정합 → edge-type 분리도 동일 disconnect 예상 단 **고차수 테이블 분산은 self-channel 로 회복 가능** (architecture-level 기제 4.7x 확인) — disconnect 시 H1 (hub-accelerated) 의 task ceiling 인과 약함 추가 evidence
+
+**학술 위치**: paper §V.5.4 narrative 무영향 retain + W2 결과 위 §V.5.x.M 또는 학위 본 심사 §III chapter 추가 axis (positive → hub mechanism / negative → architectural-invariant null evidence 확장).
+
+---
+
+#### 단계 12. Mitigation V6-W3 — Phase 3 hub 차수 축소 (2026-06-06 selector module 통합 ownership)
+
+> **사용자 trigger 위 활성 launch** (DECISIONS 2026-06-06 §V6-W3 backlog→🟢활성 — "Phase 3 도 진행해 보자 난 거기에도 기대를 좀 걸고 싶어"). 게이트가 단순 disconnect 재확인이 아니라 **GAT-necessity 2단계 인과 검증** (hub collapse H2 가 GAT 저성능의 원인인가 / hub 차수 축소로 GAT 가 살아나는가) 으로 재설계됨. **single seed s11 retain**.
+>
+> **참조**:
+> - planning/DECISIONS.md 2026-06-06 §V6-W3 entry (2단계 인과 게이트 L1 mechanism / L2 GAT-necessity)
+> - planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md §1 Phase 3
+> - module:builders `src/modules/builders/v6w3_builders.py` (commit fce866c, 22/22 tests PASSED)
+
+**Builder 의존 (선행 완료)**: 3 variants graph 구조 확장 (module:builders, 본 세션 외부).
+- **A** `V6W3VirtualSummaryBuilder` — `table_summary` virtual node + 4 edge type (`has_summary` / `summary_of` / `summarizes` / `aggregated_by`), cache `_v6w3_a`
+- **B** `V6W3ColumnPoolingBuilder` — `table.x` = column pooling override (신규 node/edge 없음), cache `_v6w3_b`
+- **C** `V6W3HubLocalVNBuilder` — `local_vn` (hub-only, degree>median) + 4 edge type (`has_local_vn` / `serves_table` / `aggregates` / `feeds_into`), cache `_v6w3_c`
+
+**Selector 측 통합 (단계 12 산출물)**:
+- **모델** `src/models/gat_network_v2.py` — `SchemaHeteroGATv2` ctor `v6w3_variant ∈ {None,"A","B","C"}` 추가. A/C 시 `node_types` + `all_edge_types` 에 신규 type 주입 (모듈 상수 `V6W3_NODE_TYPE` / `V6W3_EDGE_TYPES`, Builder relation 키와 정확 일치) → `lin_dict`/`convs`/`skip_dict`/`jk_lin`/`res_proj`/`pairnorms` 자동 allocate. forward (node_types / x_dict 동적 순회) 무수정 동작. `self.all_edge_types` introspection 노출. validation 1종 (variant enum).
+  - **classifier 범위**: `table`/`column`/`fk_node` 유지 — `table_summary`/`local_vn` 은 selection target 아님 → classifier 미포함, 단 GAT forward 위 정상 embedding 계산 (message passing 참여). 학습 loss 도 `classifier_types` + `batch[nt].y` 만 순회 → 신규 type 자연 배제.
+- **Selector** `direct_gatv2_selector.py` `DirectGATv2Selector` (신규 class 불요 — V6-W2 class 확장). `_lazy_init_gat` 을 `model.node_types`/`model.all_edge_types` introspect generic 버전으로 교체 → V6-W2 (edge_type_split) / V6-W3 (신규 type) 자동 포괄. `_V2_MODEL_KEYS` 에 `v6w3_variant` 추가 (auto_config 복원).
+- **학습 스크립트** `src/train_gat_s06.py` — builder dispatch 에 3 V6-W3 builder branch 추가 (`tables_json_path` + B `pool_mode` / C `hub_strategy`·`hub_min_columns`) + `SchemaHeteroGATv2(v6w3_variant=cfg["model"].get(...))` forward. cache suffix 는 bird_dataset.py 가 `extra_cache_suffix` 합성 (builders 선배선).
+
+**ckpt 형식 (V6-W2 동일)**: `gat_state_dict + classifier_state_dict + epoch + recall + config`. `config['model']['v6w3_variant']` + `config['builder']['type']` 저장 → inference 위 selector auto_config 복원 + builder 매칭.
+
+**Smoke (2026-06-06 통과)**: `tests/test_v6w3_selector.py` — (1) 3 variants node/edge type 등록 (A +table_summary+4 / B 무변경 / C +local_vn+4), (2) ckpt save(train_gat_s06 형식)/load(DirectGATv2Selector auto_config) round-trip, (3) 3 variants × 5q forward 무오류 + score ∈ [0,1]. V6-W2 smoke 회귀 무영향 확인.
+
+##### 학습 config (단계 12 산출물 — root launch 대기)
+
+- `configs/training/v6_w3/v6w3_{a,b,c}_s11.yaml` — M4 anchor QCond NL3 **standard arch** (Phase1/W2 flag OFF — graph 구조 개입 단독 효과 격리) + `v6w3_variant` + builder 변경. seed suffix `_s11` 은 root launch wrapper (`scripts/_v6_train_with_seed.py` 패턴) 가 주입.
+
+##### Phase B/C 위임 — root + analyzer (본 module 외부)
+
+**Phase B (root — 학습 launch, single seed s11)**:
+- `scripts/run_v6_w3.sh` 단일 명령 (3 cells, GPU 사용은 현 swap 상태 따름 — 2026-06-05 사용자 2,3 할당). graph cache 신규 생성 (`_v6w3_a/b/c` suffix, 기존 enriched cache 무영향).
+- 첫 수 epoch 위 epoch-time 측정 후 parallel(2 GPU 분할) vs sequential 결정. 예상 ~14-20h/cell (V6-W2 300 epoch 선례).
+- 학습 완료 후 selector-only + e2e inference (V6-W2 패턴: `DirectGATv2Selector` swap, selector-only + MSTPCSTUnion e2e).
+
+**Phase C (analyzer — 2단계 인과 게이트 측정)**:
+- **L1 mechanism**: hi-deg 테이블 intra-table MAD L3 (0.0046 baseline) → lo-deg (~0.04) 방향 회복 여부. variant 별.
+- **L2 GAT-necessity**: (a) GAT-only (α=0) hub-table 쿼리 품질 ↑, (b) GAT 순기여 % (현 +2.1%) 변화, (c) hub-heavy DB (european_football_2 115-col, complete collapse 0.0000) e2e EX.
+- per-DB stratification 필수 — european_football_2 natural test bed.
+
+##### 게이트 (DECISIONS 2026-06-06 2단계 인과)
+
+- **L1 회복 ∧ L2 GAT 기여 ↑** → GAT 정당화 회복 (paper §III 신규 **positive**, V6 chain 첫 positive 가능성, 사용자 기대 validated).
+- **L1 회복 ∧ L2 flat** → GAT 한계 fundamental confirm (disconnect 심화, informative negative).
+- **L1 미회복** → hub reduction 기법 부적합 (기법 재검토).
+
+---
+
+#### 단계 13. Mitigation V6-W5 — Phase 5 GAT layer-level intervention (2026-06-07 selector module ownership, **decisive final wave**)
+
+> **사용자 trigger 위 활성 launch** (DECISIONS 2026-06-07 결정 2 — option A 채택). collapse origin 진단 (analyzer `v6_intra_table_collapse_origin_2026-06-06.md`, **가설 B first-conv-driven 확정**)이 식별한 **정확한 mechanism (single-shared-source aggregation)** 을 conv 자체에서 겨냥한 최초·유일 intervention. **V6-W5 완료 후 V6 chain 영구 closure** (결과 무관). **single seed s11 retain**.
+>
+> **참조**:
+> - planning/DECISIONS.md 2026-06-07 §V6-W5 (결정 2 option A / 결정 3 disconnect caveat / 결정 4 정직성 scoping)
+> - planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md §1 Phase 5
+> - notebooks/analysis_results/v6_intra_table_collapse_origin_2026-06-06.md §5.2 (개입 spec)
+
+**진단 (V6-W5 가 겨냥하는 정확한 locus)**: hub 컬럼 99.4% 가 incoming edge 위 **단일 table 노드만** 수신 (table 1.0/col, fk 0.0154, sibling 0). `add_self_loops=False` + per-layer residual 없음 (skip_dict 는 L_out 에만) → 첫 conv 에서 모든 컬럼이 동일 메시지 `W·(table L0)` → intra-MAD L0 **0.4201** → L1 **0.0136** (−96.8%) 강제 수렴. PLM input 은 정상 분화 (가설 A 기각) → 개입 = **GAT layer-level**.
+
+**3 variants (단계 13 산출물)**:
+| 변형 | mechanism | 구현 |
+|---|---|---|
+| **a** column self-loop | 컬럼 자기 L0 self-channel 보존 | `('column','self_loop_column','column')` identity relation (별도 GATv2Conv), forward 위 컬럼 수만큼 i→i edge 주입. bipartite (table→column) 는 add_self_loops 무의미 → column→column self relation 으로 구현 (V6-W2 self-loop 패턴, column 전용) |
+| **b** per-layer residual | layer 별 input differentiation 보존 | `out = ELU(conv(h)) + h_prev` (ELU 직후). layer 0 은 `v6w5_res_proj` (hidden→hidden*heads) projection, layer≥1 identity add |
+| **c** a + b | 두 mechanism 결합 | self-loop + residual 동시 |
+
+**Selector 측 통합**:
+- **모델** `src/models/gat_network_v2.py` — `SchemaHeteroGATv2` ctor `v6w5_variant ∈ {None,a,b,c}`. 모듈 상수 `V6W5_COLUMN_SELF_LOOP_REL`. a/c → `all_edge_types` 에 self-loop relation 등록 + forward 위 identity edge 주입. b/c → `v6w5_res_proj` ModuleDict + forward ELU 직후 residual. validation 4종 (variant enum / gat_layer_type='standard' 강제 / edge_type_split 비결합 / v6w3_variant 비결합 / gin 비결합). **M4 anchor standard arch 최소 개입 — 축 격리**.
+- **Selector** `direct_gatv2_selector.py` `DirectGATv2Selector` (신규 class 불요). `_V2_MODEL_KEYS` 에 `v6w5_variant` 추가. generic `_lazy_init_gat` 가 `all_edge_types` (self_loop_column 포함) introspect → 무수정 호환. select() 무변경 (self-loop edge 는 모델 forward 내부 주입).
+- **학습 스크립트** `src/train_gat_s06.py` — `SchemaHeteroGATv2(v6w5_variant=cfg["model"].get(...))` forward. **builder 변경 없음** (enriched, V6-W2/M4 anchor 정합).
+
+**ckpt 형식 (V6-W2/W3 동일)**: `gat_state_dict + classifier_state_dict + epoch + recall + config`. `config['model']['v6w5_variant']` 저장 → DirectGATv2Selector auto_config 복원.
+
+**★ Smoke (2026-06-07 통과)**: `tests/test_v6w5_selector.py`:
+- (1) 3 variants 등록 (a→self_loop_column / b→res_proj / c→둘 다) + validation 4종 차단.
+- (2) ckpt save(train_gat_s06 형식)/load(auto_config) round-trip + 3 variants × 5q forward + score ∈ [0,1].
+- (3) **★ 결정론적 mechanism 검증 (무학습)** — hub 테이블 (모든 컬럼 단일 table 소스) 위 L1 column intra-MAD: **baseline (None) = 0.000000** (single-shared-source collapse 완벽 재현) → **W5-a = 2.23 / W5-b = 6.38 / W5-c = 6.52** (전부 분화 회복). 진단된 정확한 mechanism 을 구조적으로 고침을 random init 에서도 입증 (analyzer L1 게이트 측정 가능성 확인). V6-W2/W3 smoke 회귀 무영향.
+
+##### 학습 config (단계 13 산출물 — root launch 대기)
+
+- `configs/training/v6_w5/v6w5_{a,b,c}_s11.yaml` — M4 anchor QCond NL3 **standard arch + enriched builder** (builder 무변경) + `v6w5_variant`. seed suffix `_s11` 은 root launch wrapper 주입.
+
+##### Phase B/C 위임 — root + analyzer (본 module 외부)
+
+**Phase B (root — 학습 launch, single seed s11)**:
+- `scripts/run_v6_w5.sh` 단일 명령 (3 cells). DECISIONS 2026-06-07 spec = **GPU 0,1** — 단 현 swap (2026-06-05 사용자 2,3 할당) 상태 확인 후 결정 (충돌 시 user 확인).
+- **graph cache 재사용** — enriched builder 무변경이므로 기존 enriched cache 그대로 (신규 cache gen 없음 → V6-W3 대비 빠름). 예상 ~14-20h/cell (V6-W2/W3 선례).
+- 학습 완료 후 selector-only + e2e inference (`DirectGATv2Selector` auto_config swap).
+
+**Phase C (analyzer — 게이트 측정, DECISIONS 2026-06-07 결정 3)**:
+- **primary = L1 mechanism 회복**: hub-deg intra-MAD L1 (0.0136 baseline) → L0 0.4201 / lo-deg 0.1155 방향. variant 별. (self-loop 가 회복시킴은 거의 확실 — smoke 입증.)
+- **secondary = e2e EX**: vs M4 anchor 0.5300 + V6-W2 best 0.3331. **기대 제한** (disconnect prior).
+- per-DB stratification — european_football_2 (115-col, L1 complete collapse 0.0000) natural test bed.
+
+##### 게이트 (DECISIONS 2026-06-07 결정 3 — disconnect 정합 caveat)
+
+- **mad↑ ∧ e2e↑** → GAT rescuable 확정 (V6 첫 positive, 해당 mechanism 한해 disconnect 부분 반전).
+- **mad↑ ∧ e2e flat** (disconnect prior 상 더 유력) → disconnect/Filter Dominance **ironclad** (정확한 root cause 를 고쳐 mad 완전 회복해도 e2e 무변 → GAT 표현 품질 ⊥ e2e 최강 evidence). **overselling 금지**.
+- **★ 정직성 scoping**: collapse 는 본 HGAT single-shared-source 설계 결과이지 GNN over-smoothing fundamental law 아님 — paper 한정 표현 유지.
+
+---
+
+#### 단계 14. Mitigation V6-W6 — Phase 6 directed SuperNode + self-loop 조합 (2026-06-07 selector module ownership, **지도교수 trigger 예외 1 wave**)
+
+> **지도교수 trigger 위 활성** (DECISIONS 2026-06-07 #3 — V6 영구 closure 의 **일시 reopening**, "교수님이 얘기하신 거라 일단 돌려보기는 해야"). planner 직전 비권장 (directed SuperNode 재개) 을 명시 trigger 로 override. **V6-W6 완료 후 V6 chain 재-closure**. single seed s11.
+>
+> **참조**: DECISIONS 2026-06-07 #3 / V6 plan §1 Phase 6 / V6-W5 구현 (단계 13) / 기존 DSN config (`train_gat_directed_supernode_p80.yaml`, `train_gat_enriched_v2_config.yaml`).
+
+**설계**: 새 conv 기제가 아니라 **기존 두 축의 결합** — directed query SuperNode (`query_supernode=True` + `supernode_edge_direction='directed_from_sn'`) + V6-W5 column self-loop [+ per-layer residual]. 가설: 이전 SuperNode 실패 (T9<T8, DSN collapse 0.9591) 는 **collapse 아키텍처 (self-loop 부재) 위 측정** — self-loop 로 컬럼 정체성 유지 + directed query-SN broadcast 조합은 미측정 (column gold-alignment 새 경로 가능성, prior 낮으나 non-trivial). diligence value (advisor 제안 직접 검증).
+
+**3 variants**:
+| 변형 | 구성 |
+|---|---|
+| **a** | directed SN + column self-loop (= v6w5 self-loop) |
+| **b** (옵션) | a + per-layer residual (= v6w5 residual) |
+
+**Selector 측 통합**:
+- **모델** `src/models/gat_network_v2.py` — `SchemaHeteroGATv2` ctor `v6w6_variant ∈ {None,a,b}`. 상수 `V6W6_VARIANTS`. **self-contained boolean OR 결합** — `v6w5_column_self_loop`/`v6w5_per_layer_residual` 을 v6w5/v6w6 variant 에서 OR 로 도출 (forward/construction 은 두 boolean 만 참조 → W5/W6 공통 경로, 추가 분기 0). validation: directed SN 결합 강제 (`query_supernode=True` + `directed_from_sn`) + standard / edge_type_split·v6w3·gin 비결합.
+- **Selector** `direct_gatv2_selector.py` — `_V2_MODEL_KEYS` 에 `v6w6_variant` 추가, log 에 v6w6/SN 표시. supernode 모드는 기존 select() supernode 분기 + auto_config 의 `query_supernode`/`supernode_edge_direction` 복원으로 처리.
+- **학습 스크립트** `src/train_gat_s06.py` — `v6w6_variant` forward. supernode 는 기존 `BIRDSuperNodeDataset` wrapper 처리. **builder 변경 없음** (enriched, cache 재사용).
+
+**★ query 모드 결정 (구현 판단 — root/user 확인 권장)**: V6-W6 configs 는 **`query_supernode=true` + `query_conditioned` 미설정(false)** — DSN reference config 정합. 근거: (1) selector supernode 분기는 query_emb concat 안 함 → `query_conditioned=true` 동시 설정 시 **train/inference mismatch**, (2) 기존 DSN baseline (directed_from_sn, self-loop 없음, 0.9591) 대비 **clean self-loop marginal** 비교 가능 (동일 SN 모드, self-loop 만 차이). 만약 "V6-W5 + directed-SN marginal" (query_conditioned 유지) 비교를 원하면 selector supernode 분기에 query_conditioned concat 추가 필요 — 별도 작업.
+
+**★ Smoke (2026-06-07 통과)**: `tests/test_v6w6_selector.py`:
+- (1) v6w6 등록 (a→self-loop / b→self-loop+residual) + validation (directed SN 결합 강제).
+- (2) ckpt round-trip (supernode 모드) + auto_config + 5q forward + score ∈ [0,1].
+- (3) **★ 결정론적 mechanism** — hub L1 column intra-MAD: **baseline (M4 single-source) = 0.000000** + **SN-only (directed SN, self-loop 없음) = 0.000000** (directed SN broadcast 단독으로는 collapse 못 깸 — 각 relation 단일 이웃 → softmax=1.0 동일 메시지, 기존 DSN 0.9591 prior 실증) → **W6-a = 2.35 / W6-b = 9.08** (self-loop 이 분화 생성). V6-W2/W3/W5 회귀 무영향.
+
+##### 학습 config (단계 14 산출물 — root launch 대기)
+
+- `configs/training/v6_w6/v6w6_{a,b}_s11.yaml` — enriched builder (무변경, cache 재사용) + directed SuperNode + v6w5/v6w6 variant. seed suffix `_s11` wrapper 주입.
+
+##### Phase B/C 위임 — root + analyzer
+
+**Phase B (root — 학습 launch)**: `scripts/run_v6_w6.sh` (root 사전 작성, parallel cell a [+옵션 b], GPU 0,1 per DECISIONS — 단 현 swap 2,3 확인). cache 재사용 → 빠른 시작. 예상 ~4-5h/cell (V6-W5 wall 정합). 완료 후 selector-only + e2e inference (`DirectGATv2Selector` auto_config swap).
+
+**Phase C (analyzer — 게이트, DECISIONS 2026-06-07 #3)**:
+- **Primary**: L1 hi-deg intra-MAD 회복 (vs V6-W5 self-loop 단독 0.28~0.35, M4 0.0136, L0 0.4201).
+- **Secondary**: gold p50 / top-20 F1 / ROC-AUC / **column net (음수 −1359~−1805 → 양수 전환?)** / table net + e2e EX (vs M4 0.5300, V6-W2 0.3331, V6-W5 0.29~0.32).
+- **★ 핵심 = directed-SN marginal**: query-SN broadcast + self-loop 이 self-loop 단독이 못 만든 **gold-aligned column 분별** 을 만드는가. smoke 가 보인 "SN-only=0 → SN+self-loop>0" 의 학습 후 gold-alignment 버전.
+
+##### 게이트 (DECISIONS 2026-06-07 #3)
+
+- **column net 양수 전환 ∧ e2e↑** → directed-SN+self-loop 가 gold-alignment 새 경로 (surprise positive).
+- **column net 음수 유지 / e2e flat** (prior 상 유력) → disconnect 확인, advisor 제안 due diligence 완료 (negative 도 방어 자산). **V6 chain 재-closure**.
+
+---
+
+#### 단계 15. MA (Metric-Alignment) — MA-1 monitor 교체 + MA-2 calibration loss (2026-06-07 selector module ownership, **V6 와 별개 축**)
+
+> **MA-0 정량 분석 (analyzer) → MA-1/MA-2 확정** (DECISIONS 2026-06-07 #4). over-smoothing rescue 가 아니라 **training-signal ↔ inference 운영점 정합** — R@15(training proxy) ↔ inference recall disconnect 의 constructive 출구.
+>
+> **참조**: DECISIONS 2026-06-07 #4 (MA-0 결과 + MA-1/MA-2 spec + 재학습 범위) / analyzer `selector_monitor_inference_alignment_2026-06-07.md` / `v6_w5_selector_quality_2026-06-07.md`.
+
+**MA-0 데이터 (rank ⊥ calibration 확정)**: Spearman(proxy, inference recall) — **gold p50 +0.9545 / gold recall@θ=0.1 +0.9273** (★ 최선/차선) vs **Val R@15 −0.1909 (✗)**. extractor 가 score≥θ (절대 cutoff) 기반 → **calibration 이 inference recall 결정, rank 무용**. phase1 collapse = calibration 문제 (gold p50=0.0000 압축이나 ROC 0.6381 rank 부분 보존, deficit gap +0.2529).
+
+**MA-1 — monitor 교체 (단계 15 산출물)**:
+- **trainer** `src/train_gat_s06.py` — `validate()` 가 dict 반환 (`recall_at_15` + `gold_recall_at_theta` + `gold_p50`). module-level helper `compute_gold_calibration_metrics(logits, labels, θ)` (score=sigmoid(logit), pipeline 정합). best-epoch/early-stop 을 `monitor_metric` (config, default `recall_at_15` backward-compat / MA configs `gold_recall_at_theta`) 기준 선택. ckpt 에 `monitor_metric`/`monitor_value`/`gold_recall_at_theta`/`gold_p50` 기록 (recall=R@15 보조 retain). wandb/log 에 calibration 지표 추가.
+- config field: `training.monitor_metric` (default recall_at_15), `training.theta_for_monitor` (0.1).
+- **재학습 범위 (DECISIONS 확정)**: per-epoch ckpt 없음 + log 만 → offline 재선택 불가 → **going-forward 주 경로** (V6-W6 + MA-2 학습에 monitor 끼움, full redo 아님).
+
+**MA-2 — calibration loss (단계 15 산출물)**:
+- **gold score margin loss** `gold_margin_loss(logits, labels, θ_target)` = `mean(max(0, θ_target − sigmoid(gold_logit)))` — gold score 를 θ_target(0.15) 위로 (압축 해소). config `calibration_margin_weight` (default 0 OFF) / `calibration_theta_target` (0.15).
+- **per-table score normalization** `per_table_normalize_logits(col_logits, belongs_to_edge, num_cols)` — 각 table 내 column logit zero-mean/unit-std (PairNorm-류 압축 table 단위 해소). config `per_table_score_norm` (default False). belongs_to 의 batch-전역 table id 가 (graph,table) 자연 인코딩.
+- bce 브랜치에 통합 (additive `+ calib_margin_weight·step_loss_calib`, per-table norm 은 column BCE 전 적용).
+- **★ 게이트 = inference recall (EX 아님, V6 disconnect caveat 필수)**: calibration → inference recall 강한 인과 (ρ=0.95), inference recall → e2e EX 약함 (V6-W5 recall↑ 해도 EX flat). **EX gain framing 금지** — "selector→extractor 정합/효율 (over-extract 의존 감소, V7-W5 cost 연결)" 로 한정.
+
+**★ Smoke (2026-06-07 통과)**: `tests/test_ma_monitor_calibration.py`:
+- (1) `compute_gold_calibration_metrics` 결정론 — logits→sigmoid gold {0.90,0.50,0.047}: gold_recall@0.1=**0.6667** (=2/3), gold_p50=**0.5000**, no-gold→None.
+- (2) `gold_margin_loss` 값=**0.05129** (=0.0513) + gradient (below-θ gold>0 / θ-passed gold=0).
+- (3) `per_table_normalize_logits` z-norm out=**[−1,0,1,0,0]** (table0→z-score) + gradient flow.
+- (4) `validate()` dict 반환 (3 키 + 범위) tiny-model 통합.
+- (5) **MA-1 monitor 선택** — gold_recall@θ 기준 → epoch2 (best) vs 옛 R@15 → epoch1 (MA-0 disconnect 회피 입증).
+- **live 1-epoch logging 검증은 root launch 위 deferred** (cache 존재 → 저비용 sanity).
+
+##### 학습 config (단계 15 산출물 — root launch 대기)
+
+- **V6-W6 a** `configs/training/v6_w6/v6w6_a_s11.yaml` — MA-1 monitor 추가 (DSN + self-loop, monitor=gold_recall@θ).
+- **MA-2 Cell A** `configs/training/ma2/ma2_a_s11.yaml` — V6-W5 base (QCond + self-loop) + gold margin loss (weight 1.0, tunable) + MA-1 monitor.
+- **MA-2 Cell B (옵션)** `configs/training/ma2/ma2_b_s11.yaml` — V6-W6 base (DSN + self-loop) + per-table norm + MA-1 monitor.
+- s11 single seed, M4 anchor hyperparams, enriched cache 재사용.
+
+##### Phase B/C 위임 — root + analyzer
+
+**Phase B (root)**: V6-W6 cell a restart (MA-1 monitor 적용, GPU 2 per spec — 현 swap 확인) + MA-2 configs launch (GPU 0 [+1]). 학습 종료 ckpt = gold_recall@θ best epoch. **권장: launch 직전 1-epoch live run 으로 monitor/calibration logging 패턴 확인** (cache 존재 시 저비용).
+
+**Phase C (analyzer)**: 게이트 = **inference recall** (gold recall@θ + extractor-stage recall) — MA-2 calibration 이 gold score 를 θ 위로 끌어 inference recall↑ 하는가. EX 는 모니터링만 (caveat). MA-1 의 새 best-epoch ckpt 가 R@15-best 대비 inference recall 우위인가 검증.
+
+---
+
 ### V-1/V-2/V-3 통합 default ("SuperNode v2")
 
 - **int_05 전제 default combo**:

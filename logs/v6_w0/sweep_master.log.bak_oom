@@ -1,0 +1,18 @@
+[2026-06-01 18:38:30] V6-W0 baseline seed sweep START (GPU 0, sequential)
+  base_cfg = configs/training/diameter_layers/train_qcond_nl3.yaml
+  seeds    = 11 22 33
+  ref_ckpt = outputs/checkpoints/best_gat_qcond_nl3.pt
+[2026-06-01 18:38:30] Phase 0a: Reference diagnostic on existing best_gat_qcond_nl3.pt
+[2026-06-01 18:39:48] Training seed=11 (GPU 0) → best_gat_qcond_nl3_v6w0_s11.pt
+scripts/run_v6_w0_baseline_seeds.sh: line 48: 3823417 Killed                  CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/_v6_w0_train_with_seed.py "$SEED" "$BASE_CFG" > "$LOG_DIR/train_${TAG}.log" 2>&1
+[2026-06-01 22:47:05] ERROR: training seed=11 failed (rc=137). skip diagnostic, continue next seed.
+[2026-06-01 22:47:05] Training seed=22 (GPU 0) → best_gat_qcond_nl3_v6w0_s22.pt
+scripts/run_v6_w0_baseline_seeds.sh: line 48: 44859 Killed                  CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/_v6_w0_train_with_seed.py "$SEED" "$BASE_CFG" > "$LOG_DIR/train_${TAG}.log" 2>&1
+[2026-06-01 22:51:52] ERROR: training seed=22 failed (rc=137). skip diagnostic, continue next seed.
+[2026-06-01 22:51:52] Training seed=33 (GPU 0) → best_gat_qcond_nl3_v6w0_s33.pt
+scripts/run_v6_w0_baseline_seeds.sh: line 48: 54270 Killed                  CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/_v6_w0_train_with_seed.py "$SEED" "$BASE_CFG" > "$LOG_DIR/train_${TAG}.log" 2>&1
+[2026-06-01 22:53:14] ERROR: training seed=33 failed (rc=137). skip diagnostic, continue next seed.
+[2026-06-01 22:53:14] V6-W0 baseline seed sweep COMPLETE
+  산출 확인:
+total 0
+outputs/v6_w0/diagnostics_s0_reference

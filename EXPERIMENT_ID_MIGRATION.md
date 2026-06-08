@@ -2323,3 +2323,380 @@ Filter 가 선택하는 columns 집합 = **M4 와 완전히 동일** retain. R/P
 - c_v2 enrichment harm + Comb-C stacking paradox = cautionary evidence
 - Phase A implementation issues 잔존 — Filter 모듈 debug 필요
 - 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 11 Phase B Final Results (2026-05-20)](EXPERIMENT_HISTORY.md).
+
+---
+
+## Wave 15 Module Ablation Study — m15_no_{builder,selector,extractor,filter} (DECISIONS 2026-05-20 Wave 15, 2026-05-20 ~ 2026-05-21, 4 신규 ID — 🎯 module importance ranking 정량)
+
+### 명명 규칙 — Wave 15 4 cells
+
+prefix `m15_no_<module>_<spec>`:
+- `m15_no_builder_plain_qcond_mst_pcst_m4` : Builder downgrade (Enriched → Plain HeteroGraphBuilder), 나머지 M4 anchor 동일
+- `m15_no_selector_enriched_cosine_mst_pcst_m4` : Selector downgrade (EnsembleQCond → VectorOnly cosine), 나머지 M4 anchor 동일
+- `m15_no_extractor_enriched_qcond_topk_m4` : Extractor 제거 (MSTPCSTUnion → None, Selector TopK=20 직접 Filter 전달), 나머지 M4 anchor 동일
+- `m15_no_filter_enriched_qcond_mst_pcst` : Filter 제거 (M4 Bidirectional → None, Extractor output 직접 SQL Gen), 나머지 M4 anchor 동일
+
+### 4 신규 ID (config / output / log path)
+
+| ID | Builder | Selector | Extractor | Filter | F1_harm | EX |
+|---|---|---|---|---|---:|---:|
+| `m15_no_builder_plain_qcond_mst_pcst_m4` | Plain | QCond | MST+PCST | M4 Bi | 0.8353 | 0.5130 |
+| `m15_no_selector_enriched_cosine_mst_pcst_m4` | Enriched | VectorOnly (cos) | MST+PCST | M4 Bi | 0.8344 | 0.4987 |
+| `m15_no_extractor_enriched_qcond_topk_m4` | Enriched | QCond | None (TopK=20) | M4 Bi | 0.7514 | **0.3814** |
+| `m15_no_filter_enriched_qcond_mst_pcst` | Enriched | QCond | MST+PCST | None | **0.2250** | 0.5137 |
+
+Config path: `configs/experiments/abl/wave15_module_ablation/<ID>.yaml`
+Output path: `outputs/experiments/abl/wave15_module_ablation/<ID>/`
+Log path: `logs/wave15_module_ablation/<ID>_<TS>.log`
+
+### 정합 점검
+
+| Check | 결과 |
+|---|---|
+| M4 anchor 재측정 일관성 (no_builder/no_selector R≈M4 0.93~0.94) | ✅ PASS |
+| no_filter R upper bound (0.9959 ≈ B1/B2 oracle 1.0000) | ✅ PASS |
+| LLM calls 정합 (3 M4 cells = 7670 uniform, no_filter = 4602) | ✅ PASS |
+| post-Wave 13 patch f67fa65 evaluator 사용 | ✅ PASS |
+
+### 결론 — Wave 15 module importance ranking 정량
+
+- **Filter (M4 Bidirectional) > Extractor (MSTPCSTUnion) > Builder ≈ Selector** ranking confirm
+- Filter ΔF1=-0.6133 / Extractor ΔF1=-0.0869 / Builder ΔF1=-0.0030 / Selector ΔF1=-0.0039
+- Filter ΔEX=-0.0163 / Extractor **ΔEX=-0.1486** ★ (Extractor schema coverage 가 EX 결정적)
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 15 Module Ablation Study (2026-05-21)](EXPERIMENT_HISTORY.md).
+
+## Wave 16 Encoder Backbone Ablation — m16_qwen3_0.6b_m4 (DECISIONS 2026-05-21 Wave 16, 2026-05-21 ~ 2026-05-22 02:18, 1 신규 ID — ✅ **closed (시나리오 1 marginal confirm)**, PLM backbone-level cross-evidence)
+
+### 명명 규칙 — Wave 16 1 cell
+
+prefix `m16_<plm_slug>_<base_anchor>`:
+- `m16_qwen3_0.6b_m4` : M4 anchor (Wave 6 P2) 의 Encoder backbone swap (all-MiniLM-L6-v2 → Qwen/Qwen3-Embedding-0.6B), 나머지 4 stage (Enriched Builder / EnsembleQCond Selector / MSTPCSTUnion Extractor / M4 Bidirectional Filter) 모두 retain
+
+### 1 신규 ID (config / output / log / checkpoint path)
+
+| ID | Encoder | GAT ckpt | Builder | Selector | Extractor | Filter | F1_harm | EX |
+|---|---|---|---|---|---|---|---:|---:|
+| `m16_qwen3_0.6b_m4` ✅ | Qwen/Qwen3-Embedding-0.6B (1024-dim) | best_gat_enriched_qwen3_0.6b_qcond.pt (신규, Option A1 dim=1024, **Best Val R@15=0.6030 at epoch 281**) | Enriched | EnsembleQCond | MSTPCSTUnion | M4 Bi | **0.8358** | **0.5124** |
+
+Config path: `configs/experiments/abl/wave16_encoder_backbone/<ID>.yaml`
+Training config: `configs/training/train_gat_enriched_qwen3_0.6b_qcond.yaml`
+Output path: `outputs/experiments/abl/wave16_encoder_backbone/<ID>/`
+Log path: `logs/wave16_encoder_backbone/{chain,train_gat,pipeline}_*.log`
+Checkpoint: `outputs/checkpoints/best_gat_enriched_qwen3_0.6b_qcond.pt` (학습 후 NAS mv + symlink replace 사용자 결정 위)
+Cache: `data/processed/{train,dev}_enriched_plm_qwen3_embedding_0_6b_graphs.pt` (NAS symlink)
+
+### 정합 점검
+
+| Check | 예상 |
+|---|---|
+| M4 anchor 구조 정합 (4 stage 모두 retain, Encoder 만 swap) | ✅ config-level confirm |
+| GAT layer dim 정정 (Option A1: in_channels=1024, qcond=true 시 effective_in=2048) | ✅ training yaml 정합 |
+| Cache filename 충돌 방지 (PLM model_name slug suffix) | ✅ bird_dataset.py patch |
+| Encoder profile logging (env LOCAL_ENCODER_PROFILE_PATH) | ✅ local_encoder.py patch |
+| post-Wave 13 patch f67fa65 evaluator 사용 | ✅ (Wave 15 동일 evaluator retain) |
+
+### 결론 — Wave 16 PLM backbone-level cross-evidence (✅ closed 2026-05-22 02:18)
+
+- **Final metrics** (post-Wave 13 patch f67fa65 evaluator 정합): R=**0.9337** / P=**0.7563** / F1_harm=**0.8358** / EX=**0.5124**
+- **Δ vs M4 anchor**: ΔR=-0.0020 / ΔP=-0.0030 / ΔF1=-0.0025 ★ / ΔEX=-0.0176 — **all sub-noise marginal**
+- **시나리오 1 (marginal sub-noise) 확정** ★ (DECISIONS §5 정합) — Wave 15 Module Importance Ranking 의 PLM backbone-level retain confirm
+- **학술 의의**: Builder + Selector + **PLM backbone** 모두 sub-noise marginal lever. Filter (ΔF1=-0.6133) + Extractor (ΔF1=-0.0869) 가 framework critical path 정합
+- **paper §V.5.x.M.22 sub-section evidence** 위 직접 사용 가능
+- 세부 실행 이력: [EXPERIMENT_HISTORY.md Wave 16 Encoder Backbone Ablation (2026-05-21~22)](EXPERIMENT_HISTORY.md).
+
+## V7 Extractor Redesign Chain — 24 cells (2026-06-04 ~ 2026-06-05, ✅ closed)
+
+V6 over-smoothing chain 후 직진. **MSTPCSTUnion 의 over-extract 문제 위 직접 대응** (connectivity-preserving extractor family). V7-W0 baseline 3 seeds + V7-W2 FKP 10 cells + V7-W3 STE 11 cells = 24 cells. V7-W1 (FKH) 는 Filter scope orthogonal 로 skip.
+
+### V7 cell ID ↔ folder mapping
+
+| Cell ID | Wave | Encoder | GAT ckpt | Builder | Selector | Extractor | Filter | sql_gen | Extractor R | P | F1 |
+|---|---|---|---|---|---|---|---|:---:|---:|---:|---:|
+| baseline_seed42 | V7-W0 | all-MiniLM-L6-v2 | best_gat_qcond_nl3.pt | Enriched | EnsembleQCond α=0.5 top_k=20 | MSTPCSTUnion θ=0.1 | BidirectionalFilter (M4 Bi) glm-4.7 | ✗ | 0.9959 | 0.1267 | 0.2074 |
+| baseline_seed123 | V7-W0 | (동일) | (동일) | (동일) | (동일) | (동일) | (동일) | ✗ | 0.9959 | 0.1267 | 0.2074 |
+| baseline_seed7 | V7-W0 | (동일) | (동일) | (동일) | (동일) | (동일) | (동일) | ✗ | 0.9959 | 0.1267 | 0.2074 |
+| fkp_k005 | V7-W2 | (동일) | (동일) | (동일) | (동일) | FKPathfindingExtractor k=5 topk col use_fk=T | NoneFilter | ✗ | 0.6128 | 0.4307 | 0.4892 |
+| fkp_k010 | V7-W2 | " | " | " | " | FKP k=10 | NoneFilter | ✗ | 0.7631 | 0.2979 | 0.4176 |
+| fkp_k015 | V7-W2 | " | " | " | " | FKP k=15 | NoneFilter | ✗ | 0.8288 | 0.2364 | 0.3587 |
+| fkp_k020 | V7-W2 | " | " | " | " | FKP k=20 | NoneFilter | ✗ | 0.8670 | 0.2016 | 0.3177 |
+| fkp_k030 | V7-W2 | " | " | " | " | FKP k=30 | NoneFilter | ✗ | 0.9207 | 0.1657 | 0.2700 |
+| fkp_k050 | V7-W2 | " | " | " | " | FKP k=50 | NoneFilter | ✗ | 0.9628 | 0.1341 | 0.2215 |
+| fkp_k100 | V7-W2 | " | " | " | " | FKP k=100 | NoneFilter | ✗ | 0.9961 | 0.1182 | 0.1948 |
+| fkp_ax_coltbl | V7-W2 | " | " | " | " | FKP k=20 [col,tbl] use_fk=T | NoneFilter | ✗ | 0.8528 | 0.2175 | 0.3364 |
+| fkp_ax_thr05 | V7-W2 | " | " | " | " | FKP k=20 thr=0.5 col use_fk=T | NoneFilter | ✗ | 0.8446 | 0.2080 | 0.3201 |
+| fkp_ax_nofk | V7-W2 | " | " | " | " | FKP k=20 col **use_fk=F** | NoneFilter | ✗ | 0.8660 | 0.2020 | 0.3182 |
+| **ste_k005** ⭐F1 | V7-W3 | " | " | " | " | SteinerTreeExtractor k=5 topk [col,tbl] cap=T | NoneFilter | ✗ | **0.5566** | **0.4893** | **0.4974** |
+| ste_k010 | V7-W3 | " | " | " | " | STE k=10 | NoneFilter | ✗ | 0.7299 | 0.3353 | 0.4445 |
+| ste_k015 | V7-W3 | " | " | " | " | STE k=15 | NoneFilter | ✗ | 0.8085 | 0.2616 | 0.3845 |
+| ste_k020 | V7-W3 | " | " | " | " | STE k=20 | NoneFilter | ✗ | 0.8478 | 0.2196 | 0.3387 |
+| ste_k030 | V7-W3 | " | " | " | " | STE k=30 | NoneFilter | ✗ | 0.9082 | 0.1765 | 0.2847 |
+| ste_k050 | V7-W3 | " | " | " | " | STE k=50 | NoneFilter | ✗ | 0.9577 | 0.1397 | 0.2303 |
+| **ste_k100** ⭐R | V7-W3 | " | " | " | " | STE k=100 | NoneFilter | ✗ | **0.9962** | 0.1187 | 0.1957 |
+| ste_ax_thr05 | V7-W3 | " | " | " | " | STE k=20 thr=0.5 [col,tbl] cap=T | NoneFilter | ✗ | 0.7549 | 0.3330 | 0.3931 |
+| ste_ax_thr03 | V7-W3 | " | " | " | " | STE k=20 thr=0.3 [col,tbl] cap=T | NoneFilter | ✗ | 0.9302 | 0.2179 | 0.3244 |
+| ste_ax_colonly | V7-W3 | " | " | " | " | STE k=20 [col] cap=T | NoneFilter | ✗ | 0.8660 | 0.2020 | 0.3182 |
+| ste_ax_nocap | V7-W3 | " | " | " | " | STE k=20 [col,tbl] **cap=F** | NoneFilter | ✗ | 0.8571 | 0.2158 | 0.3337 |
+
+Config path: `configs/experiments/abl/v7_extractor_redesign/<ID>.yaml`
+Output path: `outputs/experiments/abl/v7_extractor_redesign/<ID>/`
+Log path (NAS): `/SSL_NAS/peoples/khj/thesis_refactored_offload/logs/experiments/abl/v7_extractor_redesign/<ID>/`
+Master logs: `logs/v7_w0_baseline_master.log`, `logs/v7_kext_master.log`, `logs/v7_axis_master.log`
+Scripts: `scripts/run_v7_w0_baseline.sh` + `scripts/run_v7_kext_sweep.sh` + `scripts/run_v7_axis_sweep.sh`
+
+### M4 anchor 참조 (Pareto framing base)
+
+| Cell | Extractor | R | P | F1 | n_avg |
+|---|---|---:|---:|---:|---:|
+| **c01_01_wave7_relog** (M4 anchor) | MSTPCSTUnion θ=0.1 | 0.9927 | 0.1267 | 0.2073 | 54.53 |
+
+> M4 anchor 는 R-max 코너 잔류 — V7 의 어떤 cell 도 dominate 하지 않음. V7 의 기여 = M4 가 도달 못 하는 고-P frontier 확장 (analyzer §9.2).
+
+### 정합 점검
+
+| Check | 예상 |
+|---|---|
+| V7-W0 baseline 3 seeds Extractor stage 결정론적 일치 (R/P/F1/n_avg) | ✅ 모든 seed 위 동일 (MSTPCSTUnion + 동일 GAT ckpt) |
+| M4 anchor 재현 검증 (c01_01 와 P/F1/n_avg 소수 4자리 일치, R +0.0032) | ✅ analyzer §0.2 |
+| F1 best ste_k005 R=0.5566/P=0.4893/F1=0.4974/n=4.39 | ✅ analyzer §3.2 |
+| FKP FK-path 순기여 ≈ 0 (fkp_k020 vs fkp_ax_nofk ΔF1=−0.0005) | ✅ analyzer §6.2 |
+| 게이트 R≥0.9 ∧ P-gate 동시 만족 cell 없음 | ✅ analyzer §8 |
+
+### V7-W1 (FKH) skip 결정
+
+- FKH (FK Hint 직렬화) configs 25개 + script 작성됨 (`scripts/run_v7_w1_fkh_sweep.sh`) — 사용자 trigger 2026-06-05 00:30 KST 위 launch 시도
+- **scope orthogonal**: FKH 는 Filter prompt format 변경만 — Extractor R/P/F1 무영향 (게이트 spec: "R/P/F1 변화 시 bug")
+- V7 chain 의 본질 (Extractor 성능) 과 직교 → 별도 wave (filter prompt-engineering) 로 미룸
+- 참조: memory entry `project_v7_chain_status.md`
+
+### 결론 — V7 Extractor chain ✅ closed (2026-06-05)
+
+- **F1 best**: ste_k005 — M4 대비 **+2.4× F1, 12.4× compact** (Extractor stage)
+- **R best**: ste_k100 — M4 R 초과 단 M4 코너 복제
+- **★ Pareto frontier 확장 (overclaim 제거)**: V7 가 M4 를 dominate 하지 않음. M4 는 R-max 코너 잔류. V7 의 기여 = **M4 가 도달 못 하는 고-P frontier 확장** (controllability + frontier extension)
+- **★ FKP FK-path 순기여 ≈ 0 (negative finding)**: 학술 기여로 약함
+- **STE parsimony 우위**: 모든 k 위 STE F1 ≥ FKP F1
+- **paper §III.10 candidate**: "Connectivity-Preserving Extractor Family" sub-section
+- 세부: [EXPERIMENT_HISTORY.md V7 Extractor Redesign Chain](EXPERIMENT_HISTORY.md) · [v7_extractor_chain_2026-06-05.md](notebooks/analysis_results/v7_extractor_chain_2026-06-05.md)
+
+## V6-W2 Phase 2 Oversmoothing — 4 cell IDs (2026-06-05 ✅ closed)
+
+### Cell ID ↔ Config ↔ Checkpoint ↔ best-epoch 매핑
+
+| Cell ID | Config | Checkpoint | 변경점 | best ep | Val R@15 (final / peak) |
+|---|---|---|---|---|---|
+| `v6w2_p2_standalone_s11` | `configs/training/v6_phase2/p2_standalone.yaml` | `best_gat_v6w2_p2_standalone_s11.pt` | baseline: split + self-loop + mean | 228 | 0.5666 / 0.5726 |
+| `v6w2_p2_phase1_s11` | `configs/training/v6_phase2/p2_phase1.yaml` | `best_gat_v6w2_p2_phase1_s11.pt` | PairNorm + IR(α=0.1) + JK concat | 275 | 0.5697 / 0.5736 |
+| `v6w2_p2_standalone_no_selfloop_s11` | `configs/training/v6_phase2/p2_standalone_no_selfloop.yaml` | `best_gat_v6w2_p2_standalone_no_selfloop_s11.pt` | self-loop 제거 | 193 | 0.5573 / 0.5638 |
+| `v6w2_p2_sum_s11` | `configs/training/v6_phase2/p2_sum.yaml` | `best_gat_v6w2_p2_sum_s11.pt` | sum aggregation | 77 | 0.5692 / 0.5736 |
+
+### Convention
+
+- **Prefix**: `v6w2_` (V6 chain Phase 2)
+- **Seed suffix**: `_s11` (단일 seed)
+- **Wave 명명**: V6-W2 = V6 chain 의 Phase 2 (edge_type split 4 variants). V6-W0/W1 미등재 (별도 entry 필요 시 신규 작성)
+- **Storage**: ckpt NAS `/SSL_NAS/peoples/khj/thesis/checkpoints/v6_phase2/` + 로컬 symlink (`outputs/checkpoints/v6_phase2/`)
+
+### Selector-only inference 결과 (2026-06-05 ✅ closed) — top-20 R/P/F1 + ROC-AUC (4자리)
+
+DirectGATv2Selector × BIRD-Dev 1534q × GPU 2 sequential, 17:28~20:13 KST.
+
+| Cell ID | top-20 R | top-20 P | top-20 F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|
+| `v6w2_p2_sum_s11` ⭐ | **0.6043** | **0.2019** | **0.3027** | **0.7204** | **0.3600** |
+| `v6w2_p2_standalone_s11` | 0.5776 | 0.1930 | 0.2894 | 0.7154 | 0.3521 |
+| `v6w2_p2_phase1_s11` | 0.5180 | 0.1731 | 0.2595 | 0.6833 | 0.2879 |
+| `v6w2_p2_standalone_no_selfloop_s11` | 0.4674 | 0.1562 | 0.2341 | 0.6731 | 0.2910 |
+
+### Inference experiment ID 매핑
+
+| Cell ID | Inference Config | Output Dir | Selector Module |
+|---|---|---|---|
+| `v6w2_p2_sum_s11` | `configs/experiments/s06_gat_bottleneck_fix/w2_edge_type_split/v6w2_p2_sum.yaml` | `outputs/experiments/s06_gat_bottleneck_fix/w2_edge_type_split/v6w2_p2_sum/` | DirectGATv2Selector (신규, src/modules/selectors/direct_gatv2_selector.py) |
+| `v6w2_p2_standalone_s11` | (동일 dir/패턴) | (동일) | (동일) |
+| `v6w2_p2_phase1_s11` | (동일 dir/패턴) | (동일) | (동일) |
+| `v6w2_p2_standalone_no_selfloop_s11` | (동일 dir/패턴) | (동일) | (동일) |
+
+### Anchor 비교 reference
+
+- V6-W2 의 Selector training metric (Val R@15) vs M4 anchor (V6-W0 baseline / Wave 6 P2 best_gat_qcond_nl3.pt) — 직접 비교 위 V6-W0 selector-only inference launch ✅ (2026-06-05 21:32 KST trigger, GPU 0,1, `v6w0_baseline_s11`)
+- analyzer 보고서 (epoch-level): [v6_phase2_oversmoothing_2026-06-05.md](notebooks/analysis_results/v6_phase2_oversmoothing_2026-06-05.md) — pooled Pearson(mad, R@15)=+0.0887 (1200 epoch-point), self-loop ΔR@15=+0.0093
+- analyzer 보고서 (inference-level): [v6w2_selector_topk_analysis_2026-06-05.md](notebooks/analysis_results/v6w2_selector_topk_analysis_2026-06-05.md) — ranking 역전 + score separation (sum p50=0.8195 vs phase1 p50=0.0002) + ROC-AUC = best K-independent proxy
+- paper sub-section: [§V.5.x.M.24 + §V.5.x.M.24.7 Training-proxy ↔ Inference-quality Disconnect](notebooks/analysis_results/paper_draft_V5xM_dual_variant_three_caveat.md)
+- 세부: [EXPERIMENT_HISTORY.md V6-W2 Phase 2 Oversmoothing](EXPERIMENT_HISTORY.md)
+
+## M4 threshold sweep — 8 cell IDs (2026-06-05 ✅ closed)
+
+### Cell ID ↔ Config ↔ Result 매핑 (M4 anchor R=0.8438/P=0.8329/EX=0.5300 vs)
+
+| Cell ID | thr | Config | R | P | EX | ΔEX |
+|---|---|---|---|---|---|---|
+| `m4thr_02` ⭐ | 0.2 | `configs/experiments/abl/m4_threshold_sweep/m4thr_02.yaml` | 0.9272 | 0.7090 | 0.5117 | −0.0183 (noise) |
+| `m4thr_03` | 0.3 | (동일 dir/패턴) | 0.5698 | 0.4751 | 0.3051 | −0.2249 |
+| `m4thr_04` | 0.4 | (동일) | 0.5227 | 0.4666 | 0.2568 | −0.2732 |
+| `m4thr_05` | 0.5 | (동일) | 0.4624 | 0.4409 | 0.2190 | −0.3110 |
+| `m4thr_06` | 0.6 | (동일) | 0.3684 | 0.3751 | 0.1943 | −0.3357 |
+| `m4thr_07` | 0.7 | (동일) | 0.3099 | 0.3472 | 0.1714 | −0.3586 |
+| `m4thr_08` | 0.8 | (동일) | 0.2194 | 0.2923 | 0.1460 | −0.3840 |
+| `m4thr_09` | 0.9 | (동일) | 0.1168 | 0.2173 | 0.1310 | −0.3990 |
+
+### Convention
+
+- **Prefix**: `m4thr_` (M4 anchor threshold variant), suffix = thr × 10
+- 세부: [EXPERIMENT_HISTORY.md M4 anchor threshold sweep](EXPERIMENT_HISTORY.md)
+
+## V6-W2 e2e + V6-W0 baseline inference — 5 cell IDs (2026-06-05 ✅ closed)
+
+### V6-W2 e2e cells (4)
+
+| Cell ID | Config | R | P | EX |
+|---|---|---|---|---|
+| `v6w2_p2_standalone_e2e_s11` | `configs/.../w2_edge_type_split_e2e/v6w2_p2_standalone_e2e.yaml` | 0.6024 | 0.5779 | 0.2777 |
+| `v6w2_p2_phase1_e2e_s11` | (동일 dir/패턴) | 0.4853 | 0.5510 | 0.2653 |
+| `v6w2_p2_standalone_no_selfloop_e2e_s11` ⭐ | (동일) | 0.6344 | 0.5900 | 0.3331 |
+| `v6w2_p2_sum_e2e_s11` | (동일) | 0.6714 | 0.6072 | 0.3116 |
+
+### V6-W0 baseline (1) — ⚠ 정정 (동일 micro top-20 rerank)
+
+| Cell ID | Config | rerank R | rerank P | rerank F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|---|
+| `v6w0_baseline_s11` | `configs/experiments/s06_gat_bottleneck_fix/w0_baseline/v6w0_baseline_s11.yaml` | 0.5781 | 0.1932 | **0.2896** | **0.7408** | 0.3382 |
+
+⚠ surface F1=0.3913 (EnsembleSelector 내부 top_k=20) 은 V6-W2 와 방법론 mismatch. cross-cell 비교는 rerank F1=0.2896 사용 (sum 0.3027 아래). analyzer: [v6w2_v6w0_selector_comparison_2026-06-05.md](notebooks/analysis_results/v6w2_v6w0_selector_comparison_2026-06-05.md)
+
+### Convention
+
+- **V6-W2 e2e suffix**: `_e2e_s11` (end-to-end M4 anchor stack swap, seed s11)
+- **V6-W0 baseline**: `v6w0_baseline_s11` (EnsembleSelector + best_gat_qcond_nl3_v6w0_s11.pt, selector-only)
+- 세부: [EXPERIMENT_HISTORY.md V6-W2 end-to-end inference + V6-W0 baseline](EXPERIMENT_HISTORY.md)
+
+## V6-W3 hub 차수 축소 — 3 cell IDs (2026-06-06, 학습 ✅ closed, inference 진행 중)
+
+### Cell ID ↔ Builder ↔ Checkpoint ↔ best Val R@15 매핑
+
+| Cell ID | Builder | Training Config | Checkpoint | best Val R@15 (ckpt) |
+|---|---|---|---|---|
+| `v6w3_a_s11` ⭐ | V6W3VirtualSummaryBuilder | `configs/training/v6_w3/v6w3_a_s11.yaml` | `best_gat_v6w3_a_s11.pt` | **0.5672** |
+| `v6w3_b_s11` | V6W3ColumnPoolingBuilder | (동일 dir/패턴) | `best_gat_v6w3_b_s11.pt` | 0.5637 |
+| `v6w3_c_s11` | V6W3HubLocalVNBuilder | (동일) | `best_gat_v6w3_c_s11.pt` | 0.5633 |
+
+### Inference cell IDs (06-06 17:25 launch, pending DONE)
+
+| Cell ID | Inference Config | Mode |
+|---|---|---|
+| `v6w3_{a,b,c}_s11` | `configs/.../w3_hub_reduction/v6w3_{a,b,c}_s11.yaml` | selector-only |
+| `v6w3_{a,b,c}_e2e_s11` | `configs/.../w3_hub_reduction_e2e/v6w3_{a,b,c}_e2e_s11.yaml` | e2e (M4 anchor stack swap) |
+
+### Convention
+
+- **Prefix**: `v6w3_` (V6 chain Phase 3 hub 차수 축소)
+- **Seed suffix**: `_s11` (단일 seed, V6 chain 정합)
+- **Builder dispatch**: `train_gat_s06.py` + `DirectGATv2Selector` auto_config 위 ckpt 의 `config.v6w3_variant` 활용
+- **Cache**: 로컬 `data/processed/train_enriched_v6w3_*_plm_graphs.pt` (대용량 시 NAS 이동 검토)
+
+### Anchor 비교 reference
+
+- V6-W3 학습 결과 (best Val R@15) vs V6-W0 baseline (0.6097, M4 anchor) — hub 차수 축소 위 **partial rescue** (격차 0.0425)
+- V6-W3 학습 vs V6-W2 phase1 (0.5697) — **동등 수준** (cell A 격차 −0.0025, single-seed noise band 내)
+- 세부: [EXPERIMENT_HISTORY.md V6-W3 hub 차수 축소](EXPERIMENT_HISTORY.md)
+
+## V6-W3 inference + L1/L2 결과 — 3 cell IDs 보강 (2026-06-06)
+
+### Selector top-20 (GAT-only α=0) + L1 hi-deg intra-MAD — 4자리
+
+| Cell ID | top-20 R | top-20 P | top-20 F1 | ROC-AUC | hi-deg intra-MAD L3 | Δhi vs baseline (0.0046) |
+|---|---|---|---|---|---|---|
+| `v6w3_a_s11` | 0.4981 | 0.1665 | 0.2495 | 0.6502 | 0.0024 | −0.0022 |
+| `v6w3_b_s11` | 0.4685 | 0.1566 | 0.2347 | 0.6384 | 0.0041 | −0.0005 |
+| **`v6w3_c_s11`** ⭐ | **0.5283** | **0.1765** | **0.2646** | **0.6883** | 0.0042 | −0.0004 |
+
+### 게이트 판정: **L1 미회복 → hub reduction 기법 부적합** ✅ (informative negative)
+
+- L2(b) GAT 순기여 % — cosine 재측정 필요 (우선순위 ↓)
+- L2(c) e2e EX — pending (e2e ~45%, ~20:22 KST 종료 예상)
+- 세부: [v6_phase3_hub_reduction_2026-06-06.md](notebooks/analysis_results/v6_phase3_hub_reduction_2026-06-06.md)
+
+## V6-W3 inference L2(c) e2e 정정 (2026-06-06)
+
+### V6-W3 inference Cell IDs ↔ e2e R/P/EX — 4자리
+
+| Cell ID | e2e R | e2e P | e2e EX | Δvs M4 anchor (0.5300) |
+|---|---|---|---|---|
+| `v6w3_a_e2e_s11` | 0.5680 | 0.5571 | 0.2940 | −0.2360 |
+| `v6w3_b_e2e_s11` | 0.6289 | 0.5578 | 0.3031 | −0.2269 |
+| **`v6w3_c_e2e_s11`** ⭐ | **0.7224** | **0.6278** | **0.3879** | **−0.1421** (V6-W2 best 위 +0.0548 우위) |
+
+### ⚠ 분기 정정
+
+- 원 "L1 미회복 → 기법 부적합 informative negative" → **mixed result** (mechanism informative negative + cell C threshold-pass e2e uplift, GAT rescue 아님)
+- 세부: [v6_phase3_hub_reduction_2026-06-06.md](notebooks/analysis_results/v6_phase3_hub_reduction_2026-06-06.md) §3.3 + §4
+
+## V6-W5 Phase 5 decisive final wave — 6 cell IDs (3 selector-only + 3 e2e) (2026-06-07, ✅ closed, V6 chain capstone)
+
+V6 chain capstone — first-conv single-shared-source 가설 B 정확한 fix-test. self-loop + per-layer residual.
+
+### V6-W5 학습 Cell IDs (3 cells × s11)
+
+| Cell ID | mechanism | Config | Ckpt | best Val R@15 (4자리) |
+|---|---|---|---|---|
+| **`v6w5_a_s11`** ⭐ R@15 | column self-loop (`add_self_loops=True` column relation) | `configs/training/v6_w5/v6w5_a_s11.yaml` | `best_gat_v6w5_a_s11.pt` | **0.5732** |
+| `v6w5_b_s11` | per-layer residual (out = ELU(conv) + h_prev) | `configs/training/v6_w5/v6w5_b_s11.yaml` | `best_gat_v6w5_b_s11.pt` | 0.5715 |
+| `v6w5_c_s11` | self-loop + residual 조합 | `configs/training/v6_w5/v6w5_c_s11.yaml` | `best_gat_v6w5_c_s11.pt` | 0.5723 |
+
+### V6-W5 inference Cell IDs (3 selector-only + 3 e2e)
+
+| Cell ID | Config 경로 | 모드 |
+|---|---|---|
+| `v6w5_{a,b,c}_s11` | `configs/.../w5_self_loop_residual/v6w5_{a,b,c}_s11.yaml` | selector-only (extractor=None, sanity check) |
+| `v6w5_{a,b,c}_e2e_s11` | `configs/.../w5_self_loop_residual_e2e/v6w5_{a,b,c}_e2e_s11.yaml` | e2e (M4 anchor stack swap, DirectGATv2 + MSTPCSTUnion thr=0.1 + BidirectionalFilter + LLMSQLGenerator glm-4.7) |
+
+### V6-W5 e2e R/P/F1/EX + L1 mad + selector quality — 4자리 (M4 anchor 0.5300 / V6-W2 best 0.3331 / V6-W3 c 0.3879 vs)
+
+| Cell ID | e2e R | e2e P | e2e F1 | e2e EX | top-20 F1 | ROC-AUC | col net | table net | gold p50 | L1 mad | Δvs M4 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `v6w5_a_e2e_s11` (self-loop) | 0.5957 | 0.6078 | 0.6018 | 0.3168 | 0.2708 | 0.6959 | **−1805** | +277 | 0.0170 | 0.2813 | −0.2132 |
+| **`v6w5_b_e2e_s11`** ⭐ EX (residual) | **0.6559** | 0.5843 | **0.6182** | **0.3201** | **0.2977** | **0.7352** | **−1359** | **+617** | **0.1260** | 0.3416 | **−0.2099** |
+| `v6w5_c_e2e_s11` (조합) | 0.6306 | 0.5819 | 0.6054 | 0.2934 | 0.2923 | 0.7227 | **−1520** | +486 | 0.0818 | **0.3463** | −0.2366 |
+| 비교 M4 baseline (GAT-only) | — | — | — | 0.5300 | — | — | −1181 | +106 | — | 0.0136 | — |
+| 비교 V6-W2 sum (gold sep best) | — | — | — | — | 0.3027 | 0.7204 | — | — | 0.8195 | — | — |
+| 비교 V6-W0 (Projector) | — | — | — | — | 0.2896 | 0.7408 | — | — | — | — | — |
+
+**selector quality 해석**:
+- **gold p50 0.017~0.126** (V6-W2 sum 0.8195 의 2~15%) — mad 회복에도 gold 정렬 빈약 (task-irrelevant)
+- **col net 음수 유지 −1359~−1805** (M4 −1181 보다 더 음수, multi-gold net −1371~−1810) — mad 회복이 column gold-분별 못 전환
+- **table net 증가 +277~+617** (M4 +106) — 회복 효과가 **table-level (cross-table) 로만 발현**, cosine redundant
+- **top-20 F1 baseline 수준** (0.27~0.30, V6-W2 sum 0.3027 미달) — selector 분별 무개선
+
+### V6-W5 selector-only Cell IDs ↔ R/P/F1 (sanity — extractor=None all-nodes pass-through)
+
+| Cell ID | R | P | F1 | ext_nodes |
+|---|---|---|---|---|
+| `v6w5_a_s11` | 1.0000 | 0.1173 | 0.2100 | 92.6147 |
+| `v6w5_b_s11` | 1.0000 | 0.1173 | 0.2100 | 92.6147 |
+| `v6w5_c_s11` | 1.0000 | 0.1173 | 0.2100 | 92.6147 |
+
+→ 동일 (extractor=None all-nodes pass) — GAT load sanity check 의미, mechanism 효과 측정은 L1 mad (analyzer) 통해
+
+### ID 체계 메모
+
+- **Prefix**: `v6w5_` (V6 chain Phase 5 decisive final wave)
+- **Suffix**: `_s11` (single seed), e2e cells 는 `_e2e_s11` (V6-W3 convention 동일)
+- **Builder dispatch**: `train_gat_s06.py` + `DirectGATv2Selector` auto_config 위 ckpt 의 `config.v6w5_variant` 활용 (SchemaHeteroGATv2 self-loop/residual injection)
+- **Cache**: 기존 enriched cache (`data/processed/train_enriched_plm_graphs.pt`) 재사용 — 신규 cache 생성 없음
+
+### ★ 게이트 판정 (3-stage)
+
+| 게이트 | 결과 | 판정 |
+|---|---|---|
+| **Primary (mechanism 회복)** | L1 hi-deg intra-MAD 20.7~25.5× 회복 (L0 0.4201 의 67~82%) + EF2 0.0000 → 0.30+ | **✅ PASS (결정적)** |
+| **★ Intermediate (selector-quality)** | gold p50 0.017~0.126 빈약 + col net −1359~−1805 음수 유지 + table net +277~+617 (cosine redundant) + top-20 F1 0.27~0.30 baseline | **❌ task-irrelevant differentiation** |
+| **Secondary (e2e EX)** | 0.2934~0.3201 전 baseline 미달 | **❌ 무개선 (disconnect)** |
+| **disconnect mechanistic 완결** | mad↑ → gold-분별 ✗ → e2e ✗ 전 단계 일관. Spearman(mad, EX)=−0.5000, (mad, col net)=+0.5000, (col net, EX)=+0.5000 | **✅ ironclad (mechanistic 완결)** |
+
+### 결론 (3-stage disconnect mechanistic 완결)
+
+- **mechanism fixable 확정** — first-conv single-shared-source 가설 B 인과 확정 (정확한 locus 를 고치니 정확히 회복, mad 20~25×)
+- **task-irrelevant differentiation 확정** — 회복 differentiation 이 gold-aligned 아님 (col net 음수 유지 −1359~−1805, table-level 발현, cosine redundant), top-20 F1 baseline 정체
+- **e2e disconnect mechanistic 완결** — mad↑ → gold-분별 ✗ → e2e ✗ 전 단계 일관 → **Filter Dominance + Training-Pathology-Invariant Selector ironclad**
+- 사용자 직관 2건 negative 확정 — extractor θ 재튜닝 ❌ (gold-분별력 미획득) + ensemble 제거 GAT-only ❌ (col net 더 음수, GAT 자립 실패)
+- **V6 chain 영구 closure marker 정식 진입** ([[project-v6-chain-closure]]) + GAT layer 추가 개입 무효화 (column rescue 영구 종료)
+- 세부: [EXPERIMENT_HISTORY.md V6-W5](EXPERIMENT_HISTORY.md) + [v6_w5_l1_mad_disconnect_2026-06-07.md](notebooks/analysis_results/v6_w5_l1_mad_disconnect_2026-06-07.md) + [v6_w5_selector_quality_2026-06-07.md](notebooks/analysis_results/v6_w5_selector_quality_2026-06-07.md)

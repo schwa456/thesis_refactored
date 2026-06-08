@@ -73,13 +73,81 @@ def calculate_recall_at_k(logits: torch.Tensor, labels: torch.Tensor, k: int = 1
     return hits / labels.sum().item()
 
 
+def compute_gold_calibration_metrics(logits: torch.Tensor, labels: torch.Tensor,
+                                     theta: float = 0.1):
+    """MA-0/MA-1 (DECISIONS 2026-06-07 #4) — gold 노드의 **절대 score calibration** 지표.
+
+    inference extractor 는 score≥θ (절대 cutoff) 기반이므로 rank (R@15) 가 아니라 calibration 이
+    inference recall 을 결정 (Spearman: gold recall@θ +0.9273 / gold p50 +0.9545 vs R@15 −0.19).
+
+    score = sigmoid(logit) (pipeline 정합). 반환:
+      - gold_recall_at_theta: gold 노드 중 score≥θ 비율 (gold 없으면 None → 집계 제외)
+      - gold_p50: gold 노드 score 중앙값 (None if no gold)
+    """
+    gold = labels == 1
+    if gold.sum() == 0:
+        return None, None
+    scores = torch.sigmoid(logits[gold].detach())
+    gold_recall = (scores >= theta).float().mean().item()
+    gold_p50 = scores.median().item()
+    return gold_recall, gold_p50
+
+
+def gold_margin_loss(logits: torch.Tensor, labels: torch.Tensor,
+                     theta_target: float = 0.15) -> torch.Tensor:
+    """MA-2 (DECISIONS 2026-06-07 #4) — gold score margin loss.
+
+    gold 노드 score(=sigmoid(logit)) 가 θ_target 이상이도록 강제 (phase1-류 압축으로 gold 가
+    θ 미통과하는 calibration deficit 해소). L = mean(max(0, θ_target − sigmoid(gold_logit))).
+    gold 없으면 0 (grad 0). theta_target 은 보통 θ(0.1) + ε(0.05) = 0.15.
+    """
+    gold = labels == 1
+    if gold.sum() == 0:
+        return logits.new_tensor(0.0)
+    scores = torch.sigmoid(logits[gold])
+    return torch.clamp(theta_target - scores, min=0.0).mean()
+
+
+def per_table_normalize_logits(col_logits: torch.Tensor, belongs_to_edge: torch.Tensor,
+                               num_cols: int) -> torch.Tensor:
+    """MA-2 (DECISIONS 2026-06-07 #4) — per-table column score normalization.
+
+    각 table 내 column logit 분포를 zero-mean / unit-std 로 normalize (PairNorm-류 압축 해소).
+    belongs_to_edge: [2, E] (row0=column local idx, row1=table local idx) — batch 전역 인덱스라
+    table id 가 (graph, table) 를 자연 인코딩. column 1개 이하 table 은 원본 유지.
+    """
+    col2tab = torch.full((num_cols,), -1, dtype=torch.long, device=col_logits.device)
+    if belongs_to_edge.numel() > 0:
+        col2tab[belongs_to_edge[0]] = belongs_to_edge[1]
+    out = col_logits.clone()
+    for t in torch.unique(col2tab):
+        if int(t) < 0:
+            continue
+        m = col2tab == t
+        if int(m.sum()) < 2:
+            continue
+        grp = col_logits[m]
+        out = out.masked_scatter(m, (grp - grp.mean()) / (grp.std() + 1e-5))
+    return out
+
+
 def validate(gat_model, classifier_heads, loader, device, k=15,
-             query_conditioned=False, query_supernode=False, dual_stream=False):
+             query_conditioned=False, query_supernode=False, dual_stream=False,
+             theta=0.1):
+    """MA-1 (DECISIONS 2026-06-07 #4): dict 반환 — {recall_at_15, gold_recall_at_theta, gold_p50}.
+
+    best-epoch/early-stop 은 monitor_metric (default gold_recall_at_theta) 기준. recall_at_15 는
+    보조 지표로 retain (inference recall 예측력 약함 ρ=−0.19).
+    """
     gat_model.eval()
     for head in classifier_heads.values():
         head.eval()
     total_recall = 0.0
     count = 0
+    # MA-1 calibration 지표 누적 (gold 있는 graph 만).
+    sum_gold_recall = 0.0
+    sum_gold_p50 = 0.0
+    calib_count = 0
 
     with torch.no_grad():
         for batch in loader:
@@ -135,7 +203,17 @@ def validate(gat_model, classifier_heads, loader, device, k=15,
                     all_labels = torch.cat(labels_list)
                     total_recall += calculate_recall_at_k(all_logits, all_labels, k=k)
                     count += 1
-    return total_recall / count if count > 0 else 0.0
+                    # MA-1: gold calibration 지표 (gold 있는 graph 만 집계).
+                    gr, p50 = compute_gold_calibration_metrics(all_logits, all_labels, theta=theta)
+                    if gr is not None:
+                        sum_gold_recall += gr
+                        sum_gold_p50 += p50
+                        calib_count += 1
+    return {
+        "recall_at_15": total_recall / count if count > 0 else 0.0,
+        "gold_recall_at_theta": sum_gold_recall / calib_count if calib_count > 0 else 0.0,
+        "gold_p50": sum_gold_p50 / calib_count if calib_count > 0 else 0.0,
+    }
 
 
 def run_train(config_path: str):
@@ -163,11 +241,37 @@ def run_train(config_path: str):
     logger.info(f"[s06] checkpoint_dir={PATHS['checkpoint_dir']}")
 
     # Builder / Encoder
-    builder_type = cfg.get("builder", {}).get("type", "HeteroGraphBuilder")
+    builder_cfg = cfg.get("builder", {})
+    builder_type = builder_cfg.get("type", "HeteroGraphBuilder")
+    tables_json = builder_cfg.get("tables_json_path", "")
     if builder_type == "EnrichedHeteroGraphBuilder":
-        tables_json = cfg["builder"].get("tables_json_path", "")
         builder = EnrichedHeteroGraphBuilder(tables_json_path=tables_json)
         logger.info(f"Using EnrichedHeteroGraphBuilder (tables_json={tables_json})")
+    elif builder_type == "V6W3VirtualSummaryBuilder":
+        # V6-W3 variant A — table_summary virtual node (DECISIONS 2026-06-06).
+        from modules.builders.v6w3_builders import V6W3VirtualSummaryBuilder
+        builder = V6W3VirtualSummaryBuilder(tables_json_path=tables_json)
+        logger.info(f"Using V6W3VirtualSummaryBuilder (A, tables_json={tables_json})")
+    elif builder_type == "V6W3ColumnPoolingBuilder":
+        # V6-W3 variant B — table.x = column pooling override (구조 무변경).
+        from modules.builders.v6w3_builders import V6W3ColumnPoolingBuilder
+        builder = V6W3ColumnPoolingBuilder(
+            tables_json_path=tables_json,
+            pool_mode=builder_cfg.get("pool_mode", "uniform"),
+        )
+        logger.info(
+            f"Using V6W3ColumnPoolingBuilder (B, pool_mode={builder_cfg.get('pool_mode', 'uniform')})")
+    elif builder_type == "V6W3HubLocalVNBuilder":
+        # V6-W3 variant C — hub-only Local VN_G (local_vn node).
+        from modules.builders.v6w3_builders import V6W3HubLocalVNBuilder
+        builder = V6W3HubLocalVNBuilder(
+            tables_json_path=tables_json,
+            hub_strategy=builder_cfg.get("hub_strategy", "median"),
+            hub_min_columns=builder_cfg.get("hub_min_columns", 0),
+        )
+        logger.info(
+            f"Using V6W3HubLocalVNBuilder (C, hub_strategy={builder_cfg.get('hub_strategy', 'median')}, "
+            f"hub_min_columns={builder_cfg.get('hub_min_columns', 0)})")
     else:
         builder = HeteroGraphBuilder()
     encoder = LocalPLMEncoder()
@@ -251,6 +355,24 @@ def run_train(config_path: str):
         aero_hop_attention=cfg["model"].get("aero_hop_attention", False),
         aero_cumulative_attention=cfg["model"].get("aero_cumulative_attention", False),
         aero_cumulative_decay=cfg["model"].get("aero_cumulative_decay", 1.0),
+        # V6-W1 (DECISIONS 2026-06-01 §V6-W1 활성 launch) — Drop-in 4 classes 위.
+        v6w1_pairnorm_scale=cfg["model"].get("v6w1_pairnorm_scale", 1.0),
+        v6w1_jk_mode=cfg["model"].get("v6w1_jk_mode", "concat"),
+        capture_layerwise_outputs=cfg["model"].get("capture_layerwise_outputs", False),
+        # V6-W2 (DECISIONS 2026-06-04 §V6-W2 활성 launch) — edge-type 분리 (HeteroConv).
+        # edge_type_split_key_relations 는 Builder per-column PK/FK mask 의존 → NotImplementedError.
+        edge_type_split=cfg["model"].get("edge_type_split", False),
+        edge_type_split_self_loops=cfg["model"].get("edge_type_split_self_loops", True),
+        edge_type_split_aggr=cfg["model"].get("edge_type_split_aggr", "mean"),
+        # V6-W3 (DECISIONS 2026-06-06) — hub 차수 축소 builder 정합 node/edge type 등록.
+        # A=table_summary / B=column pooling (구조 무변경) / C=local_vn. None=backward compat.
+        v6w3_variant=cfg["model"].get("v6w3_variant", None),
+        # V6-W5 (DECISIONS 2026-06-07) — GAT layer-level intervention (single-shared-source fix).
+        # a=column self-loop / b=per-layer residual / c=a+b. builder 변경 없음 (enriched).
+        v6w5_variant=cfg["model"].get("v6w5_variant", None),
+        # V6-W6 (DECISIONS 2026-06-07 #3) — directed SuperNode + V6-W5 self-loop 조합.
+        # a=directed SN + self-loop / b=+ per-layer residual. query_supernode=True 결합 (config).
+        v6w6_variant=cfg["model"].get("v6w6_variant", None),
     ).to(device)
 
     logger.info(
@@ -268,7 +390,10 @@ def run_train(config_path: str):
         f"mitV5: gcnii_beta_lambda={cfg['model'].get('gcnii_beta_lambda', 0.5)}, "
         f"aero_hop_attention={cfg['model'].get('aero_hop_attention', False)}, "
         f"aero_cumulative_attention={cfg['model'].get('aero_cumulative_attention', False)}, "
-        f"aero_cumulative_decay={cfg['model'].get('aero_cumulative_decay', 1.0)}"
+        f"aero_cumulative_decay={cfg['model'].get('aero_cumulative_decay', 1.0)} | "
+        f"V6W2: edge_type_split={cfg['model'].get('edge_type_split', False)}, "
+        f"self_loops={cfg['model'].get('edge_type_split_self_loops', True)}, "
+        f"aggr={cfg['model'].get('edge_type_split_aggr', 'mean')}"
     )
 
     classifier_types = ["table", "column", "fk_node"]
@@ -354,6 +479,25 @@ def run_train(config_path: str):
     loss_type = cfg["training"].get("loss_type", "bce")
     pos_weight = torch.tensor([cfg["training"]["pos_weight"]]).to(device)
     listnet_fn = ListNetLoss().to(device)
+
+    # MA-1 monitor (DECISIONS 2026-06-07 #4) — best-epoch/early-stop 지표.
+    # default = recall_at_15 (backward compat). MA configs 는 gold_recall_at_theta.
+    monitor_metric = str(cfg["training"].get("monitor_metric", "recall_at_15"))
+    _valid_monitors = ("recall_at_15", "gold_recall_at_theta", "gold_p50")
+    if monitor_metric not in _valid_monitors:
+        raise ValueError(f"monitor_metric must be in {_valid_monitors}, got {monitor_metric!r}")
+    theta_for_monitor = float(cfg["training"].get("theta_for_monitor", 0.1))
+
+    # MA-2 calibration loss (DECISIONS 2026-06-07 #4) — gold score margin + per-table norm.
+    # 게이트 = inference recall (EX 아님, V6 disconnect caveat). default OFF (backward compat).
+    calib_margin_weight = float(cfg["training"].get("calibration_margin_weight", 0.0))
+    calib_theta_target = float(cfg["training"].get("calibration_theta_target", 0.15))
+    per_table_norm = bool(cfg["training"].get("per_table_score_norm", False))
+    logger.info(
+        f"[s06] MA-1 monitor_metric={monitor_metric} (θ={theta_for_monitor}) | "
+        f"MA-2 calib_margin_weight={calib_margin_weight} (θ_target={calib_theta_target}), "
+        f"per_table_score_norm={per_table_norm}"
+    )
     anti_collapse_weight = float(cfg["training"].get("anti_collapse_weight", 0.0))
     anti_collapse_fn = AntiCollapseRegularizer(
         tau_max=float(cfg["training"].get("anti_collapse_tau_max", 0.85))
@@ -390,7 +534,8 @@ def run_train(config_path: str):
         f"anti_collapse_target={anti_collapse_target}"
     )
 
-    best_recall = 0.0
+    # MA-1: best-epoch 는 monitor_metric 값 기준 (recall 변수명 retain 단 의미는 monitor).
+    best_monitor = -1.0
     epochs = cfg["training"]["epochs"]
 
     for epoch in range(epochs):
@@ -400,6 +545,7 @@ def run_train(config_path: str):
         epoch_loss = 0.0
         epoch_loss_main = 0.0
         epoch_loss_ac = 0.0
+        epoch_loss_calib = 0.0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
         for step, batch in enumerate(pbar):
@@ -439,6 +585,8 @@ def run_train(config_path: str):
             # Main loss (per-query listwise or BCE)
             step_loss_main = 0.0
             n_terms = 0
+            # MA-2 calibration: gold margin loss 누적 (default weight 0 → no-op).
+            step_loss_calib = torch.tensor(0.0, device=device)
             if loss_type in ("listnet", "bce_listnet"):
                 # per-query 로 쪼개서 계산
                 for i in range(batch.num_graphs):
@@ -471,10 +619,19 @@ def run_train(config_path: str):
                     if batch[n_type].num_nodes == 0:
                         continue
                     logits = classifier_heads[n_type](node_embs[n_type])
+                    labels_nt = batch[n_type].y
+                    # MA-2 per-table score normalization (column 한정) — PairNorm-류 압축 해소.
+                    if per_table_norm and n_type == "column" and COL_TO_TAB_EDGE in batch.edge_index_dict:
+                        logits = per_table_normalize_logits(
+                            logits, batch.edge_index_dict[COL_TO_TAB_EDGE], logits.size(0))
                     step_loss_main = step_loss_main + combined_loss(
-                        logits, batch[n_type].y, loss_type="bce",
+                        logits, labels_nt, loss_type="bce",
                         pos_weight=pos_weight, listnet_fn=listnet_fn,
                     )
+                    # MA-2 gold score margin loss (gold 를 θ_target 위로).
+                    if calib_margin_weight > 0.0:
+                        step_loss_calib = step_loss_calib + gold_margin_loss(
+                            logits, labels_nt, theta_target=calib_theta_target)
                     n_terms += 1
                 if not torch.is_tensor(step_loss_main):
                     continue
@@ -497,7 +654,9 @@ def run_train(config_path: str):
                     cb_edge = batch.edge_index_dict[COL_TO_TAB_EDGE]
                     step_loss_ac = anti_collapse_fn(col_embs, cb_edge)
 
-            step_loss = step_loss_main + anti_collapse_weight * step_loss_ac
+            step_loss = (step_loss_main
+                         + anti_collapse_weight * step_loss_ac
+                         + calib_margin_weight * step_loss_calib)
 
             step_loss.backward()
             optimizer.step()
@@ -505,54 +664,109 @@ def run_train(config_path: str):
             epoch_loss += step_loss.item()
             epoch_loss_main += float(step_loss_main.item() if torch.is_tensor(step_loss_main) else step_loss_main)
             epoch_loss_ac += float(step_loss_ac.item() if torch.is_tensor(step_loss_ac) else step_loss_ac)
+            epoch_loss_calib += float(step_loss_calib.item() if torch.is_tensor(step_loss_calib) else step_loss_calib)
 
             if step % 10 == 0:
                 wandb.log({
                     "train/loss_total": step_loss.item(),
                     "train/loss_main": float(step_loss_main.item() if torch.is_tensor(step_loss_main) else step_loss_main),
                     "train/loss_anti_collapse": float(step_loss_ac.item() if torch.is_tensor(step_loss_ac) else step_loss_ac),
+                    "train/loss_calibration": float(step_loss_calib.item() if torch.is_tensor(step_loss_calib) else step_loss_calib),
                     "epoch": epoch + 1,
                 })
             pbar.set_postfix({"loss": f"{step_loss.item():.4f}"})
 
-        val_recall = validate(
+        val_metrics = validate(
             gat_model, classifier_heads, val_loader, device, k=15,
             query_conditioned=query_conditioned,
             query_supernode=query_supernode,
             dual_stream=dual_stream,
+            theta=theta_for_monitor,
         )
+        val_recall = val_metrics["recall_at_15"]
+        val_gold_recall = val_metrics["gold_recall_at_theta"]
+        val_gold_p50 = val_metrics["gold_p50"]
+        # MA-1: best-epoch/early-stop 선택 지표 (default gold_recall_at_theta for MA configs).
+        monitor_value = val_metrics[monitor_metric]
+
+        # Per-epoch Dirichlet energy + MAD (oversmoothing/energy, oversmoothing/mad)
+        os_log = {}
+        os_mean_e = 0.0
+        os_mean_m = 0.0
+        try:
+            from utils.oversmoothing_metrics import compute_metrics_v2_gat, metrics_to_wandb_log
+            gat_model.eval()
+            with torch.no_grad():
+                sample_batch = next(iter(val_loader)).to(device)
+                q_emb_s = None
+                try:
+                    q_emb_s = sample_batch['query']
+                except Exception:
+                    q_emb_s = None
+                if q_emb_s is not None and q_emb_s.dim() == 2 and q_emb_s.size(0) > 1:
+                    q_emb_s = q_emb_s.mean(dim=0, keepdim=True)
+                elif q_emb_s is not None and q_emb_s.dim() == 3:
+                    q_emb_s = q_emb_s.mean(dim=1).mean(dim=0, keepdim=True)
+                os_metrics = compute_metrics_v2_gat(
+                    gat_model, sample_batch.x_dict, sample_batch.edge_index_dict,
+                    query_emb=q_emb_s if query_conditioned else None,
+                    device=str(device))
+                os_log = metrics_to_wandb_log(os_metrics)
+                os_mean_e = float(os_metrics['energy'].get('mean', 0.0) or 0.0)
+                os_mean_m = float(os_metrics['mad'].get('mean', 0.0) or 0.0)
+        except Exception as _e:
+            logger.warning(f"Oversmoothing metric capture failed: {_e}")
 
         n_batches = max(len(train_loader), 1)
         wandb.log({
             "train/epoch_loss_total": epoch_loss / n_batches,
             "train/epoch_loss_main": epoch_loss_main / n_batches,
             "train/epoch_loss_anti_collapse": epoch_loss_ac / n_batches,
+            "train/epoch_loss_calibration": epoch_loss_calib / n_batches,
             "val/recall_at_15": val_recall,
+            # MA-1 calibration 모니터 (gold_recall_at_theta = monitor default, gold_p50 = secondary).
+            "val/gold_recall_at_theta": val_gold_recall,
+            "val/gold_p50": val_gold_p50,
+            "val/monitor_metric_value": monitor_value,
             "epoch": epoch + 1,
+            **os_log,
         })
 
         logger.info(
             f"Epoch {epoch+1} | Loss: {epoch_loss/n_batches:.4f} "
             f"| Main: {epoch_loss_main/n_batches:.4f} "
             f"| AC: {epoch_loss_ac/n_batches:.4f} "
-            f"| Val Recall@15: {val_recall:.4f}"
+            f"| Calib: {epoch_loss_calib/n_batches:.4f} "
+            f"| Val R@15: {val_recall:.4f} "
+            f"| gold_recall@θ: {val_gold_recall:.4f} "
+            f"| gold_p50: {val_gold_p50:.4f} "
+            f"| [monitor={monitor_metric}={monitor_value:.4f}] "
+            f"| os/mad: {os_mean_m:.4f}"
         )
 
-        if val_recall > best_recall:
-            best_recall = val_recall
+        if monitor_value > best_monitor:
+            best_monitor = monitor_value
             ckpt_name = cfg.get("checkpoint_name", "best_gat_s06.pt")
             save_path = os.path.join(PATHS["checkpoint_dir"], ckpt_name)
             torch.save({
                 "epoch": epoch + 1,
                 "gat_state_dict": gat_model.state_dict(),
                 "classifier_state_dict": classifier_heads.state_dict(),
+                # recall = R@15 retain (보조). monitor_metric/monitor_value 로 실제 선택 기준 기록.
                 "recall": val_recall,
+                "gold_recall_at_theta": val_gold_recall,
+                "gold_p50": val_gold_p50,
+                "monitor_metric": monitor_metric,
+                "monitor_value": monitor_value,
                 "config": cfg,
             }, save_path)
-            wandb.run.summary["best_val_recall"] = best_recall
-            logger.info(f"New Best Model Saved! Recall: {best_recall:.4f}")
+            wandb.run.summary["best_monitor_value"] = best_monitor
+            wandb.run.summary["best_monitor_metric"] = monitor_metric
+            logger.info(
+                f"New Best Model Saved! {monitor_metric}={best_monitor:.4f} "
+                f"(R@15={val_recall:.4f}, gold_p50={val_gold_p50:.4f})")
 
-    logger.info(f"Training Completed. Best Recall: {best_recall:.4f}")
+    logger.info(f"Training Completed. Best {monitor_metric}={best_monitor:.4f}")
 
 
 if __name__ == "__main__":

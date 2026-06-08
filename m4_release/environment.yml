@@ -1,0 +1,28 @@
+# ============================================================
+# M4 reproducibility package — conda environment
+# 생성:  conda env create -f environment.yml
+# 활성화: conda activate m4
+# ============================================================
+# GPU(CUDA 12.x) 환경 기준. CPU-only 면 torch 를 CPU wheel 로 교체.
+name: m4
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - numpy==2.4.3
+      - torch==2.9.1
+      - torch_geometric==2.7.0
+      - scipy==1.15.3
+      - networkx==3.4.2
+      - pcst_fast==1.0.10
+      - sentence-transformers==5.1.1
+      - transformers==4.56.1
+      - openai==1.109.1
+      - sqlglot==28.10.1
+      - pyyaml==6.0.2
+      - pandas==2.3.2
+      - tqdm==4.67.1
+      - python-dotenv==1.1.1
+      - wandb==0.25.0      # GAT 재학습 시에만 필요

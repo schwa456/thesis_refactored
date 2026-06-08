@@ -201,15 +201,21 @@ def run_train(config_path: str):
     os.makedirs(PATHS["checkpoint_dir"], exist_ok=True)
     os.makedirs(PATHS["cache_dir"], exist_ok=True)
 
+    # Wave 16 (2026-05-21): encoder model_name 을 cfg 위 받기 (PLM swap 위 정합).
+    # Builder 내부 위 node text encoder 도 동일 PLM 위 정합 필수 — 미정합 시 query 1024 + node 384 = 1408 dim mismatch.
+    encoder_cfg = cfg.get('nlq_encoder', {}).get('params', {})
+    encoder_model_name = encoder_cfg.get('model_name', 'sentence-transformers/all-MiniLM-L6-v2')
+
     # 컴포넌트 초기화
     builder_type = cfg.get('builder', {}).get('type', 'HeteroGraphBuilder')
     if builder_type == 'EnrichedHeteroGraphBuilder':
         tables_json = cfg['builder'].get('tables_json_path', '')
-        builder = EnrichedHeteroGraphBuilder(tables_json_path=tables_json)
-        logger.info(f"Using EnrichedHeteroGraphBuilder (tables_json={tables_json})")
+        builder = EnrichedHeteroGraphBuilder(tables_json_path=tables_json, plm_model_name=encoder_model_name)
+        logger.info(f"Using EnrichedHeteroGraphBuilder (tables_json={tables_json}, plm={encoder_model_name})")
     else:
-        builder = HeteroGraphBuilder()
-    encoder = LocalPLMEncoder()
+        builder = HeteroGraphBuilder(plm_model_name=encoder_model_name)
+    encoder = LocalPLMEncoder(model_name=encoder_model_name)
+    logger.info(f"Encoder PLM = {encoder_model_name}")
 
     # 모델 준비 — supernode wrap 은 split 이전에 수행되어야 train/val loader 가 래핑된 데이터셋을 참조.
     query_conditioned = cfg['model'].get('query_conditioned', False)
@@ -454,14 +460,59 @@ def run_train(config_path: str):
         # 검증 (Recall@15)
         val_recall = validate(gat_model, projector, val_loader, device, k=15,
                               query_conditioned=query_conditioned)
-        
+
+        # Per-epoch Dirichlet energy + MAD (oversmoothing/energy, oversmoothing/mad)
+        os_log = {}
+        os_mean_e = 0.0
+        os_mean_m = 0.0
+        try:
+            from utils.oversmoothing_metrics import compute_metrics_v1_gat, metrics_to_wandb_log
+            gat_model.eval()
+            with torch.no_grad():
+                sample_batch = next(iter(val_loader)).to(device)
+                q_emb_s = sample_batch.get('query', None) if hasattr(sample_batch, 'get') else None
+                if q_emb_s is None:
+                    try:
+                        q_emb_s = sample_batch['query']
+                    except Exception:
+                        q_emb_s = None
+                aug_x = sample_batch.x_dict
+                if query_conditioned and q_emb_s is not None:
+                    if q_emb_s.dim() == 3:
+                        q_pool = q_emb_s.mean(dim=1)
+                    elif q_emb_s.dim() == 2:
+                        q_pool = q_emb_s
+                    else:
+                        q_pool = q_emb_s.unsqueeze(0)
+                    aug_x = {}
+                    for nt, x in sample_batch.x_dict.items():
+                        nb = sample_batch[nt].batch
+                        q_per_node = q_pool[nb]
+                        aug_x[nt] = torch.cat([x, q_per_node], dim=-1)
+                os_metrics = compute_metrics_v1_gat(
+                    gat_model, aug_x, sample_batch.edge_index_dict,
+                    query_emb=None, device=str(device))
+                os_log = metrics_to_wandb_log(os_metrics)
+                os_mean_e = float(os_metrics['energy'].get('mean', 0.0) or 0.0)
+                os_mean_m = float(os_metrics['mad'].get('mean', 0.0) or 0.0)
+        except Exception as _e:
+            logger.warning(f"Oversmoothing metric capture failed: {_e}")
+
         wandb.log({
             "train/epoch_loss": epoch_loss / len(train_loader),
             "val/recall_at_15": val_recall,
-            "epoch": epoch + 1
+            "epoch": epoch + 1,
+            **os_log,
         })
 
-        logger.info(f"Epoch {epoch+1} | Loss: {epoch_loss/len(train_loader):.4f} | BCE: {epoch_bce_loss/len(train_loader):.4f} | InfoNCE: {epoch_infonce_loss/len(train_loader):.4f} | Val Recall@15: {val_recall:.4f}")
+        logger.info(
+            f"Epoch {epoch+1} | Loss: {epoch_loss/len(train_loader):.4f} "
+            f"| BCE: {epoch_bce_loss/len(train_loader):.4f} "
+            f"| InfoNCE: {epoch_infonce_loss/len(train_loader):.4f} "
+            f"| Val Recall@15: {val_recall:.4f} "
+            f"| oversmoothing/energy: {os_mean_e:.4f} "
+            f"| oversmoothing/mad: {os_mean_m:.4f}"
+        )
 
         if val_recall > best_recall:
             best_recall = val_recall
