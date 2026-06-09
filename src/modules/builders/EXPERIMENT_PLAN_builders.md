@@ -322,6 +322,52 @@ E1/E2의 precision 상한(0.81) 유지가 선결 조건. 새 builder가 기존 �
 
 ---
 
+## Spider 2.0-Lite DDL.csv ingest 어댑터 (G-S2-1, 2026-06-10)
+
+> **trigger**: DECISIONS 2026-06-09 #3 §G-S2-0 (2026-06-10 data-check 완료). Spider 2.0-Lite 547 instances 위 BIRD-trained M4 anchor zero-shot 위 cross-dataset generalization R/P/F1 (~247 cells) 측정 위 builder 적응 필요. **paper main contribution generalization** — 재학습 없음, 가장 싸고 강한 evidence.
+
+### 산출물
+
+- [spider2_builder.py](spider2_builder.py) — `Spider2GraphBuilder` (3 backend uniform 어댑터 + jsonl loader + path resolver)
+- [tests/test_spider2_builder.py](tests/test_spider2_builder.py) — 30 unit + smoke cases (3 backend full coverage)
+
+### 핵심 spec
+
+| 축 | 값 |
+|---|---|
+| base class | `HeteroGraphBuilder` (BIRD enriched 와 같은 인터페이스 retain) |
+| `extra_cache_suffix` | `_spider2` (downstream cache 분리) |
+| DDL parser | sqlglot (dialect=bigquery/snowflake/sqlite) → regex fallback |
+| top-level only | `Schema.expressions` 위 ColumnDef 만 추출 (nested STRUCT/ARRAY 안 무시) |
+| FK 추출 | sqlite/snowflake 위 `FOREIGN KEY ... REFERENCES ...` (bigquery 위 FK 없음) |
+| enterprise-scale | `max_columns` (5000) 초과 위 RuntimeError, PLM batch_size (256) 명시 |
+| metadata 신규 키 | `spider2_backend`, `spider2_db`, `spider2_inner_datasets`, `spider2_total_columns`, `spider2_parse_errors`, `spider2_table_samples_loaded` |
+| instance prefix 매핑 | `bq*` / `ga*` → bigquery, `sf*` / `sf_bq*` → snowflake, `local*` → sqlite |
+
+### 실측 정량 (5 DB sample + enterprise-scale)
+
+| db_field | backend | T | C | F | inner | diameter |
+|---|---|---|---|---|---|---|
+| E_commerce | sqlite | 11 | 70 | 0 | 1 | 2 |
+| _1000_genomes | bigquery | 3 | 114 | 0 | 1 | 2 |
+| austin (multi-inner 5) | bigquery | 10 | 117 | 0 | 5 | 2 |
+| ga4 | bigquery | 92 | **2116** | 0 | 1 | 2 |
+| FINANCE__ECONOMICS | snowflake | 50 | 441 | 0 | 1 | 2 |
+| GITHUB_REPOS_DATE | snowflake | — | 725,041 | — | — | — (SKIP) |
+
+spider2-lite.jsonl 위 instance 분포 (load_spider2_lite_jsonl() 검증): **bq 180 + sf_bq 189 + ga 25 + local 135 + sf 18 = 547 total** (DECISIONS 2026-06-10 정합).
+
+### 다음 단계 (cross-module 핸드오프)
+
+1. **root** — `Spider2GraphBuilder` 위 BIRD M4 anchor checkpoint 위 GAT inference + MSTPCSTUnion extractor 위 predicted schema 추출. 547 instance 위 enterprise-scale skip (>5000 col) 제외 ~247 valid cells.
+2. **root** — `data/Spider2/spider2-lite/spider2-lite.jsonl` 의 gold SQL (있는 256) 위 sqlglot dialect 파싱 → gold 테이블/컬럼 추출. `external_knowledge` 미사용 (zero-shot 한계).
+3. **root** — predicted vs gold 위 R/P/F1 (per backend stratification + per-DB).
+4. **analyzer** — `notebooks/analysis_results/g_s2_1_spider2_generalization_2026-06-XX.md` 작성 (BIRD-train→Spider2 degradation gap, main-contribution generalization evidence).
+
+> **localdb 불필요**: DDL.csv repo 위 모두 있어 sqlite local execution 없이 G-S2-1 R/P/F1 측정 가능 (DECISIONS 2026-06-10 §G-S2-0 feasibility 정합).
+
+---
+
 ## V6-W3 (Phase 3 hub 차수 축소, 2026-06-06) — 그래프 구조 3 variants
 
 > **trigger**: planner DECISIONS 2026-06-06 + V6 plan §1 Phase 3 (P3 backlog → 🟢 활성, GAT-necessity 인과 검증 재설계). RFP H1 (hub-accelerated over-smoothing) + H2 (hub 테이블 컬럼 collapse, hi-deg L3 MAD=0.0046) 의 유일한 직접 검증 wave. **단순 disconnect 재확인 아니라 GAT-necessity causal test** (hub 차수 축소로 GAT 가 살아나는가).
