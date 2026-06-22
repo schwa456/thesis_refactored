@@ -1,5 +1,5 @@
 import torch
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer, util
 
 from modules.registry import register
@@ -17,14 +17,24 @@ class LinkAlignSelector(BaseSelector):
     초기 검색 결과를 바탕으로 LLM이 누락된 스키마를 추론하여 질의를 재작성(Query Rewriting)한 뒤,
     2차 검색(Multi-round Semantic Enhanced Retrieval)을 수행하는 Selector입니다.
     """
-    def __init__(self, model_name: str, top_k: int, embedding_model: str, **kwargs):
+    def __init__(self, model_name: str, top_k: int, embedding_model: str,
+                 provider: Optional[str] = None,
+                 api_key: Optional[str] = None,
+                 base_url: Optional[str] = None,
+                 **kwargs):
         self.top_k = top_k
         self.model_name = model_name
         self.prompt_manager = PromptManager()
-        self.client = APIClient()
+        # backbone provider 스위치 (LLMSQLGenerator/BidirectionalFilter 패턴).
+        # provider=None 이면 기존 VLLM/OPENAI env fallback. "sonnet"/"claude"/"anthropic"
+        # 이면 api_handler Anthropic native 경로 (DECISIONS 2026-06-10 #5).
+        self.client = APIClient(provider=provider, api_key=api_key, base_url=base_url)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.embedder = SentenceTransformer(embedding_model, device=self.device)
-        logger.info(f"Initialized LinkAlignSelector (Query Rewriting Enabled, k={self.top_k})")
+        logger.info(
+            f"Initialized LinkAlignSelector (Query Rewriting Enabled, k={self.top_k}, "
+            f"model={model_name}, provider={provider or 'auto'})"
+        )
 
     def select(self, question: str, candidates: List[Any], db_id: str = None, metadata: Dict = None, **kwargs) -> Dict[str, float]:
         # 1. 메타데이터 변환 (Index -> Text)

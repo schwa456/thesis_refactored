@@ -110,6 +110,8 @@ DECISIONS.md 말미에 "Analyzer 요청 큐" 섹션으로 남기거나, 사용�
 
 ## 자주 참조하는 경로
 
+> **문서 인덱스**: [planning/README.md](ServerNotes/planning/README.md) — planning/ 전 문서 **종류별 폴더 map** (2026-06-10 정리). 구조 파악은 README 부터. 폴더: `paper/` `framework/` `scholar_agent/` `oversmoothing/` `extractor/` `filter/` `proposals/` `templates/` `advisor_inputs/`.
+
 ```
 # 루트 plan
 /home/hyeonjin/thesis_refactored/EXPERIMENT_PLAN.md

@@ -1,7 +1,7 @@
 # SteinerBackbone Stagewise 보고 (a03_15 / a03_18) — G1 / G2 대응
 
 > **용도**: 2026-04-28 지도교수 보고 패키지. `planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md` §4 G1 (SteinerBackbone 포함) + Q3 (cumulative 단계별 정의) 대응.
-> **근거 제안서**: [planning/proposals/abl_ext_steiner_backbone_report.md](../../planning/proposals/abl_ext_steiner_backbone_report.md)
+> **근거 제안서**: [planning/proposals/abl_ext_steiner_backbone_report.md](../../../planning/proposals/abl_ext_steiner_backbone_report.md)
 > **확장 이력**:
 > - 2026-04-14: Root 세션 초기 작성 (a03_15/18 final + a03_07/11 partial)
 > - **2026-04-21: Analyzer 세션 확장** — Selector top-k (score proxy + binary) 채움 / Fixed PCST 축 대조표 / Δ 분해.
@@ -204,12 +204,12 @@ Steiner 경로를 GLM era 로 재실행하면 어느 정도 갱신될지 가늠:
 
 ## 8. 관련 리포트
 
-- [notebooks/analysis_results/stagewise_qcond_ablation.md](stagewise_qcond_ablation.md) — Scoring 축 (5×3) cumulative
-- [notebooks/analysis_results/diameter_layers_sweep.md](diameter_layers_sweep.md) — Wave 3 Proposal C 분석 (H1 검증 + per-DB D_max)
-- [notebooks/analysis_results/selector_gold_score_discrimination.md](selector_gold_score_discrimination.md) — Selector 축 분별력 (DirectGAT binary 한계 진단)
-- [planning/proposals/abl_ext_steiner_backbone_report.md](../../planning/proposals/abl_ext_steiner_backbone_report.md) — 본 리포트의 제안서
-- [EXPERIMENT_HISTORY.md](../../EXPERIMENT_HISTORY.md) §6-15 — a03 direct chain 원 기록
-- [EXPERIMENT_CATALOG.md](../../EXPERIMENT_CATALOG.md) §a03 — direct per-step cluster
+- [notebooks/analysis_results/stagewise_qcond_ablation.md](../05_ablation_waves/stagewise_qcond_ablation.md) — Scoring 축 (5×3) cumulative
+- [notebooks/analysis_results/diameter_layers_sweep.md](../02_v1_v5_dsn_mitigation/diameter_layers_sweep.md) — Wave 3 Proposal C 분석 (H1 검증 + per-DB D_max)
+- [notebooks/analysis_results/selector_gold_score_discrimination.md](../02_v1_v5_dsn_mitigation/selector_gold_score_discrimination.md) — Selector 축 분별력 (DirectGAT binary 한계 진단)
+- [planning/proposals/abl_ext_steiner_backbone_report.md](../../../planning/proposals/abl_ext_steiner_backbone_report.md) — 본 리포트의 제안서
+- [EXPERIMENT_HISTORY.md](../../../EXPERIMENT_HISTORY.md) §6-15 — a03 direct chain 원 기록
+- [EXPERIMENT_CATALOG.md](../../../EXPERIMENT_CATALOG.md) §a03 — direct per-step cluster
 
 ---
 

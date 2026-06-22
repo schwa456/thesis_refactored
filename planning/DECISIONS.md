@@ -8,6 +8,558 @@
 
 ---
 
+## 2026-06-12 — 박사후연구원 면담: 헤드라인 재배치(Filter Dominance → Recall-bounded EX saturation law) + Precision 재정의(정확도축→예산축)
+
+> **trigger**: 박사후연구원 면담 피드백 (root 경유 relay). 두 축 — [1] paper 헤드라인을 'Filter Dominance' 에서 'Recall-bounded EX saturation law' 로 재배치(Filter 강등), [2] Precision 폐지 아닌 재정의(accuracy→cost/budget 축). planning/CLAUDE.md 준수: 본 entry=결정 로그·정합 평가, paper 실편집=root 에스컬레이션.
+>
+> **★ 숫자 검증 (planner, EXPERIMENT_HISTORY.md 직접 대조 — 전부 일치)**: −Filter ΔEX −0.0026(0.6004 vs 0.6030, HISTORY:74) / Spider2 OOD filter 0.0894 < bypass 0.0976(:62) / Oracle B3 perfect-SL EX 0.7190(:44) / anti-corr XiYan F1 0.7435·EX 0.4081 ↔ G-Ret R0.9527·P0.1548·F1 0.2663·EX 0.5469(:56) / knee≈ext 54 = 0.6030 의 93%(후속§3).
+
+### 결정 1 — 헤드라인 재배치 = **채택 권고** (단, 폐기 아닌 **nesting**: Filter Dominance ⊂ Recall-bounded saturation law)
+- **피드백 인과**: Filter 는 cost(추가 LLM 호출)·context window·EX 어느 쪽도 이득 없음 — EX 기여 ΔEX −0.0026(noise band) / OOD 선 0.0976→0.0894 로 오히려 **깎음**. prune-only filter 는 recall 을 잃을 수만 있어 **EX 천장을 못 올림**. ⇒ 진짜 lever = **Recall**.
+- **★ 이 재배치는 후속 2(2026-06-11 정밀화 3)의 헤드라인 승격** — "filter 가 못 고치는 단 하나 = upstream recall" 이 이미 로그됨. 박사후연구원 피드백 = 그 통찰을 1저자 기여로 끌어올리자는 것. **planner 독립 평가 = 정합·강화로 동의.**
+- **명칭 자기모순 해소가 핵심 동기**: "Filter Dominance" 는 결정 4 ★★ 에서 이미 flag — module ablation −Filter EX-불변(−0.0026)이 명칭과 **표면 충돌**(filter 빼도 EX 안 변하면 'dominance' 아님). "포화-폭 precision lever" 봉합이 필요하다는 것 자체가 명칭이 한 단계 부정확하다는 신호. **Recall-bounded saturation law** 는 봉합 없이 전 증거와 직접 정합:
+  - −Filter EX-불변 = filter 는 recall(후보폭) 안 건드리고 precision 축만 → EX 불변 ✓
+  - −Extractor TopK20 EX↓(−0.1767) = recall 깎음(폭 knee 아래) → EX↓ ✓
+  - baseline anti-corr = 광폭(고recall) G-Ret = 고EX, over-prune(저recall) XiYan = 저EX ✓
+  - Oracle perfect-SL 0.7190 = recall=1.0 의 EX 상한 ✓ / knee≈54 = saturation ✓ / OOD 0.0894 = window-binding 서 recall 보존 실패 ✓
+- **★ nesting 권고 (폐기 아님)**: 'Filter Dominance' 명칭을 버리지 말고 **법칙의 따름정리(corollary)로 강등** — `Recall-bounded EX saturation law`(법칙) ⊃ `Filter Dominance`(관찰: 포화 영역서 filter=precision lever, EX 무기여). 이유: (a) 그동안 쌓은 narrative 자산(`paper_section_filter_dominance_2026-06-10.md` 전체)을 폐기 아닌 **추상화 레벨 상승**으로 재배치 → 재조판 범위 최소화, (b) 박사후연구원도 "Filter 는 mechanism + future work(recall-preserving budget-aware filter)로 존치" 라 함. Filter Dominance = §III mechanism 절에 잔류, 헤드라인/§I·§V 결론은 saturation law.
+- **★ novelty 방어선 (단순 상관분석 아닌 '처방적' 기여 — reviewer 'EX∝width 는 obvious correlation' 공격 대비)**: (i) **포화** — knee(≈54) 너머 후보폭은 EX 에 공짜(free-to-prune), (ii) **selector 정교화 ⊥ EX** — arch/over-smoothing/calibration 무관(module ablation), (iii) **Oracle 갭 분해** — 0.6030 vs 0.7190 = 잔여 0.1160 이 schema-linking 아닌 **SQLgen 몫**으로 귀속. 세 방어선이 "상관 관찰"을 "설계 처방(밴드 [knee, window] 안에서 recall 최대화)"으로 격상. → §III/§V 에 명시.
+
+### 결정 2 — Precision 재정의 = **채택** (폐지 X, accuracy 지표 → cost/budget 지표)
+- **R/P/F1 3지표 유지 + 축 분리 서술**: **R = 정확도축**(EX 천장 결정, recall=lever) / **P = 효율·예산축**(recall 을 얼마나 싸게·context budget 내 달성). F1 = 관례상 보고하되 caveat.
+- **존치 근거 (planner 검증)**: (i) 광폭이면 R 을 P 희생으로 trivial 달성 가능(G-Ret R0.9527/P0.1548/EX0.5469) → **P 가 recall 을 비자명화**, (ii) 재정의 목적함수 `max Recall(C) s.t. w_knee ≤ |C| ≤ B` 에서 **P ≈ budget 효율 proxy**(recall 고정 시 P∝1/|C|), (iii) **P⊥EX 직교성 입증에 P/F1 필수** — XiYan F1 0.7435/EX 0.4081 ↔ G-Ret F1 0.2663/EX 0.5469(anti-corr). P 를 버리면 직교성 증거 자체가 사라짐.
+- **memory rule 정합**: 메트릭 표기는 **R/P/F1 순서·4자리 유지** ([[feedback-metric-format]]) — 순서/자리수 불변, **해석 축만 재정의**. 충돌 없음.
+
+### ★★ 정합 risk flags (root 조판 시 필수 주목)
+- **(1) F1 단조 vs F1⊥EX 의 비교축 구분** — 가장 큰 risk. 우리는 F1 단조(vLLM 0.7877→GLM 0.8370→Sonnet 0.8537)를 "LLM=lever 직접 증거"로 써왔고, 이번에 "F1 은 EX 예측력 없음(caveat)" 을 단다. **모순 아님이나 paper 에서 비교축을 분명히 분리해야** reviewer 공격 차단: F1 단조 = **동일 파이프라인·backbone 만 교체**(filter LLM 이 P↑→F1↑) = backbone 축 / F1⊥EX = **method 간 비교**(다른 파이프라인) = cross-method 축. 두 주장은 다른 축이라 양립. **혼동 시 "F1 단조를 lever 증거로 쓰면서 F1⊥EX 라니" 직격당함.**
+- **(2) 헤드라인 교체 = §I/§V/abstract/제목 재조판** — Filter Dominance narrative 정본 문서 전반(`08_paper_narratives/paper_section_filter_dominance_2026-06-10.md`, abstract, §0 marker) 의 추상화 레벨 상향. nesting 으로 범위 축소하나 §I 헤드라인·§V 결론·abstract 한 문장(thesis statement)은 saturation law 로 교체 필요.
+- **(3) Oracle 갭 분해 ✅ 완료 (analyzer 2026-06-12, `07_baselines_audits/oracle_gap_decomp_sonnet.md`)** — 방어선 iii airtight 화. 정확 identity:
+  - **anchor 실패 0.3970 = SQLgen-floor 0.2810(71%, SL-irrecoverable) + SL-attributable 갭 0.1160(29%)**. ⇒ **anchor 실패의 71% 는 완벽 SL 에도 못 고치는 SQLgen ceiling** → "더 좋은 schema linking 으로 큰 EX 가 남아있다"는 비판 **무력화** (SL-회복분 11.6%p **bounded**, framework 가 oracle ceiling 0.7190 의 **84% 이미 흡수**).
+  - **갭 0.1160 = recall-loss 0.0544(47%, ★상한) + precision-loss 0.0616(53%)**. recall-loss = missed-gold 19.9% query(EX 0.3836 vs full-recall 0.6574)의 누락분; precision-loss = full-recall query 인데도 extra-노드(P 0.795)가 SQLgen 교란.
+  - **★★ 신규 정합 risk (헤드라인 정합 — root 필수)**: precision-loss(53%) > recall-loss(47%) 가 헤드라인 `Recall-bounded` 와 **표면 긴장**. **해소 framing**: 두 lever 개념이 다른 질문 — (a) **운영 marginal lever**(현 시스템서 무엇을 바꾸면 EX 가 움직이나) = **recall** (−Filter EX-불변·−Extractor EX↓·baseline anti-corr 가 증명, 현 filter 는 EX 무이득). (b) **oracle ceiling 분해**(perfect-SL 까지 갭의 출처) = recall + precision 둘 다. **비대칭이 헤드라인을 지지**: recall-loss = **hard floor**(prune-only filter 가 복원 절대 불가 = upstream 영구 책임), precision-loss = **soft ceiling**(현 filter 가 도달 못한 perfect-precision 여지 = filter improvement future-work 의 상한, 현 filter EX 무이득과 모순 아님 — 그 0.0616 을 현 filter 가 회복 못 함). ⇒ **precision-loss 0.0616 = 박사후연구원 "filter=future work(recall-preserving budget-aware)" 존치의 정량 뒷받침**. paper 에서 "운영 lever=recall / oracle ceiling 의 절반은 미래 filter 여지" 로 분리 서술 시 긴장 해소·방어선 강화.
+  - **caveat**: recall-loss 0.0544 는 full-recall 버킷을 proxy ceiling 으로 한 **상한**(oracle per-query EX 미기록). tight 분해 원하면 root 에 `oracle_sonnet` per-query EX 재로깅 1회 요청 가능 — 단 Extended Abstract 수준엔 "11.6%p bounded + 71% SQLgen-floor" 로 **이미 충분**, 정밀 50:50 분리는 reviewer push 시 backlog.
+
+### 영향 범위 / 에스컬레이션
+- **planner (본 세션)**: 본 DECISIONS 엔트리 = 결정·근거·정합 평가 로그. EXPERIMENT_PLAN §0 marker 에 "헤드라인 재배치 제안(Recall-bounded saturation law, Filter Dominance=corollary nesting) — root paper 확정 대기" 1줄 반영(planner 갱신 가능 영역).
+- **★ root (paper 실편집 — 에스컬레이션)**: (a) 헤드라인 nesting 재조판(§I/§V/abstract = saturation law, §III = Filter Dominance corollary 잔류), (b) Precision 재정의(정확도축 R / 예산축 P, F1 caveat) §III metric 절 반영, (c) ★ 정합 risk (1) F1 단조 vs F1⊥EX 비교축 분리 서술, (d) novelty 방어선 3선(포화·selector⊥EX·Oracle 갭 분해) §III/§V 명시.
+- **analyzer ✅ 완료 (2026-06-12)**: Oracle 갭 분해 `07_baselines_audits/oracle_gap_decomp_sonnet.md` — recall-loss 0.0544(47%, 상한) / precision-loss 0.0616(53%) / SQLgen-floor 0.2810(anchor 실패의 71%). risk 3 갱신 반영. 방어선 iii airtight.
+- **실험 공백 = 0 retain** — 본 건은 framing/조판 재배치, 신규 실험 불요. (선택 backlog: oracle per-query EX 재로깅 = tight recall/precision 분리, reviewer push 시만.)
+
+---
+
+## 2026-06-11 — Sonnet paper-comparison suite 전체 완료(root) 반영 + 4 결정 (phase 전환·2×2×2 backlog·G-S2-2 limitation·experiment 축 종결)
+
+> **trigger**: root 2026-06-11 완료 보고 — Sonnet suite (anchor·6-baseline·oracle·STE·module ablation·난이도·G-S2-2) 전부 완료·등재(HISTORY/CATALOG/ID_MIGRATION Sonnet era) + 버그 3종 수정 + paper 5종 갱신. planning/CLAUDE.md(계획/결정 전용, 코드·실험·HISTORY 직접수정 금지) 준수: 본 entry = 결정 로그, 실행/등재는 root.
+
+### (A) 완료 결과 종합 (Sonnet 정본)
+- **새 anchor `m4_canonical_sonnet`**: R 0.9539 / P 0.7950 / F1 0.8537 / EX 0.6030. **배포 backbone = Sonnet 4.6 확정**, F1 단조 vLLM 0.7877→GLM 0.8370→Sonnet 0.8537 (LLM lever 직접 증거).
+- **6-baseline (Sonnet)**: G-Retriever R 0.9527/P 0.1548/F1 0.2663/EX **0.5469** · LinkAlign 0.8167/0.3081/0.4474/EX 0.4276 · XiYan-SQL 0.6906/0.8052/F1 **0.7435**/EX **0.4081**. **★ 최고 F1(XiYan)=최저 EX, 최저 F1(G-Ret)=최고 EX = anti-correlation** → schema-linking 품질(F1) ⊥ EX, EX∝후보폭. **Filter Dominance 결정적 증거** (Multi-level Disconnect baseline 형태).
+- **Oracle perfect-SL (Sonnet)**: B1 EX 0.6330 / B2 0.6584 / **B3(perfect) 0.7190** = Sonnet SQLgen EX ceiling (GLM B3 0.6239 대비 ↑). 파이프라인 0.6030 = ceiling 0.7190 의 **84%** (잔여 schema-linking headroom 0.1160 = filter/SQLgen lever, paper scope 외).
+- **STE frontier 10-cell k015~k090 (Sonnet)**: Pearson(ext_nodes,EX) 10-cell +0.9647 / 6-cell +0.9956 / **Spearman +1.0** (≈ GLM +0.9732, 고-k 포화로 Pearson 완화·**단조 유지**). **EX∝후보폭 invariance 3rd-backbone 재현 confirmed.**
+- **★ Module ablation 4셀 (Sonnet)**: −Builder EX 0.5997 / −Selector(Cosine α=1.0) 0.6089 / −Extractor(TopK20) 0.4263 / −Filter(None) 0.6004. **Builder·Selector·Filter 제거 = EX 불변(|Δ|≤0.006), Extractor만 −0.1767** = EX∝후보폭 **양방향 확증** + Builder/Selector/architecture task-무관 Sonnet 재현. (Wave15 module ablation 의 Sonnet 판 = 완료.)
+- **G-S2-2 cross-dataset (Sonnet, Spider2-lite 123 local): EX 0.0894** — **filter cross-dataset transfer 실패** (filter 가 OOD gold 를 잘못 prune → no-filter 0.0976 보다 오히려 −0.0082 악화). in-dist BiFilter precision 이득이 OOD 로 전이 안 됨.
+
+### (B) 버그 3종 (root 수정, 연속성 기록)
+- ① G-S2-2 runner filter-bypass (`final_nodes` 키 mismatch → filter 출력 폐기, no-filter EX 0.0976 하한 노출 → 수정 후 정상 filter EX 0.0894). **⇒ 0.0894 가 진짜 filtered 수치** (이 버그 수정 전후 비교가 곧 filter 가 OOD 서 악화시킨다는 증거).
+- ② registry 카테고리 `sql_generator`→`generator`. ③ XiYan/LinkAlign selector provider 패치 (Sonnet 배선).
+
+### (C) paper 5종 (root 완료) — 정본 = `planning/paper/paper_research_direction.md` §S(Sonnet 6표)+§0 headline 전환, Filter Dominance 정본 `notebooks/analysis_results/08_paper_narratives/paper_section_filter_dominance_2026-06-10.md` §V.z(STE)/§V.w(G-S2-2) placeholder 해소, 통합 정본 `paper_sonnet_results_2026-06-11.md`, abstract meta backbone=Sonnet.
+
+### 결정 1 — EXPERIMENT_PLAN phase 전환 + anchor 정합화 ✅ (planner, PLAN 갱신)
+- phase = **"Sonnet 전환 + paper main-table 완료, experiment 축 종결"**. §0 primary anchor = **`m4_canonical_sonnet` (Sonnet)**, GLM-era 표는 **ablation-base/historical** 로 retain (삭제 안 함 — internal ablation 깊이의 출처). "현재 anchor = Sonnet" 명시.
+
+### 결정 2 — 2×2×2 internal ablation Sonnet 복제 = **안 함** (invariance + module ablation 충분), backlog only
+- **근거**: (a) **module ablation(가장 중요한 internal 결과)은 이미 Sonnet 완료·재현** (Extractor만 EX 지배, 나머지 불변). (b) invariance +0.9647/+0.9956/**Spearman +1.0** = selector/PCST 축 EX-무관성 Sonnet transfer 정당화. ⇒ full 2×2×2(8-cell) Sonnet 복제 = **marginal**.
+- **결정**: 복제 안 함. **"2×2×2 Sonnet 복제" = named backlog** (reviewer 가 headline backbone 전체 matrix 명시 요구 시에만 root 위임). experiment 축 종결 정합.
+
+### 결정 3 — G-S2-2 cross-dataset 실패 = **paper §V limitation 정식 편입** (footnote 아님)
+- **근거**: 정직성 + 경계 가치. G-S2-1(over-extract P붕괴 = 문제 전이) + G-S2-2(filter 해법 비전이) = **"over-extraction 문제는 cross-dataset 전이되나, in-dist filter 해법은 dataset-specific(전이 실패)"** 의 nuanced 경계 결과. footnote 로 숨기면 cross-dataset reviewer 가 잡고 신뢰도 손실.
+- **★ careful framing (overclaim 금지)**: (a) **Spider2 자체가 intrinsically hard** (절대 EX 가 전 method 낮음 — 0.09 권역은 dataset 난이도) → "filter 가 쓸모없다"가 아니라 **"in-dist precision mechanism 이 OOD 로 전이 안 되고, filter 가 OOD gold 를 과prune (0.0976→0.0894)"**. (b) 원인 = filter LLM 의 in-distribution 친숙성 의존 (BIRD schema/dialect 튜닝 prompt 가 Spider2 bq/sf DDL 에 비적합). ⇒ §V limitation = "Filter Dominance 는 in-distribution 현상; cross-dataset 일반화는 추가 OOD adaptation 필요" (boundary 명시, finding 강화).
+
+### 결정 4 — experiment 축 종결 확인 + ★ 단 1개 narrative 정합 flag (실험 공백 0)
+- **실험 공백 = 0**: anchor·baseline·oracle·STE·module ablation·난이도·cross-dataset 전부 Sonnet 완료. mechanism in-dist(GLM triangulated)+Sonnet 재현 + cross-dataset boundary. **추가 실험 불요.** 잔여 = paper 조판(root) + 분석 리포트(analyzer 난이도 층화).
+- **★★ 단 1개 paper 정합 risk (root 주목 필요)**: **module ablation −Filter EX-불변(0.6004≈0.6030)** 이 **"Filter Dominance" 명칭과 표면상 충돌** (filter 빼도 EX 안 변하면 filter 가 EX 지배 아님). **해소 framing (planner 제안)**: **EX∝후보폭은 포화(saturating) 관계** — pre-filter 폭은 포화점 위 → filter 가 폭을 포화 위에서 prune(precision↑) 하므로 EX 무손실; extractor(TopK20)는 포화점 아래로 떨어뜨려 EX↓(−0.1767). ⇒ **"Filter Dominance" 정밀 정의 = filter 는 포화-폭 영역의 precision lever 로 width–precision tradeoff 를 깸** (baseline 은 XiYan 좁음→고P저EX vs G-Ret 넓음→저P고EX 의 tradeoff 에 갇힘; filter 가 탈출). 이러면 −Filter EX-불변이 **모순이 아니라 정합** (포화 영역). Spearman+1.0 + 고-k Pearson 완화가 정확히 포화 증거. → paper §III/§V 에서 이 정의 crisp 화 필요 (root).
+
+### 영향 범위 / 에스컬레이션
+- `EXPERIMENT_PLAN.md` — 결정 1(phase+anchor) ✅ planner 갱신, 결정 2 backlog 등재, 결정 3 G-S2-2 limitation 표기, 결정 4 experiment 축 종결 marker.
+- memory [[project-v6-chain-closure]] — Sonnet 전환 완료 + experiment 축 종결 + cross-dataset boundary.
+- **root**: (1) paper Extended Abstract 최종 조판(II~V Sonnet 정합) + **★ "Filter Dominance" 정의 crisp화(포화-폭 precision lever, −Filter EX-불변 정합화)** + G-S2-2 §V limitation careful framing. (2) 2×2×2 Sonnet 복제 = backlog(미실행).
+- **analyzer**: 난이도 층화(Sonnet M4+baseline3, `scripts/difficulty_stratified_sonnet.py`) 리포트 + (선택) −Filter EX-불변 포화 분해 (paper §III 근거).
+
+### 후속 — analyzer 난이도 층화 + 포화 분해 도착 (2026-06-11, `notebooks/analysis_results/05_ablation_waves/sonnet_difficulty_stratified_and_saturation.md`)
+- **(1)(2) 난이도 (Sonnet)**: M4 ALL 0.9539/0.7950/0.8537/EX 0.6030, **전 난이도 dominant**. **GLM Wave 14 대비 system EX 순위·R/P 시그니처 완전 일치** = 난이도 시그니처 backbone-invariant. framework 우위 ΔEX +0.19→+0.14 squeeze 하나 **dominant retain**. ★ **divergence = Sonnet moderate-trough (4 system 공통)** = 정직 caveat (Sonnet 이 moderate 난이도서 공통 trough — backbone-specific 거동).
+- **(3) 포화 (STE 10-cell)**: **knee ≈ ext 54 (93% ceiling)**, marginal 1/4 at ext~58. ⇒ **"filter = 포화-폭 precision lever" 정량 근거** — anchor 운영폭 > knee → **knee 초과분 = free-to-prune** (precision↑, EX 무손실). −Filter EX-불변(폭 포화 위 retain) + −Extractor TopK20 EX↓(폭 knee 아래로 추락) **동시 설명**. 결정 4 의 포화 framing 정량 확증.
+- **결정 — §10 + §III 둘 다 paper 편입 = YES**: §10 난이도 표 + backbone robustness(시그니처 invariant + moderate-trough caveat) / §III "filter=포화-폭 precision lever" knee≈54 정량 근거. (root 편입.)
+- **★ paper 정합 flag (root)**: **knee(ext 54) vs anchor 운영폭의 pre/post-extractor 폭 정의 일관성** 확보 — free-to-prune 주장이 airtight 하려면 "anchor 후보폭 > knee" 가 같은 폭 정의(pre-extractor candidate vs post-extractor final_nodes)로 표기돼야 함. (GLM era M4 final_nodes 54.53 vs Sonnet probe "후보폭 86" = 다른 stage 폭일 가능성 — 표기 통일 필요.)
+
+### 영향 범위 / 에스컬레이션 (후속)
+- **root**: §10 난이도 표 + §III 포화 knee 편입 + ★ 폭 정의 일관성(pre/post-extractor) 확보.
+- 실험 공백 = 0 retain (분석만 추가, 신규 실험 없음).
+
+### 후속 2 — Filter Dominance 의 upstream 목적함수 재정의 (paper §V implication, 사용자 합성 2026-06-11)
+- **사용자 합성**: Filter Dominance 가 최종 방향이면 pre-filter(selector+extractor) 의 일 = **"gold 를 담으면서 LLM context window 에 드는 subgraph 생성"**. ⇒ planner 정밀화 + 채택.
+- **정밀화 1 — 목적 = recall, not discrimination**: upstream 목적함수가 분별(precision-like)에서 **recall + 크기 제약**으로 붕괴. selector arch/over-smoothing/calibration 무관성의 근본 이유 (그들은 분별을 높였으나 precision 은 filter 가 처리).
+- **정밀화 2 — "window 안"은 상한, 하한은 포화 knee**: 목표 = 밴드 `[knee(~ext 54), context window]`. knee 아래 = EX↓(−Extractor TopK20), knee~window = free-to-prune (EX 무기여, filter 가 precision/cost 위해 깎음).
+- **★ 정밀화 3 — filter 가 못 고치는 단 하나 = upstream recall**: filter 는 prune 만(복원 불가) → **upstream 이 떨군 gold = 영구 손실 = 파이프라인 EX 하드 천장** (Oracle 0.7190 vs anchor 0.6030 갭 일부 = 놓친 ~5% gold). "selector 무관" = in-dist 서 recall 이 쉬워 변종 차이 안 보인 것; **recall 이 어려워지면 upstream 재부상**.
+- **★ 정밀화 4 — 이 재정의가 G-S2-2 limitation 을 예측**: window binding 여부가 난이도 결정. in-dist(BIRD) = window 비-binding → 쉬움 → selector 무관. cross-dataset(Spider2 거대 스키마) = window binding → "window 압축하며 gold 보존"이 병목 → filter 과prune 실패(EX 0.0894). ⇒ G-S2-2 = "recall@budget binding regime" 의 정확한 실패 사례.
+- **paper §V implication**: schema linking = **분별적 scoring 아닌 token-예산 제약 하 recall-bounded retrieval 문제**로 재정의. future direction = 예산 binding regime 의 recall-보존 retrieval. → root §V conclusion/implication 편입.
+
+---
+
+## 2026-06-10 #6 — Sonnet 4.6 probe 결과: M4 anchor EX < GLM-4.7 → STEP 2 fan-out HOLD, artifact-vs-genuine 진단 선행
+
+> **trigger**: 사용자 "M4 anchor 에서 Sonnet 4.6 이 GLM-4.7 보다 EX 성능이 안 좋아 — 왜?" (STEP 1 probe 결과). probe gate 의 feasibility 축이 깨끗하게 통과 안 됨.
+
+### ★★ 최종 반전 (analyzer 2026-06-10, `notebooks/analysis_results/09_generalization/sonnet_vs_glm_m4_probe_decomp.md`) — EX 하락 = config artifact, genuine 아님. 아래 "진단 종결(genuine)" 절은 본 반전으로 **supersede**.
+- **★ 비교 자체가 apples-to-oranges**: Sonnet probe 가 **카논 M4 config 가 아니었음** — builder=plain(카논 Enriched 아님) + α=0.0(카논 0.5 아님) → **후보폭 9 vs 카논 86**. ΔEX=−0.1967 (p=4e-10) 은 **이 후보폭 차이로 인한 config artifact**. (root 의 LLM-call audit[prefill/parser/decoding]은 통과했으나, 그 위 레이어인 **selector/builder config 불일치**를 못 잡았던 것.)
+- **★ STE matched (같은 후보폭) 에서 Sonnet ≈ GLM** — Sonnet 이 filter 에서 더 over-prune 한다던 결론 **철회**. matched 에서 Sonnet 추가 gold 제거 **0.60% (GLM 1.89%)** = Sonnet 이 오히려 **덜** 제거, 게다가 **diffuse** → recall_biased_strong **재튜닝(iii) ROI 낮음**. lever 는 LLM filter 공격성 아닌 **후보폭**.
+- **§(a) invariance 재현 확정**: Sonnet Pearson(ext_nodes, EX) = **+0.9922** ≈ GLM **+0.9732** = **동일 방향, EX∝후보폭** → **3rd-backbone LLM-invariance 재현**. refined-(i) 가 hope 이 아니라 **confirmed**.
+- **Q2(deployment 탈GLM) 함의 갱신**: matched 에서 Sonnet≈GLM → **Sonnet 은 무거운 재튜닝 없이도 배포 가능한 backbone** = GLM 의존 탈피 feasible. (iii) 재튜닝 = **다시 deferred** (불필요, ROI 낮음).
+- **analyzer 3 판단점 → planner 결정**:
+  - (1) **full STEP 2 fan-out HOLD 유지** (동의) — 단 이유 갱신: Sonnet 이 worse 라서가 아니라, **카논 config 의 clean Sonnet M4 baseline 이 아직 없어서**. 그게 선행.
+  - (2) **★ Sonnet M4 를 Enriched+α=0.5 (카논 config) 로 재실행 = PLAN 채택** — 이게 **corrected probe = 진짜 feasibility gate = deployment 검증**. 단일 clean cell, 저렴, Q2(탈GLM) 상 명백히 정당. 이 결과가 Sonnet≈GLM 확정하면 → 배포 가능 확정 + 새 Sonnet anchor + fan-out 범위 결정.
+  - (3) **§(a) invariance paper 채택 = YES** — +0.9922≈+0.9732 cross-backbone = Filter Dominance 의 3rd-backbone LLM-invariance 보조증거 (DECISIONS #5 §paper 기회 충족). refined-(i) confirmed 로 paper 반영 (root 주도, §cross-backbone invariance).
+- **순서**: clean Sonnet M4 (Enriched+α=0.5) 재실행 → Sonnet≈GLM 확정 시 deployment 가능 + fan-out 범위 결정. full fan-out 은 그때까지 HOLD.
+
+### ★ FINALIZE (root re-baseline 완료 2026-06-11) — Sonnet 카논 M4 > GLM 전 지표, 배포 viable, invariance confirmed
+- **새 Sonnet M4 anchor (카논 Enriched+α=0.5, full 1534, batch)**: **R 0.9539 / P 0.7950 / F1 0.8537** / EX 0.6030. GLM 카논 (R 0.9325 / P 0.7593 / F1 0.8370 / EX 0.5300) **전 지표 상회** (ΔF1 +0.0167, ΔEX +0.0730). parser 0%, batch $25.68.
+- **EX regression(0.3729) = config artifact (후보폭 9 vs 86) 최종 확정 supersede** — "genuine filter over-prune" 결론 완전 폐기.
+- **LLM-invariance confirmed (3rd backbone)**: STE 6-cell Pearson(ext_nodes,EX) **+0.9922 ≈ GLM +0.9732** (동일 방향, EX∝후보폭), **k050 EX 0.5287 ≈ GLM 0.5300** (matched-width 등가). → paper §III.7.5.1 편입.
+- **HISTORY/CATALOG/ID_MIGRATION `_sonnet` 등재 완료** (root).
+
+#### 결정 (1) — fan-out 범위: **scoped 권고** (사용자 confirm 대기)
+- in-dist Filter Dominance capstone 은 GLM 에서 이미 triangulated, **3rd-backbone invariance 는 anchor + STE +0.9922 로 confirmed** → **full 재baseline(~15-22 cell)은 결론에 marginal**.
+- **planner 권고 = scoped**: ① **G-S2-2 cross-dataset (Sonnet)** = 유일하게 genuinely pending + 배포 backbone 정합 (cross-dataset Filter loop 완성), ② **STE V7-W5 (Sonnet) 완성** (배포 extractor 선택 + invariance). ③ **2×2×2 selector/arch 8-cell Sonnet 복제 = headline 이 Sonnet 일 때만** (ablation coherence, 결정 2 와 coupled). ④ **Filter-core 재baseline + full 나머지 = skip** (STE invariance 로 redundant).
+- batch 저렴(~$11-26/cell)이나 결론 이미 재현 → 비용 대비 marginal. **scoped 가 cost-효율.**
+
+#### 결정 (2) — deployment backbone + paper headline: **Sonnet 전환 권고** (사용자 confirm 대기)
+- **deployment = Sonnet (명확)**: Sonnet 이 GLM 전 지표 상회 + 탈GLM(사용자 deployment necessity) → Sonnet 채택. 의문 없음.
+- **paper headline = Sonnet 권고**: Sonnet F1 0.8537 = **전 backbone 최고** (vLLM 0.7877 → GLM 0.8370 → Sonnet 0.8537) + 배포 모델. headline=Sonnet, **invariance 절에서 결론(EX∝후보폭·selector 무관) 3-backbone 불변** + **Sonnet>GLM>vLLM 단조 = LLM 이 lever 라는 Filter Dominance 직접 증거**. 절대수치 cross-backbone 직접 비교는 금지(결론 불변만).
+- **coupling**: headline=Sonnet 이면 ablation coherence 위해 결정(1)③ (2×2×2 Sonnet 복제) 권장. headline=GLM 유지면 결정(1) 순수 scoped 충분 (Sonnet 보조증거+배포만).
+
+#### 결정 (3) — EXPERIMENT_PLAN §0 Sonnet era marker 갱신 ✅ (planner, done)
+- "probe EX<GLM, 진단중" → "config artifact 확정, 카논 Sonnet>GLM 전 지표(F1 0.8537/EX 0.6030), 배포 viable, 새 anchor, invariance +0.9922 confirmed" 로 갱신 완료.
+
+#### ✅ 사용자 confirm (2026-06-11) — headline=Sonnet 확정 + fan-out = paper-comparison suite (Oracle+3 baseline+G-S2-2+STE)
+- **(2) paper headline = Sonnet 전환 확정** (배포 backbone 일치). vLLM 0.7877 → GLM 0.8370 → Sonnet 0.8537 단조 = LLM lever 직접 증거, invariance 절에서 결론 불변 + cross-backbone 수치 직접 비교 금지.
+- **(1) fan-out = paper-comparison suite (Sonnet)**: 사용자가 내 scoped/full 축을 넘어 **paper main-table 본질**로 재정의 — **Oracle + Baseline(XiYan-SQL · G-Retriever · LinkAlign) + G-S2-2 + STE 완성**. **우선순위: STE 완성이 오래 걸리면 Oracle + Baseline 우선.**
+  - **근거 (planner 정합)**: headline=Sonnet 이면 §10 6-baseline 비교 표 + Oracle upper-bound(§V.5.x.M.4/M.12) 가 **반드시 Sonnet 이어야 함** — 현재 전부 GLM(Wave 9/12) 측정이라 Sonnet-anchor vs GLM-baseline = apples-to-oranges (방금 데인 config artifact 와 동형). **headline 전환의 필수 동반 작업**.
+  - **기존 자산 (재구현 불필요)**: baseline 3종 config 존재 (`configs/baselines/baseline_{g_retriever,linkalign,xiyansql}.yaml`), GLM 측정치 = Wave 9 (G-Retriever EX 0.4283 / LinkAlign 0.3390 / XiYan-SQL 0.2405) + Wave 12 Oracle (B1 Full / B2 Gold Table / **B3 Gold Column = perfect SL upper bound R=P=F1=1.0000, EX 0.6239**). ⇒ **Sonnet 변종 = backbone 만 교체 후 재실행** (batch). Oracle EX = gold subschema → Sonnet SQLgen 의 EX ceiling.
+  - **2×2×2/Wave15 internal ablation = Sonnet 복제 안 함** (사용자 미요청). headline=Sonnet 이나 internal mechanism ablation 은 GLM 유지 + **invariance(+0.9922) 가 transfer 정당화**. ⚠ paper 정합 주의: "headline+외부 baseline/oracle = Sonnet, 내부 mechanism ablation = GLM(invariance-bridged)" 구조 — reviewer push 시 2×2×2 Sonnet 복제 = backlog.
+- **본 §결정 CLOSE.** 실행 = root (Sonnet baseline/oracle/G-S2-2/STE), paper 갱신 = root (headline + §10/§V.5.x.M Sonnet 표). (iii) 재튜닝 = 영구 deferred (Sonnet>GLM 이므로 불요).
+
+### 판단 — 절대 EX 하락은 Filter Dominance 와 모순 아님 (오히려 정합)
+- backbone 만 바꿨는데 EX 가 움직임 = **LLM 이 e2e lever 라는 Filter Dominance 명제 그대로**. 절대 EX 는 backbone 의존 (vLLM 0.7877 → GLM 0.8383, 이제 Sonnet 은 또 다른 점). **LLM-invariance 는 "결론(filter 지배, selector 무관)의 불변"이지 "절대 EX 의 불변"이 아님** — 수치 하락은 invariance 를 깨지 않음.
+- 단 **paper 보조증거로 쓰려면 결론 불변(threshold-pass 방향·selector 무관성)이 Sonnet 에서도 재현되는지**가 핵심 — 절대 EX 가 GLM 보다 낮은 것 자체는 OK.
+
+### 가설 순위 (artifact 먼저 배제 → genuine model gap)
+- **A. 프롬프트가 GLM 전용 튜닝 (최우선 의심)**: XiYan filter + SQLgen few-shot/output 포맷이 GLM-4.7 거동에 맞춰 엔지니어링됨. 같은 프롬프트를 Sonnet 에 그대로 → 열위 흔함. **모델 바꾸면 프롬프트 재튜닝이 정상 단계**.
+- **B. parser/output 포맷 artifact (기계적, 먼저 배제)**: assistant prefill→400, `output_config.format` 미적용, JSON 파싱 실패 → 빈/깨진 예측 → EX 급락. **모델 품질 아님 — 버그**. parse 실패율부터 확인.
+- **C. 디코딩 config 차이**: effort 기본 high + adaptive thinking 이 출력 형식/장황함 변경, temperature/top_p 세팅이 GLM 과 비동등. GLM 과 동일 디코딩 조건인지 확인.
+- **D. SQL dialect fluency (genuine)**: GLM-4.7 / 전임 Qwen3-Coder = code-specialized → SQLite/BIRD 방언에 강함. Sonnet 4.6 = general frontier. **EX 는 SQLgen 방언 정확도에 민감** → 코드특화 모델이 narrow text-to-SQL EX 에서 앞설 수 있음 (GLM era P +0.0724 점프도 backbone 코드특화 효과였음).
+- **E. Filter pruning 성향 차이 (genuine)**: Sonnet 이 더 보수/공격적 pruning → gold 제거(recall↓) 또는 noise 잔존(precision↓). Filter Dominance 의 핵심 변수.
+- **F. 300q subsample noise**: CI 확인 — 차이가 noise band 내인지.
+
+### 결정 — STEP 2 공격적 fan-out HOLD, 진단 선행
+- **probe gate 의 feasibility 미통과** (EX regression) → **잔여 ~15-22 cell 일괄 fan-out 보류**. genuine regression 인데 fan-out 하면 cost 낭비. **진단 순서: B(parser)+C(config) 기계적 배제 → A(프롬프트 재튜닝 필요성) → 그 다음에야 D/E(genuine model gap) 결론.**
+- artifact(B/C/A) 로 판명 → 수정 후 probe 재측정 → 통과 시 STEP 2. genuine(D/E) 로 판명 → 사용자에 보고: Sonnet 절대 EX 가 GLM 보다 낮아도 (i) Filter Dominance 결론 재현되면 paper 보조증거로 충분 + backbone 유지 선택지, (ii) 절대 성능 중시면 GLM 유지 또는 Sonnet 프롬프트 재튜닝 투자 판단.
+
+### 영향 범위 / 에스컬레이션
+- **analyzer**: probe 결과를 **stage 분해** — filter 단계 R/P (gold 제거율) vs SQLgen 단계 EX(같은 subschema 대비 SQL 품질) 중 어디서 떨어지는지 + JSON parse 실패율 + 300q CI. 산출 → notebooks/analysis_results/.
+- **root**: config/prompt **동등성 audit** — GLM 대비 (a) prefill 제거+output_config.format 적용 여부, (b) effort/thinking/temperature 세팅, (c) 프롬프트 문자열이 GLM 전용 few-shot 인지.
+- `EXPERIMENT_PLAN.md` §0 Sonnet era marker 에 "probe EX<GLM, fan-out HOLD, 진단중" 주석.
+
+### 진단 종결 (root audit 2026-06-10) — artifact 배제 확정, genuine = filter over-prune
+- **artifact 전부 배제**: (B) prefill 없음·output_format 미사용·parser 실패율 0% (300q & full 1534). (C) temperature=0 단독(top_p 無)·thinking standard·output 62.9 tok/call(reasoning bloat 無) = GLM thinking-disabled 와 동등. (A) 프롬프트 = generic recall_biased_mild (GLM 전용 few-shot 아님), 포맷 clean.
+- **★ localize**: R 0.9325(GLM) → ~0.6956(Sonnet) 대폭 하락. selector+extractor = LLM-free (동일 candidate) → **하락 지점 = FILTER 단계** = Sonnet 이 gold 를 더 보수적으로 prune. ⇒ **가설 E(filter pruning 성향) 확정**, EX 추가 하락은 D(SQL dialect) 가능, A(재튜닝 여지) 있음.
+- **Filter Dominance 정합**: 절대 EX 하락은 명제 그대로 (LLM=lever). **LLM-invariance 결론(threshold-pass 방향) Sonnet STE 에서 재현 중**: EX↑ with k (k015 0.3103 → k020 0.3631 → k025 0.3853).
+
+### 3안 비교 + planner 권고
+- **(i) Sonnet 유지 + 결론 보조증거**: 절대 EX 낮아도 EX∝candidate width·selector 무관 재현 시 3rd-backbone LLM-invariance 충분. 전제 = analyzer EX-ext_nodes +0.9732 방향 확인.
+- **(ii) GLM-4.7 유지 (headline EX 0.5300 보존)**: Sonnet 은 보조 1점, STEP 2 취소.
+- **(iii) Sonnet 프롬프트 재튜닝 (recall_biased_strong 등) 후 재-probe**: 비용+불확실, **D(dialect)는 프롬프트로 못 메울 수 있음**.
+- **★ planner 권고 = (i)+(ii) hybrid [refined-(i)]**: **GLM-4.7 을 headline/deployment 로 유지**(0.5300 손실 회피) **+ Sonnet 은 full fan-out(~15-22 cell) 취소하고 scoped invariance 증거만**(STE k-sweep 계속 + EX-ext_nodes 상관 + selector-variant 1-2 cell). 근거: paper main = Filter Dominance "결론", **Sonnet 이 GLM 을 이길 필요 없음 — 결론 재현이면 충분**. 단일 M4 probe 1점(pure-ii)보다 **재현된 mechanism(STE 단조성 + 상관)**이 훨씬 강한 3rd-backbone 증거이고, full 재baseline 대비 저렴. **(iii) 재튜닝은 deferred** — deployment 상 Sonnet 이 꼭 필요한 경우에만 (paper 목적엔 불필요, D 가 상한).
+- **gate**: refined-(i) 유효성 = analyzer 가 Sonnet 에서 **EX-ext_nodes +0.9732 방향 상관**을 확인하면 성립 (STE 단조성 이미 시사). 안 되면 fallback = pure-(ii) (Sonnet mechanism 재현 실패 → 보조증거 폐기, GLM 만).
+- **공통 확정**: **full STEP 2 fan-out 은 어느 안이든 취소** (Sonnet 이 worse backbone → 전면 재baseline 무가치). GLM headline 유지.
+- **사용자 입력 대기 (함께 고민)**: (1) 방향 = refined-(i) vs pure-(ii) vs (iii), (2) Sonnet 을 실제 deployed backbone 으로 써야 하나(배포/접근성/GLM 의존 탈피) — yes 면 (iii) 가치 재평가. 답 도착 후 본 §결정 finalize.
+
+### 사용자 답변 (2026-06-10) — deployment 필요 확정, 방향은 analyzer 후 결정
+- **Q2 = "GLM 의존을 벗어나야 함" (deployment necessity 확정)**. ⇒ **(iii) Sonnet 재튜닝 = deferred 해제, 실질 workstream 으로 승격**. GLM-headline 유지는 **interim paper 입장일 뿐**, 진짜 목표 = **non-GLM(Sonnet) backbone 을 deployable 수준으로** 끌어올리기. paper 와 무관하게 GLM(Elice API) 의존 탈피가 요구됨.
+- **재프레이밍 — refined-(i) 증거 와 (iii) 재튜닝은 배타 아님, compose**: Sonnet **filter recall 회복**(recall_biased_strong / filter prompt recall-보존)이 deployment 문제를 풀고, **그 과정에서 LLM-invariance 증거(EX∝width·selector 무관 재현)는 부산물**로 따라옴. 즉 deployment 작업 = paper 증거 작업.
+- **핵심 lever 식별**: R 0.9325→0.6956 하락은 **filter 단계 recall**(gold over-prune, 가설 E/A) — **prompt 로 완화 가능성 있는 부분**. D(SQL dialect, SQLgen 단계 EX 상한)는 별개·작은 축이고 prompt 로 못 메울 수 있음. ⇒ **재튜닝 1차 타깃 = filter recall 보존**, dialect 는 ceiling 으로 모니터.
+- **Q1 방향 = analyzer 결과 후 결정 (deferred, 사용자 명시)**. gating analysis 3축: (a) **EX-ext_nodes +0.9732 방향 상관** (invariance gate, refined-(i) 유효성), (b) **filter gold-removal 의 체계성** (특정 column type/패턴에 집중 = prompt 로 회복 가능 vs diffuse = model-intrinsic → 재튜닝 ROI 판단), (c) **dialect(D) ceiling** (같은 subschema 대비 SQLgen EX gap = filter recall 완전 회복 시 도달 가능한 EX 상한).
+- **공통 확정 유지**: full STEP 2 fan-out 은 여전히 HOLD — **Sonnet 이 deployable 해진(재튜닝으로 recall 회복) 뒤에 재baseline** 이 순서상 맞음. 지금 fan-out 은 무가치.
+- **다음**: analyzer gating analysis (3축) → 결과로 방향(refined-(i)/pure-(ii)/(iii)) finalize + (iii) 채택 시 filter prompt 재튜닝 → 재-probe → 통과 시 STEP 2.
+- **핸드오프 분담 (2026-06-10)**: 기존 stage-decomp 핸드오프 = **in-flight** (parse 실패율 + filter R/P·gold 제거 rate + SQLgen EX + CI) → **축 (c) dialect ceiling + (b) rate 커버**. 누락 = **(a) EX-ext_nodes 상관**(STE k-sweep 여러 width 필요, M4 단일 config 밖) + **(b) gold-removal 분류**(rate 아닌 체계성, 재튜닝 ROI). ⇒ **중복 재발주 금지, 동일 analyzer 세션에 addendum 2축만 추가** 발송.
+
+---
+
+## 2026-06-10 #5 — pipeline LLM backbone 전환: GLM-4.7 → Claude Sonnet 4.6 (Batch + prompt caching), re-baseline scope 정렬
+
+> **trigger**: 사용자 "LLM 을 Claude Sonnet 4.6 으로 전환하려고 해 — 작업 지시서 확인+우리 상황 반영+핸드오프 작성". 작업계획서(모델 통일 `claude-sonnet-4-6`, sync→Message Batches API, prompt caching, 2-stage selection→generation orchestration, runs/ 구조, Phases 0~7, cost ~$210 batch/$420 sync) 검토. claude-api skill 로 사실 대조.
+
+### 사실 검증 (claude-api skill 대조)
+- **모델 ID `claude-sonnet-4-6` = 정확** ($3/$15 per 1M, 1M context, 64K max output). date suffix 붙이면 안 됨 (`-20251114` 등 금지).
+- **★ 작업계획서 1건 오류 — Batch 한도**: 계획서 "배치당 최대 10,000건 제한" → **실제 Message Batches API 한도 = 100,000 requests OR 256MB / batch**. ⇒ **1,534-query 실험은 단일 배치에 여유롭게 수용** (계획서의 "분할 필요" 결론 자체는 안전 fallback 이라 무해하나, 한도 수치는 정정 필요). 50% 할인 + custom_id 매핑 + 결과 29일 보존 + 대부분 <1hr/최대 24hr.
+- **prompt caching 정확**: cache_control ephemeral, Sonnet 4.6 min cacheable prefix **2048 tokens**, prefix-match invariant, **배치 내부에서도 동작**, cache_read_input_tokens 로 검증. schema serialization(공통 prefix)·few-shot·system prompt 를 cache breakpoint 로 잡으면 1,534 q 반복분 절감.
+- **effort 기본값 = `high`** (생략 시 high). Sonnet 4.6 은 `max` effort 지원. adaptive thinking(`thinking:{type:"adaptive"}`) 지원, **budget_tokens deprecated**.
+
+### Sonnet 4.6 마이그레이션 주의 (Phase 3 parser 재검증 시 root 전달)
+- **assistant prefill → 400** (Sonnet 4.6). 기존 GLM/vLLM 코드가 응답 prefix 를 prefill 하면 깨짐 → JSON 강제는 **`output_config.format`** (구 `output_format` deprecated) 으로 전환.
+- **temperature OR top_p 둘 중 하나만** (동시 지정 400).
+- adaptive thinking 기본 — `budget_tokens` 쓰지 말 것.
+
+### 우리 re-baseline scope 와 정합 (기존 LLM-change 견적과 일치)
+- 이번 전환 = **이미 scope 잡힌 LLM-change re-baseline** (DECISIONS 2026-06-10 #4 선택강화 §LLM-invariance / 이전 견적 ~15-22 e2e cell × 1,534 q). 작업계획서의 22-실험/$210 ≈ 기존 견적과 일치.
+- **영향 받는 것 = e2e/EX cell 전부** (Filter·SQLgen 거치는 모든 실험). **영향 없는 것 = selector-stage / extractor-stage R/P/F1 (LLM 무관) + G-S2-1 schema-linking ~247 (DDL 기반, non-LLM)**.
+- **재실행 순서 (권장)**: ① **M4 anchor e2e re-baseline 먼저** (Sonnet backbone 기준점 재설정 — 모든 상대 비교의 새 anchor) → ② Filter Dominance e2e core (threshold-pass +0.9732 재현 = backbone-무관성 검증) → ③ STE V7-W5 / G-S2-2 = **새 backbone 위에서** deployment gate · cross-dataset loop 재-anchor → ④ deployment acceptance gate 임계값을 Sonnet anchor 기준으로 재산정.
+- **★ paper 기회**: vLLM(Qwen)→GLM-4.7→Sonnet 4.6 = **3번째 backbone**. Filter Dominance 가 backbone 바뀌어도 성립하면 **LLM-invariance 가 강한 보조 증거** (DECISIONS 2026-06-10 #4 §선택강화 §LLM-invariance 가 이번 전환으로 자동 충족). 단 절대 수치는 backbone 마다 다르므로 cross-backbone 은 "결론 불변" 만 주장, 수치 직접 비교 금지.
+
+### 역할 경계
+- 이건 **구현 작업** (llm_client wrapper backbone 교체, Batch API 통합, caching breakpoint, custom_id 매핑, runs/ 오케스트레이션, parser 재검증) = **root/module 영역**. planner 는 spec 검증 + scope 정렬 + 핸드오프만, 구현 안 함.
+
+### 영향 범위
+- `EXPERIMENT_PLAN.md` — LLM backbone 전환 marker (GLM-4.7 → Sonnet 4.6) + re-baseline 순서(M4 anchor first) + LLM-invariance 보조증거 승격.
+- memory [[project-v6-chain-closure]] — backbone 3차(Sonnet) 전환 + LLM-invariance.
+- **root**: 구현(작업계획서 Phases 0~7, Batch 한도 100k 정정 반영) + re-baseline 실행(M4 anchor → Filter core → STE/G-S2-2 → gate 재산정).
+
+### 에스컬레이션
+- **root**: (1) llm_client backbone 을 `claude-sonnet-4-6` 로 + Message Batches API(한도 100k) + prompt caching(2048+ prefix breakpoint) 통합, parser 를 Sonnet 4.6 제약(prefill 400→output_config.format, temp|top_p, effort=high 명시)으로 재검증. (2) M4 anchor e2e re-baseline 먼저 → Filter Dominance e2e core 재현 → STE V7-W5/G-S2-2 새 backbone 재-anchor → deployment gate 재산정. (3) HISTORY/CATALOG/ID_MIGRATION 에 backbone 전환 + `_sonnet` (또는 합의된 suffix) 표기.
+- **사용자 결정 확정 (2026-06-10)**: **(a) probe-first 채택** — STEP 1 = M4 anchor + Filter core ~5 cell × 300q subsample 로 비용/시간/가능성 확인 → **확인되면 최대한 공격적 동시 병렬로 확장** (STEP 2). 근거: Batch API 한도 100k/256MB → 잔여 ~15-22 cell 을 다중 배치로 동시 제출 가능, GLM era rate-limit 병목 해소 (Anthropic API + Batch). [[feedback-parallel-first]] (병렬 우선) 정합 — 단 STEP 1 gate (비용/ETA/cache hit) 통과가 STEP 2 fan-out 의 전제.
+
+---
+
+## 2026-06-10 #4 — paper-phase 진입: 전체 논문 잔여 작업 inventory (실험 수렴, writing 이 주 잔여)
+
+> **trigger**: 사용자 "전체 논문 시도해야 하는 게 저 정도가 전부인가?" — 실험 수렴 후 전체 잔여 작업 stock-take.
+
+- **판단**: **실험은 2개만 pending (STE V7-W5, G-S2-2)** — selector/arch 라인 영구 종료, 나머지 done. 단 **"전체 논문" = 실험+분석+writing 이고 writing 이 더 큰 잔여 chunk.**
+- **잔여 inventory**:
+  1. **실험 (✅ 거의 완료)**: STE V7-W5 (k15~30+k050, e2e cost/gate) + G-S2-2 (cross-dataset filter EX 135). 그 외 전부 done.
+  2. **분석 (2 pending)**: STE EX-cost frontier+gate / G-S2-2 filter 회복+loop 종합 (analyzer).
+  3. **★ writing (주 잔여, root)**: Filter Dominance 재조직(§V.5.x.M+§III.7, D.1 착수) + §V.z(STE)/§V.w(G-S2-2) placeholder 채움 + 전체 draft 통합(abstract/서론/II Related/III Method/IV Exp/V Conclusion) + 학위 §III + 학회 extended abstract 정합 + G-S2-1 섹션 편입.
+  4. **선택적 강화 (backlog, 필수 아님)**: LLM-invariance(2nd LLM, vLLM→GLM 선례 위 Filter Dominance backbone-무관 강화) / baseline 보강(SOTA schema-linking) / 추가 cross-dataset(Spider 1.0)·bq/sf EX / multi-seed 확대.
+- **결론**: 실험적 수렴 완료 → **paper-phase 진입**. 핵심 잔여 = writing (root 주도). 선택적 강화는 trigger 시.
+- **영향 범위**: EXPERIMENT_PLAN paper-phase marker. writing = root, 분석 = analyzer (2 pending), 선택강화 = 사용자 trigger.
+- **에스컬레이션**: root (Filter Dominance 재조직 + draft 통합, D.1 진행) / analyzer (STE+G-S2-2 도착 시) / 사용자 (선택 강화 LLM-invariance·baseline 진행 여부 결정).
+
+---
+
+## 2026-06-10 #3 — planning/ 문서 종류별 폴더 정리 + README 인덱스 (housekeeping)
+
+> **trigger**: 사용자 "planning 문서 너무 많아 한눈에 안 잡힘 — 종류별 폴더로 나눠줘". planning/ 루트 loose ~18 .md 정리.
+
+- **결정**: 루트 loose 파일을 **종류별 폴더**로 이동 + **planning/README.md 인덱스** 생성. 단 **EXPERIMENT_HISTORY/CATALOG/ID_MIGRATION (planner 수정 금지) 참조 파일 6개는 루트 유지** (옮기면 못 고치는 링크 breakage 회피).
+- **신규 폴더**: `paper/` · `framework/` (m4 분석·architecture·mechanism·metric·capacity) · `scholar_agent/` (cross-cutting cover note). 기존 oversmoothing/·extractor/·filter/·proposals/·templates/·advisor_inputs/ retain.
+- **이동 완료 (12개, planner-editable ref 만)**: paper/(Full Paper Structure, paper_outline) + framework/(m4_anchor_framework_analysis, m4_architecture_diagram, m4_cv3a_serialization, framework_snapshot, mechanism_final_concept_summary, analyzing_index_for_capacity) + scholar_agent/(chain_closure/chain_final/wave6_7/wave8 cover notes). **DECISIONS/EXPERIMENT_PLAN/planning-CLAUDE 링크 전부 갱신 검증 (깨진 링크 0)**.
+- **루트 유지 (6개, HISTORY/CATALOG-linked)**: paper_research_direction · presentation_brief · metric_spec · improving_exp_plan_by_scholar_agent · improving_m4_plan_scholar_agent · filter_improvement_wave10. anchor(CLAUDE/DECISIONS/README)도 루트 고정.
+- **에스컬레이션 (root) ✅ 종결 (2026-06-10)**: root 가 잔여 6개 폴더 이동 (paper_research_direction·presentation_brief→paper/, metric_spec→framework/, improving_exp_plan·improving_m4_plan→scholar_agent/, filter_improvement_wave10→filter/) + EXPERIMENT_HISTORY 내 경로 링크 4곳(metric_spec ×3 framework/, improving_exp_plan ×1 scholar_agent/) 갱신 완료, **깨진 링크 0 검증**. planner 검증: planning/ 루트 = anchor 3개(CLAUDE/DECISIONS/README)만, 6개 새 위치 전수 확인. README §5 '이동 완료' 갱신. ⚠ **별개 잔여 (본 정리 무관, root 영역)**: EXPERIMENT_HISTORY 2곳이 `planning/templates/vivid-sprouting-sunbeam.md` (plan-mode 슬러그, 미존재 — Filter agentic F1~F5 plan) 참조 — 무대상, root 가 미산출 표기/제거 필요.
+
+### 후속 — DECISIONS analysis_results 깨진 flat 링크 정리 (2026-06-10)
+- **맥락**: analyzer/root 가 analysis_results 를 번호 카테고리 subfolder 로 마이그레이션 (`notebooks/analysis_results/_PATH_MIGRATION.md`, root 가 DECISIONS 321 refs 일괄치환). **migration map 이 못 잡은 잔여 19 broken flat 링크** (placeholder 날짜 `_2026-XX-XX` + superseded 이름 + 무대상) 를 planner 가 정리.
+- **RE-POINT 15** (실대상 존재 → foldered 경로): dsn_mitigation_v5_4dir→02_.../dsn_mitigation_v5_17trial · direction_b_hn_supcon_results→07_.../direction_b_hn_supcon_sweep · glm_baseline_sql_eval_3cell→07_.../glm_baseline_3cell (이름 추정 매칭) · evaluator_alias_fix/measurement_framework_audit→07_ · phase1_sensitivity/phase3_shapley/phase4_1_alpha_sweep/wave16_encoder_distribution/wave8_comb_a→05_ · phase4_2_conditional_filter→04_filter · selector_monitor_inference_alignment/v6_intra_table_collapse_origin/v6_phase0_diagnostics/v6_phase1_dropin_ablation→01_ (placeholder XX → real 날짜).
+- **MARK 4 (5 refs)** (실대상 없음 = 미산출 placeholder, broken path 제거 + "(미산출 placeholder, 2026-06-10 정리)" 표기): anchor_sql_f1_partial_fail_diagnosis · phase2_pareto_frontier · wave11_schema_serialization(2 refs) · wave6_wave8_per_difficulty_rpf1.
+- **검증**: DECISIONS 내 깨진 analysis_results md 링크 0 (전수 [ -f ] 확인). EXPERIMENT_HISTORY 잔여 broken 5종은 root 처리 (planner 수정 금지).
+
+---
+
+## 2026-06-10 #2 — D.1/D.2/D.3 결정: paper 섹션 재조직 NOW + deployment gate 재확인 + experiment 라인 종료(STE+G-S2-2 후)
+
+> **trigger**: root 통합 핸드오프 (2026-06-10) — A(V6-W6/multi-seed/G-S2-1 완료+등재) + B(paper outline 착수 완료 `paper_outline_filter_dominance_2026-06-10.md`) + C(STE V7-W5 GLM-slow 진행, G-S2-2 STE 후 대기) + D(3 결정점). planning/CLAUDE.md 준수.
+
+### 결정 D.1 — paper 섹션 실제 재조직 = **지금 착수** (완료 evidence, STE 병렬 안전)
+- **근거**: main thesis(Filter Dominance) + 기둥 A(in-dist capstone) + B(cross-dataset G-S2-1) + 보조 robustness = **전부 완료** (paper 의 bulk). STE(§V.z efficiency) + G-S2-2(§V.w cross-dataset filter loop) 는 **placeholder = 보조/confirmatory** — 재조직 main 구조에 무영향. 재조직 = **non-GLM writing → STE 와 자원 경쟁 없음**, STE 는 GLM-slow(~4 q/min, 수일 가능) → 대기 시간 생산적 활용.
+- **결정**: **지금 §V.5.x.M + §III.7 의 완료 sub-section(disconnect/role-separation/single-shared-source/threshold-pass/14-trial null/V6 chain/G-S2-1)을 Filter Dominance umbrella 로 실제 재조직** (root). §V.z(STE)·§V.w(G-S2-2) placeholder retain → 결과 시 채움. revisable 라 재작업 risk 낮음.
+
+### 결정 D.2 — deployment acceptance gate 재확인 (기존 유지 + EX-ext_nodes +0.9732 sharpening)
+- **gate 유지** (DECISIONS 2026-06-09 #2): clean deploy = ∃k **EX ≥ 0.5250 (0.5300−0.005) ∧ Filter input ≤ ~70% M4 (≥30% 축소)** / tradeoff = input ≥40~50% 축소 ∧ EX 0.510~0.525 / fail = (input ≥30% ∧ EX ≥0.510) 미충족.
+- **임계값 근거 (input 축소폭)**: 30% = 의미있는 filter token cost 절감 하한 (그 이하 marginal, extractor 교체 복잡도 대비 안 맞음). 40~50% = 큰 절감이라 소폭 EX 손실 허용 판단 가능.
+- **★ +0.9732 sharpening (핵심)**: EX-ext_nodes Pearson **+0.9732** = EX ≈ candidate width → **width 줄이면 EX 도 비례 하락 경향**. 따라서 **clean deploy 는 STE 가 이 width-EX 상관을 깨야 성립** — top-K terminal + Steiner bridge 의 "중요 노드 선별 유지"로 **줄인 width 에서도 EX 유지**해야 함. STE 가 단순 width 절단처럼 +0.9732 line 을 따라가면 → iso-EX 실패 → tradeoff/fail. ⇒ **gate 는 STE 가 width-EX 상관을 이기는지 테스트** (Filter Dominance 상 Filter 가 흡수할 최소 width 확보 + 그 안에서 gold 보존).
+
+### 결정 D.3 — experiment 라인 = **STE V7-W5 + G-S2-2 완료 후 종료** (Filter Dominance evidence 충분)
+- **evidence 충분 판단**: Filter Dominance 가 **triangulated** — in-dist capstone (14-trial null + V6 W0~W6 + Multi-level Disconnect + threshold-pass +0.9732 + arch≈noise ~31× + multi-seed robustness) + cross-dataset (G-S2-1 P붕괴 + G-S2-2 pending Filter 회복 = 인과 loop). 압도적.
+- **추가 selector-side wave = 0 marginal** (genuine positive=0, arch≈noise, 3rd reconfirm) → **종료**.
+- **마지막 confirmatory 2개 (STE V7-W5 efficiency + G-S2-2 cross-dataset filter loop) 완료 후 experiment 라인 CLOSE.** 이후 = paper consolidation.
+- **backlog (명시 trigger 시만, paper scope 외)**: (a) **filter/SQLgen-side 개선** = 유일 성능 lever 이나 별도 연구 단위 (본 paper = Filter Dominance "finding", 개선 아님), (b) bq/sf EX (credential 고비용), (c) type-aware STE. — 추가 dataset generalization(Spider2 외) = marginal, backlog.
+
+### ★ V7-W5 sweep 보강 — k050 추가 (2026-06-10, 사용자 catch)
+- **현 STE V7-W5 sweep = k{15,20,25,30}** (aggressive 끝단, 노드 ~12.5~23, extractor recall 0.81~0.91) — **k050 누락**.
+- **k050 (35.33 노드, −35% vs M4 54.53, extractor recall 0.9577)** = "성능 유지" sweet spot, M4 recall 0.99 에 최근접 + 35% 절감. **EX-ext_nodes +0.9732 상 recall 높은 점이 EX 유지 확률 최고 → k050 이 deployment gate(EX≥0.525 ∧ input≥30%↓) 통과 가능성 최고 점.**
+- **risk (k050 누락 시)**: k15~30 전부 EX 미달 시 "STE EX 유지 실패" **false-negative** 가능 — k050(보수적 점)은 통과했을 수 있음. gate 의 결정적 점 빠짐.
+- **결정: V7-W5 에 k050 추가 (우선) + k040 선택** (~29 노드, −47%, recall ~0.94, frontier 해상도). 현 sweep 후 queue 추가 (GLM-slow 이나 deployment 필수 점). root 실행.
+
+### 영향 범위
+- **paper (root 주도)** — §V.5.x.M + §III.7 Filter Dominance 재조직 NOW (D.1) + §V.z/§V.w placeholder.
+- `EXPERIMENT_PLAN.md` — experiment 라인 종료 marker (STE+G-S2-2 후, **V7-W5 = k{15,20,25,30}+k050(+k040)**) + backlog 명시.
+- memory [[project-v6-chain-closure]] — experiment 라인 종료 + paper consolidation 단계.
+
+### 에스컬레이션
+- **root**: (1) **§V.5.x.M + §III.7 Filter Dominance 재조직 착수** (D.1, NOW, non-GLM). (2) STE V7-W5 완료 → D.2 gate 판정 (+0.9732 sharpening 정합) → §V.z. (3) G-S2-2 launch (STE 후) → §V.w. (4) experiment 라인 종료 marker (STE+G-S2-2 후).
+- **analyzer**: STE efficiency@EX + G-S2-2 cross-dataset filter loop 집계 (도착 시).
+- **추가 selector/arch wave 핸드오프 없음** (종료 확정).
+
+---
+
+## 2026-06-10 — selector/architecture 축 영구 종료 + Filter Dominance ironclad capstone + paper main contribution 구성 + G-S2 scope
+
+> **trigger**: root+analyzer 완료 결과 종합 (2026-06-09~10) — V6-W6/MA-2 e2e 6 cells + multi-seed robustness + extractor frontier + G-S2-1 cross-dataset. planning/CLAUDE.md (계획/결정 전용) 준수: 본 entry = 결정 로그, 실행/분석은 root/analyzer.
+
+### 완료 evidence 종합 (Filter Dominance 로 수렴)
+1. **V6-W6/MA-2 e2e 6 cells**: 전 cell threshold-pass — **EX-ext_nodes Pearson +0.9732** (e2e EX ≈ candidate width). best-separation cell = lowest EX (역상관). 6 variant 모두 M4 anchor 0.5300 미달 (최고 ma2_b 0.5130). **genuine selector positive = 0**. architecture marginal ≈ noise (**monitor main effect +0.0878 vs arch +0.0028 = ~31× monitor 지배**).
+2. **Multi-seed robustness (4 cell × 2-seed, R@15/ROC monitor + enriched)**: w2_sum R@15 0.6057±0.0120 / ROC 0.7029±0.0046 (winner, high-ROC = STE-topk rank lever). seed-robust (std ≤0.012/0.009). gold_p50 noisy → R@15/ROC 사용.
+3. **Extractor frontier**: STE-topk(rank) > MSTPCSTUnion(threshold) 전 budget (+0.07~0.19 iso-recall). MA-2 calibration dead → STE-topk + rank monitor.
+4. **G-S2-1 cross-dataset (zero-shot, Filter 없음)**: table F1 0.3927 vs BIRD M4 0.8383 (ΔF1 −0.4456), **precision 붕괴 주도 (ΔP −0.466, over-extract 4.3×)**, recall 0.70 부분 generalize. **Filter Dominance cross-dataset 성립** (Filter 부재 = P 붕괴).
+
+### 결정 1 — selector/architecture 축 영구 종료 + Filter Dominance ironclad capstone ✅
+- V6 chain 영구 closure **3차 재확인** (V6-W5 self-loop → V6-W6 directed-SN/MA-2). **추가 selector/architecture/calibration 실험 종료** — genuine positive=0, arch≈noise(~31× monitor 지배). **잔여 escalation 없음** (selector/arch 축).
+- **Filter Dominance ironclad capstone 확정**: e2e = **over-extract 폭 × Filter 흡수력** (selector 분별력 아님), in-dist(+0.9732) + cross-dataset(G-S2-1 P 붕괴) triangulated.
+- 라이브 실험은 **extractor(STE V7-W5) + filter cross-dataset(G-S2-2)** 만 — 둘 다 confirmatory, selector/arch 아님.
+
+### 결정 2 — paper main contribution = Filter Dominance (구성 제안, root 작성)
+- **Main thesis = Filter Dominance**: Graph-RAG schema-linking → LLM-filter → SQLgen 에서 **LLM filter 가 e2e 지배**; upstream selector 표현 품질(over-smoothing/architecture/calibration) 은 task-무관 — e2e = over-extract 폭 × filter 흡수, **in-dist + cross-dataset 양쪽 성립**.
+- **evidence map (제안)**:
+  - **§ in-dist capstone**: V1~V5 14-trial null + V6 over-smoothing chain(fixable but irrelevant) + Multi-level Disconnect + threshold-pass mechanism(EX-ext_nodes +0.9732) + architecture≈noise(~31× monitor). 기계적 깊이: single-shared-source collapse → 역할 분리(GAT=table/cosine=column) → disconnect.
+  - **§ cross-dataset (G-S2)**: zero-shot Spider2 Filter 부재 → P 붕괴(ΔP−0.466, over-extract 4.3×); G-S2-2(pending) Filter 가 P 회복 → cross-dataset Filter Dominance loop 완성.
+  - **§ supporting**: STE-topk frontier (extractor 가 over-extract 폭=e2e governor 를 제어, efficiency/controllability; V7-W5 efficiency@EX pending) + multi-seed robustness bar (findings seed-robust).
+  - **§ conclusion/implication**: 성능 lever 는 selector/extractor 아닌 **filter/SQLgen**; selector 품질 = necessary floor 이지 performance driver 아님.
+- paper 작성은 root 주도 (root CLAUDE.md). 본 구성은 planner 제안 → root 반영.
+
+### 결정 3 — STE(V7-W5)/G-S2-2 대기 중 planner 준비 작업
+- 실질 실험은 **소진 단계** (selector/arch 종료, STE+G-S2-2 만 라이브). planner 다음 작업 = **paper consolidation 준비**:
+  - (a) **paper outline + evidence-map 제안** (결정 2) → root.
+  - (b) **G-S2 scope 결정** (결정 4).
+  - (c) STE V7-W5 + G-S2-2 결과 도착 후 → STE deployment 판정(기존 acceptance gate) + cross-dataset loop 완성 반영.
+- **신규 selector/arch 실험 없음** (종료). performance 추가 lever = filter/SQLgen (별도 연구 단위, 본 paper scope 외 — 명시 trigger 시).
+
+### 결정 4 — G-S2 scope = G-S2-1(done) + G-S2-2(pending) 로 충분, bq/sf EX backlog
+- cross-dataset Filter Dominance loop = G-S2-1(R/P/F1 ~247, P 붕괴) + G-S2-2(local EX 135, Filter 회복 confirm) 로 **완결**. bq/sf **R/P/F1 은 이미 G-S2-1 에 포함**(DDL 기반 ~247).
+- **bq/sf EX 확장 = backlog** (BigQuery/Snowflake credential + execution harness 고비용, marginal 추가 evidence). 명시 trigger 시만. ⇒ **G-S2 는 G-S2-1+G-S2-2 로 paper scope 확정.**
+
+### 영향 범위
+- `EXPERIMENT_PLAN.md` — selector/arch 종료 + Filter Dominance capstone + paper 구성 + G-S2 scope.
+- memory [[project-v6-chain-closure]] — selector/arch 축 영구 종료 + Filter Dominance ironclad (3차) + paper main 구성.
+- **paper (root 주도)** — Filter Dominance main + evidence map (결정 2).
+
+### 에스컬레이션
+- **root**: (1) **paper outline 착수** (결정 2 evidence-map 기반 Filter Dominance main) — planner 제안 반영. (2) STE V7-W5 완료 → deployment acceptance gate 판정 (기존 DECISIONS 2026-06-09 #2). (3) G-S2-2 launch (STE 후) → cross-dataset Filter 회복 confirm. (4) HISTORY 등재 진행분.
+- **analyzer**: (1) STE V7-W5 결과 → efficiency@EX (input↓ vs M4 0.5300) 집계. (2) G-S2-2 결과 → cross-dataset Filter 회복(P 붕괴→회복) 집계 + G-S2-1 과 loop 종합 → `spider2_lite_generalization_2026-06-XX.md`.
+- **추가 selector/arch 실험 핸드오프 없음** (종료).
+
+---
+
+## 2026-06-09 #3 — Spider 2.0 cross-dataset generalization 신규 방향 (candidate 활성, data-check 선행)
+
+> **trigger**: 사용자 "Spider 2.0 generalization 해 봐야 — test set 만으로 가능하려나?" → "그렇게 진행하자" (data-check 부터). cross-dataset zero-shot generalization (BIRD-trained → Spider 2.0).
+
+- **결정**: Spider 2.0 generalization 을 **신규 방향 (G-S2) candidate 활성**, **data-availability 점검을 선행 게이트**로. phased plan.
+- **feasibility 판단 (test-set-only)**:
+  - **inference = zero-shot 가능** — BIRD-train GAT + pretrained PLM + algorithmic extractor + in-context LLM → **Spider 2.0 재학습 불필요** (= generalization 테스트 본질). builder 가 Spider 2.0 스키마로 그래프 구성 + GAT inference (gold 불필요).
+  - **evaluation = test set 종류 종속**: (a) **schema-linking R/P/F1 (main contribution)** = **gold SQL/schema 있는 split 필요** (held-out test gold 비공개면 불가 → dev split). (b) **EX** = **Spider 2.0 DB 실행 환경 필요** (BigQuery/Snowflake credential + execution harness) — "test set" 만으로 안 됨, 별도 infra.
+  - **엔지니어링**: Spider 2.0 enterprise-scale 스키마 (수백~수천 컬럼 + 외부지식 + multi-step) → BIRD-scale builder/GAT 의 **scale 핸들링 + builder schema-format 적응 필요** (module:builders). 큰 degradation 예상 (분포 차이).
+- **phased plan**:
+  - **G-S2-0 (선행, data-check)**: 보유 Spider 2.0 데이터 인벤토리 — 프로젝트/NAS 존재 여부, split(dev/test/lite/snow), **gold SQL 포함 여부**, **DB 실행 환경(SQLite/BigQuery/Snowflake) 가능 여부**, 쿼리 수. 없으면 acquisition 필요. → 이게 G-S2-1/2 가능 범위 결정.
+  - **G-S2-1 (우선·저비용)**: gold 있는 split 으로 **schema-linking R/P/F1 zero-shot** (main contribution 의 cross-dataset 일반화). EX 실행 infra 불필요. + module:builders Spider 2.0 schema 적응 선행.
+  - **G-S2-2 (별도·고비용)**: **EX** — DB 실행 환경 필요. Spider 2.0-lite(단일 SQL) 또는 실행 가능 subset, 또는 **Spider 1.0 dev (SQLite, gold 공개, 로컬 실행, 스키마 작음) = easier generalization stepping stone** 먼저 검토.
+- **영향 범위**: EXPERIMENT_PLAN 신규 G-S2 entry. module:builders (Spider 2.0 schema 적응) 선행 의존. 현 V6/V7/MA work 와 독립 (별도 축, cross-dataset).
+- **에스컬레이션**: **root (G-S2-0 data-check)** — Spider 2.0 데이터 인벤토리 보고. 결과 후 planner 가 G-S2-1 범위 확정 + module:builders 적응 spec.
+- **★ status (2026-06-09)**: Spider 2.0 **아직 미다운로드 — 사용자 acquisition 진행 중**. **G-S2-0 root 핸드오프 = download 완료 후 발동** (현재 대기). 그 전엔 candidate 기록만 retain.
+
+#### ★ G-S2-0 data-check 완료 (2026-06-10, planner 읽기 수행) — Spider 2.0-Lite SQLite localdb
+- 사용자 Spider 2.0-**Lite** SQLite localdb 다운로드 (`data/Spider2/spider2-lite/resource/databases/spider2-localdb/`, 30 `.sqlite` + local-map.jsonl). planner README+데이터 직접 inventory.
+- **측정 가능 범위 (★★ 2026-06-10 최종 정정 — 두 지표 모두 과소평가했었음)**: spider2-lite 547 / **gold SQL 256** (bq134+sf84+local24+ga14) / **gold exec_result 547 instance 전부** / **DDL.csv schema 전 backend 보유** (`resource/databases/{bigquery,snowflake,sqlite}/<db>/DDL.csv`, repo committed) / SQLite 로컬 실행 가능 135.
+  - **schema-linking R/P/F1** = DDL(schema)+gold SQL 만 필요 (실행 불필요) → **~247 (최대 256, 전 backend) 매칭** (256 중 247 DDL 매칭, 9 minor 미매칭).
+  - **EX** = 실행 필요 → **local SQLite 135** (bq/sf EX 는 BigQuery/Snowflake credential 필요, deferred).
+  - ❌ 정정 이력: "24" 는 local SQLite ∩ gold SQL 교집합만 본 오류 (2회). EX=**135**(exec_result 기반), R/P/F1=**~247**(DDL 기반).
+- **feasibility (최종)**: **R/P/F1 generalization = ~247** (전 backend, DDL+gold SQL, **non-GLM + localdb 불필요** — DDL.csv repo 에 있음, **가장 싸고 강한 main-contribution generalization, n 충분**) / **EX = 135** (local SQLite 실행, headline e2e). 재학습 없음.
+- **caveat**: (1) **builder 적응 = DDL.csv 파서**(CREATE TABLE→테이블/컬럼/타입; FK 는 sqlite/sf 일부만, bq 는 FK 없음 — column-table edge 위주). uniform 포맷이라 1 adapter 로 전 backend. (2) **★ enterprise-scale (bq/sf 수백~수천 컬럼) graph build scale 핸들링** = 핵심 리스크. (3) gold SQL **sqlglot dialect 파싱**(bigquery/snowflake/sqlite) — 복잡 SQL 일부 parse 실패 가능(partial). (4) external_knowledge 미사용(zero-shot 한계). (5) BIRD-train→Spider2 큰 degradation 예상(generalization gap 측정 목적).
+- **G-S2-1 spec (schema-linking R/P/F1, non-GLM, ~247)**: module:builders **DDL.csv ingest 어댑터** (전 backend uniform) → root GAT(BIRD-trained M4 anchor) inference + extractor(MSTPCSTUnion) → predicted schema vs **gold SQL sqlglot 파싱 추출 gold 테이블/컬럼** → R/P/F1 (~247). **localdb 불필요** (DDL repo). main-contribution generalization.
+- **G-S2-2 spec (EX, GLM, 135)**: full pipeline → predicted SQL → `evaluate.py --mode sql` 로컬 SQLite 실행 vs gold exec_result → **EX (135 local SQLite)**. GLM. bq/sf EX 는 credential 별도(deferred).
+- **역할**: planner = data-check(완료)+spec. **실행 = root (+ module:builders schema 적응 선행)**.
+- **추가 분석**: G-S2-0 결과 (gold/실행 가능 split) → G-S2-1 (R/P/F1 zero-shot) vs G-S2-2 (EX infra) 가능 범위.
+
+---
+
+## 2026-06-09 #2 — 전략 분기 해소: extractor=STE-topk 채택 + MA-2 취소 확정 + v6w6_a threshold-pass 확정 + disconnect 구조적 해법
+
+> **근거**: analyzer `v6w6_extractor_frontier_decomp_2026-06-09.md` (3-task: frontier / v6w6_a 분해 / dsn comparability). DECISIONS 2026-06-08 §전략 분기 + 2026-06-09 판단 1/4 해소.
+
+- **frontier 결과**: **STE-topk 가 MSTPCSTUnion-θ 를 전 cell·budget 압도** (iso-node recall **+0.07~+0.19**). STE-topk 는 **rank-driven** — **M4 anchor (ROC 0.6963 최고) 가 winner**, MA-2 calibration(ma2_a_p50) advantage 無 (w2_sum 동급, M4 아래). MA-2 calibration 은 **MST 를 팽창** (ma2_a_p50 47.7 노드 vs w2_sum 30.9 — nongold 도 elevate).
+
+### 결정 1 — MA-2 취소 확정 (triply dead)
+- DECISIONS 2026-06-08 decision rule "STE-topk 우위 → MA-2 취소" 발동. MA-2 가 (1) **STE-topk rank lever 에 무용** (calibration advantage 無), (2) **MSTPCSTUnion 에 해로움** (MST 47.7 노드 팽창), (3) **genuine separation 이 e2e EX 못 이김** (ma2_a_p50 gap 0.74/EX 0.3501 < v6w6_a threshold-pass gap 0.11/EX 0.4407). ⇒ **MA-2 weight sweep 취소 확정** (HOLD → 영구 취소).
+
+### 결정 2 — extractor = STE-topk = **decision-winner / efficiency 방향 채택** (★ 최종 framework deployment 은 미결정)
+- ⚠ **"채택" = extractor-decision sweep winner + efficiency 방향 으로 채택**이지 **최종 framework 투입(MSTPCSTUnion 대체) 결정 아님**. deployment 는 **미결정 (pending)**.
+- STE-topk frontier dominance + rank lever → **efficiency 방향 winner**. **용도 = efficiency (Filter input↓ @ recall)** — compact frontier 가 iso-recall input 최소. (주의: raw EX 는 wide threshold-pass(v6w6_a 0.4407)가 이기나 ext_nodes 81.78 = cost 최악; **raw EX best 는 여전히 M4 anchor MSTPCSTUnion 0.5300**; STE-topk 는 efficiency winner 이지 EX winner 아님.)
+- **deployment 2 게이트 (둘 다 미충족)**: (1) **e2e EX cost confirm** (queue pending) — STE-topk 가 input 줄이며 EX 유지하는가 (|ΔEX|<noise vs M4 0.5300, disconnect caveat). (2) **정확도-cost trade-off 판단** — EX 유지 시 deployment 후보, EX 하락 시 **문서화된 efficiency 대안으로 retain (deploy 안 함)**. EX gain 주장 금지.
+
+#### ★ STE deployment 판정 실험 ID = V7-W5 (EX/cost 측정 wave)
+- STE deployment 을 결정하는 e2e 실험 = **V7-W5** (2026-06-04/05 정의된 EX 측정 wave, V7-W4 취소 후 활성) — 구체 **W5b: compact STE → BidirectionalFilter → EX vs M4 anchor 0.5300**. GLM 차단 보류 → 현 queue pending "STE-topk e2e cost confirm" 이 곧 V7-W5 (cost/Filter-input 지표는 EX 측정에 추가).
+- **cells**: ste_* k-sweep (ste_k005/k010/k015/k020/k030..., V7-W3 configs) × M4 anchor selector(qcond_nl3) + BiFilter + sql_gen=true. W5a(standalone NoneFilter) + W5b(→BiFilter) + 고-R 대조군(ste_ax_thr03).
+- **⚠ 정식 config-path/HISTORY ID 미등록**: queue pending 상태 — root 가 launch 시 config(GLM-era `..._glm` 규칙) 생성 + HISTORY/CATALOG/ID_MIGRATION 정식 ID 부여. 현재는 wave ID = V7-W5, cell = ste_k-sweep×BiFilter 로 식별.
+
+#### ★ STE deployment acceptance gate (e2e cost confirm 판정 기준, 2026-06-09 사용자 질문)
+- **비교 세팅 (clean A/B)**: 동일 selector(M4 anchor=qcond_nl3) 위 extractor 만 교체 — baseline M4 selector→**MSTPCSTUnion**→BiFilter→SQLGen (EX 0.5300, Filter input ~30~50노드) vs test M4 selector→**STE(k-sweep)**→BiFilter→SQLGen.
+- **✅ Clean deploy**: ∃ k 에서 **EX ≥ 0.5250 (=0.5300−0.005, within noise) ∧ Filter input ≤ ~70% M4 (≥30% 절감)** → STE 교체 확정 (정확도 유지 + cost 절감).
+- **⚠ Tradeoff zone (user/advisor 판단)**: ∃ k 에서 **input ≥40~50% 절감 ∧ EX ∈ [0.510, 0.525] (소폭 하락)** → EX-cost frontier(EX @ input-budget) 제시 후 정책 판단.
+- **❌ Fail (deploy 안 함, efficiency 대안 문서화)**: 어떤 k 도 (input ≥30% 절감 ∧ EX ≥ 0.510) 미충족 — input 줄이면 EX −0.02 이상 하락 or EX 유지 시 input 안 줄음.
+- **★ fail 리스크**: e2e EX 가 wide candidate(threshold-pass)+Filter 회복에 종속(disconnect, v6w6_a 0.4407>compact) → STE compact 가 Filter 회복 여지 제거 시 EX 하락 가능. 게이트 핵심 = "input 줄이고도 EX 유지" (단순 input↓ 아님). k 올려 M4 recall 을 더 적은 노드로 맞추는 운영점 존재 여부가 관건.
+- **rigor**: single-seed(s11) SQLgen noise → 채택 k 는 2nd seed 1회 confirm (or noise band ±0.005~0.01 명시). EX 외 **F1(0.8383)/R(0.9357) 동반 유의 하락 없는지** + cost 지표 = Filter input 노드 수 + **LLM 토큰 수** + latency.
+
+### 결정 3 — MA-1 monitor 정정: gold_p50 → ROC/R@15 (STE-topk rank lever)
+- MA-1 의 gold_p50 monitor 는 **threshold extractor(MSTPCSTUnion) 전용**이었음. STE-topk(rank lever) 채택 → **MA-1 monitor = ROC/R@15** (rank). 즉 **원래 R@15 monitor 가 STE-topk 엔 적절** — MA calibration detour 는 threshold extractor artifact 였음.
+- **multi-seed (GPU 2, 판단 5) 조정**: 배포 관련 monitor = R@15/ROC → multi-seed 는 **R@15/ROC variance 보고 + R@15-best ckpt** 확보 (gold_p50 monitor 는 부차). cells 우선순위 = M4 anchor(STE-topk winner) + w2_sum(high-ROC) > v6w6_a(closure evidence) > ma2_a_p50(MA-2 negative evidence). (launched job 재시작 불필요 — variance 보고 metric 만 R@15/ROC 중심으로.)
+
+### 결정 4 — v6w6_a = threshold-pass 확정 (directed-SN not genuine)
+- gold/nongold gap **0.1061 최저** + pass@0.1 **80.59** / ext_nodes **81.78** 최대 + nong p50 0.7012 elevated → directed-SN broadcast 가 전 노드 inflate → wide candidate (R 0.87) → BiFilter prune → EX 0.4407. **genuine gold-separation 아님 (V6-W3 cell C 패턴 반복).** ⇒ **V6-W6 directed-SN 은 첫 V6 positive 아님.** 재-closure 선결조건 (c) [threshold-pass 분해] **충족**.
+
+### 결정 5 — V6 chain 재-closure (사실상 확정, formal marker 직전)
+- v6w6_a threshold-pass = V6-W3 cell C 패턴 반복 → **directed-SN marginal negative (genuine 아님)**. V6-W6 가 mechanism rescue 아님 확정 → **V6 chain 재-closure 사실상 확정.** 남은 confirmatory: (a) v6w6_a_p50 e2e (in-flight, p50 monitor 통제 — 단 DSN broadcast 가 monitor 무관 inflate 라 동일 threshold-pass 예상), (b) dsn_nosl (결정 6, 우선순위↓·사실상 drop). **formal re-closure marker = v6w6_a_p50 완료 후** (confirmatory). [[project-v6-chain-closure]] 갱신.
+
+### 결정 6 — dsn_nosl 재측정 = 우선순위↓ (사실상 drop)
+- 과거 dsn ckpt = Projector 포맷 + vLLM/pre-GLM era → DirectGATv2 + GLM era 와 **confounded** (arch+era+extractor 교란). self-loop marginal 측정 불가. **단 v6w6_a 가 threshold-pass 라 self-loop marginal 자체가 moot** → root targeted 재측정 우선순위 최하 (사실상 drop, 명시 trigger 시만).
+
+### ★ disconnect 구조적 해법 확정 (paper-worthy)
+- MA 조사의 constructive 결론: **disconnect (R@15 ⊥ inference recall, ρ=−0.19) 는 threshold-extractor(MSTPCSTUnion) artifact** — **STE-topk (rank extractor) 채택이 rank-학습 selector 와 정렬 → R@15/ROC ↔ inference recall 재연결 = 구조적 해법.** MA-2 calibration 은 대안 경로였으나 dead (STE-topk 가 더 단순+우위). ⇒ paper narrative: "selector 표현 품질을 selector 에서 calibration 으로 고치는 대신, extractor 를 selector 가 잘하는 것(rank)에 정렬." V6 disconnect + Filter Dominance + STE-topk resolution 통합.
+
+### 영향 범위
+- `EXPERIMENT_PLAN.md` — MA entry: STE-topk 채택 + MA-2 취소 + MA-1 monitor=ROC/R@15 + disconnect 구조적 해법 + V6-W6 threshold-pass + 재-closure.
+- **V7 plan** — STE 가 candidate → **채택 extractor** 격상 (efficiency + disconnect 해법), e2e EX confirm pending. type-aware STE candidate retain.
+- memory [[project-v6-chain-closure]] — v6w6_a threshold-pass + 재-closure 사실상 확정 + STE-topk/MA-2 결론.
+- **paper §V.5.x.M / §III.7** — disconnect 구조적 해법 (STE-topk) sub-section candidate (root).
+
+### 에스컬레이션
+- **root**: (1) **STE-topk e2e cost confirm = queue pending 유지로 충분 (우선순위 강제 안 함, 2026-06-09 사용자)** — root 가 이미 queue 에 pending 시켜뒀으면 OK, 굳이 최우선 bump 불필요. 현 e2e 복구 sweep(V6-W6/MA-2 × MSTPCSTUnion) 진행 후 자연 순번에 launch. **spec (launch 시)**: M4 selector + STE-topk(k-sweep) → BiFilter → SQLGen 위 {Filter input 노드 수 + 토큰/latency, e2e R/P/F1/EX} vs M4 anchor(EX 0.5300, ~30~50노드). 성공 = STE-topk 어떤 k 에서 Filter input ≪ M4 ∧ EX ≈ 0.5300 (|ΔEX|<noise). STE-topk compact → 토큰 적음 → GLM 예산 효율. (2) **MA-2 weight sweep 영구 취소**. (3) GPU 2 multi-seed = R@15/ROC variance + R@15-best ckpt 중심. (4) v6w6_a_p50 e2e 완료 후 **V6 formal re-closure marker** + HISTORY 등재. (5) dsn_nosl drop.
+- **paper (root)**: disconnect 구조적 해법 (STE-topk rank-정렬) narrative + STE-topk extractor 채택 후보 (e2e EX confirm 후 deployment 확정).
+
+---
+
+## 2026-06-09 — GLM 복구 + extractor decision sweep 완료: frontier 분석 위임 + MA-2 HOLD retain + baseline/재-closure 판정
+
+> **trigger**: root 상태 보고 (15:34 KST) — GLM 복구 (8.5h outage 후), e2e 복구 sweep 진행 중. 확정 e2e: **v6w6_a (DSN+SL) R/P/F1/EX = 0.8702/0.7233/0.7900/0.4407**, **ma2_a_p50 (gold margin+p50 mon) = 0.7438/0.6884/0.7150/0.3501**. extractor decision sweep 완료 (57+19 cells, non-GLM extractor-stage R/nodes). GPU 2 idle.
+
+- **e2e 보류 → 재개**: GLM 복구로 DECISIONS 2026-06-08 의 e2e 전면 보류 해제 — 복구 sweep 진행 중 (ma2_b_p50/ma2_a 진행, ma2_b/v6w6_a_p50 대기).
+
+### ★ 핵심 관찰 — v6w6_a EX 0.4407 은 threshold-pass 의심 (genuine 아닐 수 있음)
+- v6w6_a (DSN+SL) EX=0.4407 = V6-W 계열 최고 (V6-W5 SL-alone ~0.31, V6-W2 best 0.3331 대비 +0.11~0.13). 단 **R=0.8702 (V6-W5 ~0.60 대비 큰 폭)** — directed-SN broadcast 가 candidate 를 넓혀 threshold-pass↑ → BiFilter 정밀 회복 → EX↑ 의 **threshold-pass 메커니즘 의심** (V6-W3 cell C 와 동일 패턴). **genuine gold-separation vs threshold-pass 분해 전엔 directed-SN marginal 판정 불가.**
+- v6w6_a (gold_recall@θ monitor, saturated E7) vs ma2_a_p50 (p50 monitor) = **구조+monitor 둘 다 달라 confounded** — 직접 비교로 marginal/closure 판정 불가.
+
+### 판단 1 — extractor frontier 분석 = analyzer 즉시 위임 (e2e 독립) ✅
+- extractor decision sweep (57+19 cells, extractor-stage R/nodes) 완료 = STE-topk vs MSTPCSTUnion-θ iso-recall frontier 의 입력 **이미 확보** (non-GLM, e2e 무관). ⇒ **지금 즉시 analyzer 위임** (e2e 복구와 병렬). DECISIONS 2026-06-08 §전략 분기의 핵심 게이트를 빠르게 해소.
+
+### 판단 2 — weight sweep 선제 활성 = ❌ NO (frontier 게이트 retain)
+- DECISIONS 2026-06-08 §전략 분기가 MA-2 를 extractor 결정에 명시 gating. frontier 분석(판단 1)이 **빠르고(기존 데이터) 게이트 해소** → 선제 학습 불필요.
+- **STE-topk 가 favored 가설** (analyzer frontier 上向 + disconnect extractor-정렬 해소) → MA-2 likely 무의미(rank lever) → **선제 학습은 음의 기대값** (STE-topk 승 시 GPU 2 낭비). GPU 2 idle 유혹 거부 — frontier 후 조건부 launch 가 정답.
+- ⇒ **MA-2 weight sweep HOLD retain**, frontier 결과 후 (MSTPCSTUnion 승 시) launch.
+
+### 판단 3 — dsn_nosl/qcond_nosl baseline = (b) 과거값 참조 primary
+- ckpt projector 포맷 → DirectGATv2Selector 로드 불가. 둘 다 **재사용 baseline** (M4 anchor=qcond_nl3 EX=0.5300 기확립 / DSN=directed_supernode_p80 과거 측정 존재).
+- **결정: (b) 과거 baseline 값 참조** — 갓 복구한 GLM 을 baseline 재측정에 소모(option a)할 가치 낮음 (M4 anchor 값 확립됨). ⇒ EnsembleSelector α=0 재작성 e2e 불필요.
+- **예외**: 판단 4 의 directed-SN marginal 이 **dsn_nosl 을 현 조건과 comparable 하게** 요구하면 (self-loop 기여 분리), **dsn_nosl 1 cell 만 targeted (a)** 재작성 e2e (최소 GLM). analyzer 가 "과거 dsn_nosl 값이 condition-comparable 한가" 판정 후 결정.
+
+### 판단 4 — V6 chain 재-closure = ⏸ HOLD (현 부분결과로 불가)
+- directed-SN marginal 판정 불가 이유: (i) v6w6_a vs ma2_a_p50 confounded (구조+monitor), (ii) v6w6_a EX 0.4407 이 threshold-pass 의심 (R=0.87 wide), (iii) self-loop 기여 분리엔 dsn_nosl baseline 필요.
+- **재-closure 선결 조건**: (a) **v6w6_a_p50 e2e 완료** (DSN+SL, p50 monitor — monitor 통제 비교), (b) **dsn_nosl baseline 확정** (self-loop marginal), (c) **analyzer 가 v6w6_a EX 0.4407 분해** (threshold-pass/wider-candidate vs genuine gold-separation — V6-W3 cell C 식 분해: pass@0.1, ext_nodes, column net, gold separation). 세 조건 충족 후 재-closure 판정.
+- **주의**: v6w6_a 0.4407 이 흥미로워 조기 closure 는 부적절하나, threshold-pass 일 likely → 분해 우선. genuine 이면 (directed-SN 이 실제 기여) V6-W6 가 첫 V6 positive 가능성 — closure narrative 영향.
+
+### 판단 5 (추가) — GPU 2 활용 = multi-seed robustness (single-seed 완화, free-GPU + extractor-무관)
+- **맥락**: GPU 2 를 비워준 동료가 12h 학습을 끔 → 유휴 방치 부적절 (도리). "extractor 결정과 무관하게 절대 낭비 안 되는 학습" 필요.
+- **결정: multi-seed robustness 를 GPU 2 에 launch.** 근거: (1) **extractor-무관** (STE-topk/MSTPCSTUnion 어느 쪽이든 핵심 cell 시드 변동 필요 — 낭비 0), (2) **single-seed standing 결정의 spirit 과 무충돌** — 그 결정은 시간 cost 가 이유, free GPU 로 cost=0 → 미룬 이유 소멸 (free GPU 가 multi-seed 의 정확한 enabler), (3) **paper 헤드라인 robustness** (variance bar), (4) **GLM 불필요** (selector 학습+selector-only, 복구 GLM 예산 절약). MA-2 weight sweep 대신 선택 — MA-2 는 STE-topk 승 시 moot(낭비), multi-seed 는 안 낭비.
+- **spec**: cells = M4 anchor + ma2_a_p50 + v6w6_a (paper-critical 3종, 여유 시 w2_sum) × seeds {s12, s13} 추가 (s11 + 2 = 3 seed). gold_p50 monitor + dual-ckpt. 측정 = selector-side variance (R@15/separation/gold_p50, GLM 무관). e2e variance = 최종 채택 cell 만 선택적 (GLM 예산 후순위).
+- **single-seed 완화 범위 한정**: paper-critical cell 의 robustness 만 — 전 매트릭스 multi-seed 아님 (여전히 탐색은 single-seed).
+
+### 영향 범위
+- `EXPERIMENT_PLAN.md` — MA entry: extractor frontier 분석 활성 + MA-2 HOLD retain + V6-W6 e2e 부분결과(0.4407 threshold-pass 의심) + 재-closure HOLD + GPU 2 multi-seed.
+- memory [[project-v6-chain-closure]] — V6-W6 e2e 부분결과 + 재-closure HOLD (threshold-pass 분해 대기).
+- e2e gate 재개 (GLM 복구).
+
+### 에스컬레이션
+- **analyzer**: (1) extractor frontier (STE-topk vs MSTPCSTUnion-θ iso-recall) — 즉시, (2) v6w6_a EX 0.4407 threshold-pass 분해, (3) dsn_nosl 과거값 condition-comparability 판정.
+- **root**: e2e 복구 sweep 계속 (v6w6_a_p50 포함 필수 — monitor 통제 비교), dsn_nosl baseline (b)과거값 우선·(a)targeted 예외, MA-2 weight sweep HOLD (launch 금지). **GPU 2 = multi-seed robustness launch** (M4 anchor+ma2_a_p50+v6w6_a × s12/s13, gold_p50 monitor+dual-ckpt, selector 학습+selector-only, GLM 무관) — 판단 5.
+
+---
+
+## 2026-06-08 — GLM API 차단 (e2e EX 보류) + V6-W6/MA-2 selector-side 분석 wave (theta sweep + score 분포)
+
+> **trigger**: (1) 외부 제약 — GLM-4.7 API 제공 업체 모델 임시 내림 (복구 시점 미정, ~16:00 KST), e2e inference 6 cells timeout 누적 → kill. (2) 사용자 신규 분석 wave 요청 (theta sweep + GAT score 분포). planning/CLAUDE.md + DECISIONS 2026-06-07 #3/#4 정합.
+
+### 외부 제약 — e2e EX 측정 보류
+- **e2e EX 측정 불가** (BiFilter + LLMSQLGenerator GLM 의존). GLM 복구까지 **non-GLM 분석만**. e2e gate (V6-W6 Secondary EX, MA θ-sweep e2e, V7-W5) 전부 **보류** (frozen, 복구 후 재개).
+- **★ 단 핵심 efficiency 질문은 non-GLM 으로 측정 가능**: "raise-θ 가 Filter input 줄이며 recall 유지하나" = selector score + extractor-stage (MSTPCSTUnion 알고리즘, GLM 무관) 로 측정. e2e EX 유지 confirm 만 GLM 대기. ⇒ 분석 wave 는 **블록되지 않음.**
+
+### ★ 핵심 positive 발견 (selector-side, e2e 무관)
+root 1-liner — cell 별 gold/non-gold p50 gap:
+| cell | config | p50 gap |
+|---|---|---|
+| **ma2_a_p50** | QCond+SL + **gold margin loss(w=1.0)** + **gold_p50 monitor** | **0.86** ⭐ |
+| v6w6_a_p50 | DSN+SL + gold_p50 | 0.57 |
+| v6w6_a / ma2_a | (gold_recall@θ monitor, saturated) | 0.16 |
+| ma2_b_p50 | per-table norm + gold_p50 | 0.06 |
+| ma2_b | per-table norm (saturated) | 0.02 ⚠ |
+
+- **gold margin loss + gold_p50 monitor (ma2_a_p50) 가 gold/non-gold 분리를 0.16→0.86 으로 회복** — feasibility(2026-06-07)가 raise-θ 의 선결로 지목한 **clean gap 을 실제로 형성**. MA-2 (올바른 변형 = gold margin + p50 monitor) 가 작동함을 selector-side 로 입증.
+- **per-table norm (ma2_b) 은 최악 분리 (0.02~0.06)** → 접근 열세, 우선순위↓.
+- **saturation 확인**: gold_recall@θ monitor cells (v6w6_a/ma2_a) gap 0.16 — gold_p50 monitor 대비 명확히 낮음. dual-checkpoint save + gold_p50 monitor 전환 정당화.
+
+### 결정 — 신규 분석 wave (non-GLM selector-side)
+- **분석 1 (theta sweep)**: θ ∈ {0.1~0.9, 9개} × cells × {gold pass, non-gold pass, precision, recall, F1}. **★ extractor 결정 (사용자 위임)**: **MSTPCSTUnion 거친 후 (= 실제 Filter input) 가 primary** — 사용자 목표가 "Filter LLM input 노드 수 축소"라 deployment-relevant metric 은 extractor output 노드 수. **pure score threshold 는 diagnostic secondary** (score 분리 효과를 extractor connectivity 와 분리). 둘의 차이 = extractor connectivity overhead. (둘 다 GLM 무관.)
+- **분석 2 (score 분포)**: cell 별 gold/non-gold score 분포 (mean, p10~p90, max) + **분리도 (gap, ROC-AUC, Cohen's d, KL)** + 분포 시각화. root 1-liner gap 을 ROC-AUC/Cohen's d 로 보강.
+- **baselines 포함**: MA-0 11 cells (V6-W5/W3/W2 + M4 anchor) × 9 θ 포함 (extractor 알고리즘이라 비용 OK) — 신규 cells 를 기존 대비 situating.
+- **gate = NA** (e2e EX 보류) — **selector-side evidence 평가만** (separation + input↓ @ recall feasibility).
+
+### ma2_b_p50 attempt2 + disk full
+- attempt1 crashed @ E182 **disk full** → ⚠ **NAS 저장 규칙 위반 위험** (체크포인트는 `/SSL_NAS/...` 로, 로컬 포화 주의 — root 운영 flag). attempt2 재학습 중 (E~89, ETA~03:00 익일), attempt1 best (E122) 미초과 상태. per-table norm 이 분리 최약이라 **완료 대기 가능하되 우선순위 낮음** (ma2_a_p50 이 명확한 winner).
+
+### MA-2 calibration_margin_weight sweep — candidate 위치
+- ma2_a_p50 (gold margin **w=1.0**) gap 0.86 = best 단 **weight sweep 미측정**. theta sweep 이 w=1.0 위 clean 운영점(input↓ @ recall 유지) 확인하면 → sweep 은 미세최적화(선택). marginal 이면 → weight↑ sweep. **theta sweep 결과 후 판단** (gold_p50 monitor 로).
+
+### 영향 범위
+- `EXPERIMENT_PLAN.md` — V6-W6+MA-2 theta sweep wave entry (non-GLM, selector-side).
+- **paper**: §III.7.4.6.4 V6-W5 framing retain + V6-W6/MA-2 결과 후속 등재 (e2e 복구 후 통합). §V.5.x.M V6-W6/MA-2 calibration sub-section candidate (MA-2 gold margin 이 separation 0.86 회복 — selector-side positive).
+- memory [[project-v6-chain-closure]] — V6-W6 결과 + ma2_a_p50 separation discovery 추가.
+- **e2e gate 전부 보류 (GLM 복구 후 재개)**: V6-W6 Secondary, MA θ-sweep e2e, V7-W5.
+
+### 에스컬레이션
+- **analyzer** (root 경유 또는 직접): 분석 1+2 측정 (아래 핸드오프 draft). 산출 `notebooks/analysis_results/01_v6_oversmoothing_chain/v6w6_ma2_theta_sweep_score_dist_2026-06-08.md`.
+- **root**: theta sweep extractor 실행 (MSTPCSTUnion × 9 θ, 알고리즘 non-GLM) — analyzer 가 직접 못 돌리면 root 가 extractor output 생성 후 analyzer 집계. ma2_b_p50 attempt2 완료 monitor + disk/NAS 관리.
+
+### 추가 필요 분석
+- theta sweep: ma2_a_p50 위 clean 운영점 (input↓ ∧ recall 유지) 존재 여부 → MA-2 weight sweep 필요성.
+- GLM 복구 후: 보류된 e2e EX (V6-W6/MA θ-sweep/V7-W5) 재개.
+
+### ★★ 전략 분기 (2026-06-08) — extractor 선택이 MA lever 를 결정 (STE-topk vs MSTPCSTUnion)
+
+> **근거**: analyzer STE-topk vs raise-θ 비교 (`figs/ste_topk_vs_raise_theta_2026-06-08.png`). 사용자 STE 질문 후속.
+
+- **핵심 통찰**: extractor 가 점수를 **어떻게 소비**하느냐가 유효 MA lever 를 결정 —
+  - **MSTPCSTUnion (절대 threshold)** → **calibration lever** (gold p50) → MA-1 monitor=gold_p50, **MA-2 calibration 필요**.
+  - **STE-topk (rank)** → **rank lever** (ROC) → MA-1 monitor=ROC/R@15, **MA-2 calibration 무의미** (top-K 는 절대점수 무관, high-ROC cell w2_sum 우위, ma2_a_p50 아님).
+- **STE-topk 효율 frontier 우위**: 같은 노드 budget 서 recall↑ (nongold 고-tail 낭비 회피) — input↓ 목표에 raise-θ 보다 유리.
+- **★ STE-topk 가 disconnect 를 extractor-정렬로 해소**: MA 조사 촉발 disconnect (R@15 ⊥ inference recall, ρ=−0.19) 는 **threshold extractor 위 측정**. STE-topk (rank) 로 바꾸면 extractor 가 selector 학습목표(rank)와 같은 것 소비 → **R@15/ROC 가 inference 와 재연결**. ⇒ 두 일관 해법: **Path A** (selector calibration→threshold extractor, MA-2) vs **Path B** (extractor rank-based STE-topk→rank-학습 selector, MA-2 불필요 + frontier 우위 + 단순).
+- **gold 저-tail = 양쪽 공통 한계** (free lunch 없음).
+- **★ 결정**:
+  - **STE × {topk K∈[5..50], θ} 실제 실행 = 우선순위 1** (root) — ma2_a_p50 + **high-ROC baselines (w2_sum ROC 0.6784, M4)** 위, **Steiner bridge 포함 실제 Filter-input/recall** (analyzer 는 frontier sim, 실제 STE 는 bridge 로 path gold 더 복구 가능 → sim 보다 우위 가능). non-GLM.
+  - **MA-2 weight sweep = HOLD** (직전 활성화 보류) — extractor 결정이 MA-2 가치 좌우. STE-topk 승 시 MA-2 불필요 (rank lever).
+  - **MA-1 monitor = extractor-conditional**: MSTPCSTUnion→gold_p50 / STE-topk→ROC·R@15.
+  - **결정 규칙**: STE-topk(high-ROC cell) iso-recall input↓ best → **STE-topk + rank monitor 채택, MA-2 calibration sweep 취소** (disconnect extractor-정렬 해소). MSTPCSTUnion 경쟁력 retain 시 → MA-2 진행.
+  - e2e EX 는 GLM 복구 후 (efficiency 측정 목표).
+
+### ★ theta sweep 결과 + MA-2 weight sweep 활성 (2026-06-08, `v6w6_ma2_theta_sweep_score_dist_2026-06-08.md`) — ⚠ 아래 weight sweep 활성은 위 전략 분기 위 HOLD 로 전환 (STE-topk 결정 후 재개)
+
+- **MA-2 gold margin 작동 확인 (median)**: ma2_a_p50 gold p50=0.7724 / nongold p50=0.0333 / **gap=0.7391, Cohen's d=0.5481, ROC=0.6572** — 신규 cells winner, baseline w3_c (0.8367) 동급. gold margin + p50 monitor 가 median 분리 회복.
+- **MA-1 (p50 monitor) 8× 우위 직접 입증**: 동일 변형 ma2_a_p50 (p50 mon) gap 0.74 vs ma2_a (recall@θ mon) gap 0.08 → **8×**. dual-ckpt + p50 monitor 전환 정당화.
+- **per-table norm 실패 확정**: ma2_b Cohen's d **−0.3564** (gold μ < nongold μ 역전!), gap 0.0142. ma2_b_p50 gap 0.0342. **접근 폐기** (gate=NA, ma2_b 계열 우선순위 drop).
+- **★ clean 운영점 부재 (tails overlap)**: ma2_a_p50 도 **gold p25=0.030** (하위 25% gold ≈0, "hard gold") + **nongold p90=0.980** → median gap 좋아도 tails 겹침. **95% recall 유지 시 input 0% 절단** (gold 저-tail 이 θ 미세 상승에 즉시 탈락). baselines 최선 w3_c 9.5% / w2_sum 6.7% — 모두 미미. ⇒ **gold 저-tail 이 raise-θ 의 근본 제약.**
+- **★ MA-2 weight sweep 활성 결정**: w=1.0 은 median 만 올리고 gold 저-tail 못 올림 → DECISIONS "marginal 이면 weight↑" 분기 정합 → **weight↑ sweep 진행**.
+  - **spec (module:selectors, gold_p50 monitor + dual-ckpt, s11)**: ma2_a (QCond+SL+gold margin) base 위 **w∈{2.0, 4.0}** + **hard-gold 가중 변형** (저-score gold 가중 / focal-류 — margin loss 만으로 tail 부족 시). per-table norm(ma2_b) 계열 제외.
+  - **게이트 (selector-side, non-GLM)**: gold p25 ↑ (저-tail θ 위로) + nongold p90 ↓ → **95% recall 유지 시 input 절단 > 0%** (clean 운영점 형성). **+ over-calibration 감시** — R@15 / recall 훼손 없는지 (weight 과강 risk). EX gain 금지.
+- **★ primary (MSTPCSTUnion-after) = root 위임 (병렬)**: secondary(pure threshold)는 selector-seed recall 0.69 천장 + gold 저-tail 제약. **primary 는 PCST connectivity 가 gold 저-tail 일부 복구 가능** → secondary 보다 낙관적일 수 있음 (deployment feasibility 는 primary 로 확정). MSTPCSTUnion × 9θ × {ma2_a_p50 + 주요 baselines} extractor output (non-GLM) → Filter input 노드 수 + extractor-stage recall. **primary 가 clean 운영점 보이면 weight sweep 범위 재평가** (extractor 가 이미 tail 복구하면 sweep 경량화).
+- **★ STE 를 primary sweep 에 병렬 extractor 변형 추가 (2026-06-08, 사용자 — "STE 미련")**: 근거 타당 — STE (V7-W3, top-K terminal + Steiner) = (1) **본질적 compactness** (top-K + 최소 bridge vs MST∪PCST union) → **iso-recall 에서 Filter input 을 MSTPCSTUnion-raise-θ 보다 더 축소** 가능 (사용자 목표 직접 부합), (2) **Steiner bridge 가 gold 저-tail 의 path gold 복구** (hard gold 가 confident terminal 사이 경로 위면 score 없이 포함, raise-θ 불가능한 일 — 특히 cross-table join column). **한계**: isolated hard gold 는 STE 도 못 살림 (selector-score 근본 제약, MSTPCSTUnion 과 복구 메커니즘 유사) — STE 우위는 "더 잘 복구"가 아닌 "**더 compact**". **framing**: V7 STE 게이트(R≥0.9∧P≥0.3 infeasible)는 잘못된 잣대 — 지금 목표(input↓ efficiency)는 V7-W5 cost framing 이라 **다른 질문**. 신규 빌드 없음 (기존 STE 재사용), non-GLM 측정. ⇒ **MA-calibrated 체크포인트 위 MSTPCSTUnion(θ-sweep) vs STE(k-sweep) 비교 = iso-recall 에서 어느 extractor 가 Filter input 더 축소.** e2e EX 는 GLM 복구 후 (efficiency 가 측정 목표, EX 아님).
+- **순서**: primary(root) + weight sweep(module:selectors) **병렬** 가능 (둘 다 non-GLM 독립). primary 결과로 weight sweep 필요 강도 조정.
+- e2e EX 는 GLM 복구 후 (전부 보류 retain).
+
+---
+
 ## 2026-06-07 #5 — type-aware STE candidate (edge-type cost / node-type prize) — V7 영역, closed-PCST 회피 + Filter caveat
 
 > **trigger**: 사용자 "extractor 도 STE 를 edge-type별 cost / node-type별 prize 다르게 주면 전체적으로 이어지려나?" — 역할 분리 (GAT=table 신뢰 / cosine=column) 의 extractor-side 활용 아이디어.
@@ -34,7 +586,7 @@
 - **★ 정직 caveat (필수)**: inference recall 은 이미 extractor over-extract 로 ~0.99 천장, e2e 병목은 recall 아닌 precision/Filter (Filter Dominance). ⇒ MA 의 **확실한 가치 = 방법론 honesty (올바른 체크포인트·보고 지표) + over-extract 의존 감소 (효율, V7-W5 cost 연결)**. **e2e EX gain 보장 안 됨** — MA-2 를 "EX 향상" 으로 framing 금지, "selector→extractor 정합/효율" 로 한정.
 - **영향 범위**: EXPERIMENT_PLAN 신규 MA 방향 entry. V6 plan 은 무관 (별개 축, 단 disconnect 발견이 motivation) — §7.3 에 spin-off 1줄 pointer.
 - **에스컬레이션**:
-  - **analyzer (MA-0, 선행)**: 4단 상관 분해 → 모니터링 proxy 식별. 저장 `notebooks/analysis_results/selector_monitor_inference_alignment_2026-06-XX.md`.
+  - **analyzer (MA-0, 선행)**: 4단 상관 분해 → 모니터링 proxy 식별. 저장 `notebooks/analysis_results/01_v6_oversmoothing_chain/selector_monitor_inference_alignment_2026-06-07.md`.
   - 이후 (MA-1) module:selectors/root trainer checkpoint-selection 지표 교체 → (MA-2 조건부) calibration loss.
 - **추가 필요 분석**: MA-0 결과 — 어느 proxy 가 inference recall 예측 best (R@15 대체 후보).
 
@@ -77,7 +629,7 @@
 
 ### ★ MA-0 결과 + MA-1/MA-2 결정 (2026-06-07)
 
-> **근거**: analyzer `notebooks/analysis_results/selector_monitor_inference_alignment_2026-06-07.md` §3/§4 (셀별 4단 상관 + phase1 calibration 분리). 메트릭 4자리.
+> **근거**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/selector_monitor_inference_alignment_2026-06-07.md` §3/§4 (셀별 4단 상관 + phase1 calibration 분리). 메트릭 4자리.
 
 - **MA-0 결과 — rank ⊥ calibration 확정**: Spearman(proxy, inference recall) — **gold p50 +0.9545** (★ 최선), **gold recall@θ=0.1 +0.9273** (★ 차선), ROC-AUC +0.5909 (중), gold recall@top20 +0.5000 (중), **Val R@15 −0.1909 (✗ 무용/약한 음수)**. ⇒ extractor 가 score≥θ 기반이라 **절대 점수 calibration 이 inference recall 결정**, rank 계열은 약한 예측자.
 - **★ MA-1 결정 (모니터 교체) ✅ 확정**: trainer 의 best-epoch/early-stop 지표를 **Val R@15 → gold recall@θ=0.1 (또는 gold p50)** 로 교체. 현 Val R@15 (ρ=−0.19) 가 inference recall 예측 못 함 — gold recall@θ (ρ=+0.93) 으로 교체 강하게 정당화. 현 Val Recall@15 는 보조 지표로만 retain.
@@ -115,7 +667,7 @@
 
 ## 2026-06-07 #2 — GAT 기여 table/column 분해 (역할 분리 확정) → W5 가치 재평가 + 다음 개입 방향 정정
 
-> **trigger**: analyzer `notebooks/analysis_results/alpha_gat_contribution_table_vs_column_2026-06-07.md` ((C) 분석 완료, DECISIONS 2026-06-07 §결정 2-ter (C)) + 사용자 "W5 진행 가치 + 다음 개입 방향 PLAN 반영 검토".
+> **trigger**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/alpha_gat_contribution_table_vs_column_2026-06-07.md` ((C) 분석 완료, DECISIONS 2026-06-07 §결정 2-ter (C)) + 사용자 "W5 진행 가치 + 다음 개입 방향 PLAN 반영 검토".
 
 ### 핵심 데이터 — 역할 분리 (role separation) 확정
 
@@ -159,7 +711,7 @@
 
 ## 2026-06-07 — V6 collapse origin 데이터 확정 (가설 B) + 다음 개입 정밀화 + V6-W5 (mechanism-targeted final wave) 활성
 
-> **trigger**: analyzer `notebooks/analysis_results/v6_intra_table_collapse_origin_2026-06-06.md` (DECISIONS #4 요청 완료) + root paper §III.7.4.6 작성 보고. 사용자 "원인 파악 + column self-loop/residual 개입의 V6 chain 위치 결정".
+> **trigger**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_intra_table_collapse_origin_2026-06-06.md` (DECISIONS #4 요청 완료) + root paper §III.7.4.6 작성 보고. 사용자 "원인 파악 + column self-loop/residual 개입의 V6 chain 위치 결정".
 
 ### 데이터 확정 — 가설 B (first-conv-driven), 가설 A (PLM bottleneck) 기각
 
@@ -232,7 +784,7 @@ W5 가 이미 실행 중인 상태에서 *추가* 실험의 가치 — 종류별
 
 ### ★ V6-W5 결과 (2026-06-07 종료 후) — 결정 3 분기 (a) 결정적 확정: mechanism fixable + disconnect ironclad
 
-> **근거**: analyzer `notebooks/analysis_results/v6_w5_l1_mad_disconnect_2026-06-07.md` (3 cells × s11, 학습 + selector-only + e2e + L1 mad disconnect diagnostic). root: HISTORY/CATALOG/ID_MIGRATION + paper §III.7.4.6/§III.7.4.6.4 + memory [[project-v6-chain-closure]] 갱신 완료.
+> **근거**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_w5_l1_mad_disconnect_2026-06-07.md` (3 cells × s11, 학습 + selector-only + e2e + L1 mad disconnect diagnostic). root: HISTORY/CATALOG/ID_MIGRATION + paper §III.7.4.6/§III.7.4.6.4 + memory [[project-v6-chain-closure]] 갱신 완료.
 
 - **Primary 게이트 (mechanism 회복) ✅ PASS 결정적** — L1 hi-deg intra-MAD **20.7~25.5× 회복**: v6w5_a (self-loop) 0.2813 / v6w5_b (residual) 0.3416 / v6w5_c (조합) **0.3463** (base 0.0136, L0 0.4201 의 67~82%). EF2 (115-col Match) 완전 collapse (0.0000) → 0.30+ 회복 (a 0.3448 / b 0.2956 / c 0.3302). ⇒ **가설 B (first-conv single-shared-source) 인과 확정** — 정확한 locus 위 정확한 fix 로 정확히 회복.
 - **Secondary 게이트 (e2e) ❌ 무개선 — disconnect ironclad** — e2e EX: v6w5_a 0.3168 / v6w5_b 0.3201 / v6w5_c 0.2934. 전 cell M4 anchor 0.5300 대비 −0.21, V6-W2 best (0.3331) / V6-W3 c (0.3879) 도 미달. **Spearman(L1 mad 회복, e2e EX) = −0.5000** (n=3, 약한 역상관 — best mad cell c 0.3463 → e2e EX 최저 0.2934).
@@ -260,7 +812,7 @@ W5 가 이미 실행 중인 상태에서 *추가* 실험의 가치 — 종류별
 
 ### ★ V6-W5 selector-quality 최종 (2026-06-07) — disconnect mechanistic 완결 + 조건부 계획 둘 다 negative 확정
 
-> **근거**: analyzer `notebooks/analysis_results/v6_w5_selector_quality_2026-06-07.md` §2/§3/§4 (V6-W5 α sweep + table/column 재분해, 위 §조건부 cross-module 계획 통합 게이트 실행 결과).
+> **근거**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_w5_selector_quality_2026-06-07.md` §2/§3/§4 (V6-W5 α sweep + table/column 재분해, 위 §조건부 cross-module 계획 통합 게이트 실행 결과).
 
 - **최종 판정 — mad 회복이 selector 과제 분별력으로 전환 안 됨**: V6-W5 가 L1 mad 를 20~25× 회복했으나 (Primary PASS), (1) **gold p50 0.017~0.126** (V6-W2 sum 0.8195 의 2~15%, 빈약), (2) **top-20 F1 b 0.2977 ≈ baseline** (sum 0.3027 미달), (3) **★ column net 음수 유지 −1359~−1805** (M4 −1181 보다 **더 음수**, multi-gold −1371~−1810), (4) **table net 증가 +277~+617** (M4 +106). ⇒ 회복된 differentiation 이 **gold 방향 아닌 task-irrelevant** (table-level 로만 발현, cosine redundant).
 - **★ disconnect mechanistic 완결 (2단계 인과 분리)**: **mad↑ (mechanism 회복) → gold-분별 ✗ (task-irrelevant differentiation) → e2e ✗ (threshold-pass governed)**. "selector 표현 품질 ⊥ pipeline 성능" 이 selector score 분해 수준에서 직접 확증.
@@ -308,7 +860,7 @@ W5 가 이미 실행 중인 상태에서 *추가* 실험의 가치 — 종류별
   1. **L0 raw PLM intra-table MAD** (hi-deg vs lo-deg, per-DB, european_football_2 Player_Attributes 115-col test bed) — A vs B 판별 (vs L1=0.0136/L3=0.0046). **최우선.**
   2. **self vs neighbor 분해** — L1 hub 컬럼 update 를 self-transform vs aggregated-neighbor-message 분리 (magnitude + 컬럼 자기 L0 와 cosine). GAT 능동 끌어당김 vs 이미 비슷한 입력 미보존 판별.
   3. **attention attribution** — hub 컬럼 L1 수신 메시지의 table node vs sibling 컬럼 비중 (공유 소스 집중 시 convergence 원인).
-  - 데이터: M4 anchor `best_gat_qcond_nl3.pt` + 기존 forward-hook 인프라 (`src/analysis/v6_phase3_l1_hub_mad.py`). 저장: `notebooks/analysis_results/v6_intra_table_collapse_origin_2026-06-XX.md`.
+  - 데이터: M4 anchor `best_gat_qcond_nl3.pt` + 기존 forward-hook 인프라 (`src/analysis/v6_phase3_l1_hub_mad.py`). 저장: `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_intra_table_collapse_origin_2026-06-06.md`.
 - **의도/영향**: 결과가 가설 A → 다음 개입 = PLM encoder / 컬럼 텍스트 enrichment (또는 GAT 비의존 selector), GAT layer 개입 무의미. 가설 B → GAT layer-level intervention (per-table normalization) 정당화. [[project-v6-chain-closure]] 의 "다음 개입 방향" 을 데이터로 확정. alpha_plateau 연결 (input-driven 시 cosine 도 hub 내 구별 불가 → GAT +2.1% 는 cross-table 신호).
 - **에스컬레이션**: analyzer (직접 분석 요청). 결과 도착 후 planner 가 "다음 개입 방향" 확정 + (개입 실행 시) root.
 
@@ -345,7 +897,7 @@ W5 가 이미 실행 중인 상태에서 *추가* 실험의 가치 — 종류별
 
 ### ★ 측정 결과 분기 (정정: mixed result) + V6 chain architectural rescue 종료 (2026-06-06)
 
-> **근거**: analyzer `notebooks/analysis_results/v6_phase3_hub_reduction_2026-06-06.md` §1.1+§3.3+§4+§5 (3 cells × s11, L1+L2(a)+L2(c) e2e **측정 완료**, 분기 정정). root: HISTORY 3종 정정 등재 ✅ + paper §V.5.x.M.24.9 정정 + §III.7.4 보강 ✅.
+> **근거**: analyzer `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase3_hub_reduction_2026-06-06.md` §1.1+§3.3+§4+§5 (3 cells × s11, L1+L2(a)+L2(c) e2e **측정 완료**, 분기 정정). root: HISTORY 3종 정정 등재 ✅ + paper §V.5.x.M.24.9 정정 + §III.7.4 보강 ✅.
 >
 > **⚠ 분기 정정**: 초판 (e2e pending) 의 "informative negative (L1 미회복 → 기법 부적합)" → L2(c) e2e 측정 후 **mixed result** 로 정정.
 
@@ -456,7 +1008,7 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
 
 ## 2026-06-05 — V7-W2/W3 게이트 판정 (둘 다 미통과, gate infeasible) + V7-W4 취소 + V7-W5 EX 측정 wave 신규
 
-> **trigger**: analyzer `notebooks/analysis_results/v7_extractor_chain_2026-06-05.md` (24 cells: W0 baseline 3seed + W2 FKP 10 + W3 STE 11, 재현 검증 §0.2 통과) 도착 → 사용자 trigger "§8 게이트 infeasibility + §6.2 FKP 순기여≈0 참조해 W2/W3 게이트 판정 + chain 종료/다음 wave 결정. STE 일관 우위 + FKP mechanism 약함 → V7-W4 우선순위 재고."
+> **trigger**: analyzer `notebooks/analysis_results/03_extractor_pcst_steiner/v7_extractor_chain_2026-06-05.md` (24 cells: W0 baseline 3seed + W2 FKP 10 + W3 STE 11, 재현 검증 §0.2 통과) 도착 → 사용자 trigger "§8 게이트 infeasibility + §6.2 FKP 순기여≈0 참조해 W2/W3 게이트 판정 + chain 종료/다음 wave 결정. STE 일관 우위 + FKP mechanism 약함 → V7-W4 우선순위 재고."
 
 - **결정**:
   1. **V7-W2(FKP) + V7-W3(STE) 둘 다 게이트 미통과** — gate infeasible (R-P frontier 근본 제약, 구현 결함 아님). 측정은 ✅ 완료.
@@ -558,7 +1110,7 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
   - V1~V5 chain 의 paper §V.5.4 narrative 정량 evidence 충분 + Filter Dominance 6번째 축 base 완성 → V6 결과는 별도 narrative (supplementary artifact / 학위 본 심사 §III chapter 후속 보강) 정합.
 - **Wave 시퀀스 (V6-W0 ~ W4)**:
   - **V6-W0** 사전 + Phase 0 진단 (0.5~1일, root 계측 훅 + analyzer 진단 리포트)
-    - 산출: `src/analysis/v6_oversmoothing_diagnostics.py` (RFP §6 코드 그대로 이식) + 베이스라인 시드 3 + 데이터 차수 통계 (BIRD-Dev) + `notebooks/analysis_results/v6_phase0_diagnostics_2026-06-XX.md`
+    - 산출: `src/analysis/v6_oversmoothing_diagnostics.py` (RFP §6 코드 그대로 이식) + 베이스라인 시드 3 + 데이터 차수 통계 (BIRD-Dev) + `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase0_diagnostics_2026-06-01.md`
     - **Baseline GAT**: M4 anchor `best_gat_qcond_nl3.pt` (QCond GAT NL3, 학습 config `configs/training/diameter_layers/train_qcond_nl3.yaml`, DECISIONS 2026-05-26 §후속 정정 #1 정합)
     - **게이트**: H1 (Dirichlet energy 0 근처 붕괴 + MAD 0 수렴) / H0 (energy 평탄 but 성능 저조 → loss 문제) / over-squashing (정답 컬럼 쌍 effective resistance / commute time 큰 경우)
   - **V6-W1** Phase 1 drop-in 3종 (1~2일, module:selectors + root)
@@ -584,10 +1136,10 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
   - **본 wave 외 별도 trigger 영역 + supplementary artifact candidate** — paper §V.5.4 + 학위 본 심사 §III chapter 의 별도 후속 sub-section 정합
 - **에스컬레이션 필요 여부**:
   - **root 위임 (V6-W0 launch)**: 본 entry §Wave 시퀀스 §V6-W0 정합 — `src/analysis/v6_oversmoothing_diagnostics.py` 신규 작성 (RFP §6 코드 이식) + 베이스라인 시드 3 다중 실행 (M4 anchor `best_gat_qcond_nl3.pt` 위, `CUDA_VISIBLE_DEVICES=0,1`, scripts/run_v6_w0.sh) + 데이터 차수 통계 산출 (BIRD-Dev 테이블별 컬럼 수 분포 + 차수 30 초과 비율 + NLQ 당 정답 컬럼 수). Owner = root.
-  - **analyzer 위임 (V6-W0 진단 리포트)**: V6-W0 산출 데이터 위 진단 리포트 작성 (`notebooks/analysis_results/v6_phase0_diagnostics_2026-06-XX.md`) + H1/H2/H3/H0 분기 판단 + V1~V5 의 기존 14-trial cells (Phase 1 baseline + B5 + V2 #1/#2/#3 + V3 #1 + V4-A/B + V5 cells) 의 retrospective Dirichlet energy + MAD + attention entropy 재산출 + 기존 L_GAT cos sim ranking 과의 정합 confirm.
+  - **analyzer 위임 (V6-W0 진단 리포트)**: V6-W0 산출 데이터 위 진단 리포트 작성 (`notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase0_diagnostics_2026-06-01.md`) + H1/H2/H3/H0 분기 판단 + V1~V5 의 기존 14-trial cells (Phase 1 baseline + B5 + V2 #1/#2/#3 + V3 #1 + V4-A/B + V5 cells) 의 retrospective Dirichlet energy + MAD + attention entropy 재산출 + 기존 L_GAT cos sim ranking 과의 정합 confirm.
   - **module:selectors 위임 (V6-W1 launch — 분기 조건 충족 시)**: H1 확정 후 PairNorm + GCNII IR + JK 의 격리 단독 + 조합 구현 (V5-B `GCNIIGATv2Conv` reuse 가능). Owner = module:selectors → root V6-W1 launch.
 - **추가 필요 분석 (analyzer 요청 큐)**:
-  - ✅ **completed (analyzer 2026-06-01 산출)** — V1~V5 의 15 cells × stored checkpoint × V6 metric matrix ([`notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md), §1~§9, 632-line script + CSV 60 rows + JSON full + JSONL 825 records). 핵심 finding: paper §V.5.4 main claim 5개 모두 V6 metric 위 retain + mech(ii-b) DOMINANT 5/5 → **9/10 absolute upgrade** + V6 metric ↔ R@15 disconnect (Spearman ρ ≈ 0.19, p > 0.30 모두) + Filter Dominance 6번째 축 정량 강화 + V5-C exception status retain + §III chapter 후속 보강 5 sub-section base evidence 완성.
+  - ✅ **completed (analyzer 2026-06-01 산출)** — V1~V5 의 15 cells × stored checkpoint × V6 metric matrix ([`notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md), §1~§9, 632-line script + CSV 60 rows + JSON full + JSONL 825 records). 핵심 finding: paper §V.5.4 main claim 5개 모두 V6 metric 위 retain + mech(ii-b) DOMINANT 5/5 → **9/10 absolute upgrade** + V6 metric ↔ R@15 disconnect (Spearman ρ ≈ 0.19, p > 0.30 모두) + Filter Dominance 6번째 축 정량 강화 + V5-C exception status retain + §III chapter 후속 보강 5 sub-section base evidence 완성.
   - ⏬ V6-W0 본래 spec 진단 리포트 (베이스라인 + 시드 3 + 데이터 차수 통계) — retrospective 완료 위 본 항목 무효화 (retrospective 가 본래 spec 대비 우월: V1~V5 의 15 cells × stored checkpoint × 55 q stratified subsample). 데이터 차수 통계만 별도 P4 backlog 등재 (필요 시 root 단순 산출).
   - ⏸ 추가 retrospective analyzer backlog (priority P3 이하, 학위 본 심사 §III chapter 본문 작성 trigger 직후): 전 1534 q × V6 metric (sample-size effect 검증) / Per-DB stratified 11 DBs / Per-difficulty stratified (easy/medium/hard) / Layer-wise trajectory plot / Wave 16 Qwen3 cross-PLM 동일 측정. 상세: [V6 plan §7.4](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#74-추가-분석-후보-analyzer-backlog-우선순위-p3-이하).
 
@@ -637,15 +1189,15 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
     - V6-W1 의 12+ cells 위 Dirichlet/MAD/attention entropy 측정 (V6-W0 script `src/analysis/v1_v5_retrospective_v6_metrics.py` reuse + 신규 cells 추가)
     - 15 cells matrix → 27+ cells 확장 + R@15 ↔ V6 metric Spearman correlation 갱신 (확장 표본 위)
     - predicted prior 와 actual outcome 정합 — confirm/refute matrix
-    - 산출: `notebooks/analysis_results/v6_phase1_dropin_ablation_2026-06-XX.md` + CSV/JSON/JSONL
+    - 산출: `notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase1_dropin_ablation_2026-06-04.md` + CSV/JSON/JSONL
 - **Cross-reference**:
   - [V6 plan §1 Phase 1 활성 sub-section](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#phase-1--drop-in-완화-3종-rfp-phase-1--🟢-활성-launch-2026-06-01-사용자-trigger-위-격하-retract) + [§4 Ablation Matrix](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#4-ablation-matrix-rfp-5-정합) + [§7.3 V6-W1 활성 launch](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#73-v6-w1-🟢-활성-launch--v6-w2w4-본-wave-외-별도-trigger-영역-retain)
-  - analyzer 산출 [`v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md) §6.2 V6-W1 priors (predicted outcome base)
+  - analyzer 산출 [`v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md) §6.2 V6-W1 priors (predicted outcome base)
   - 직전 §V6-W1 격하 분기 sub-section 의 정량 priors retain — 본 sub-section 위 retract 명시
 
 ### §V6-W1 closure — actual outcome + negative result 확정 (2026-06-04)
 
-> **trigger**: V6-W1 sweep 완료 (single seed s11, 14 runs) → analyzer 산출 [`v6_phase1_dropin_ablation_2026-06-04.md`](../notebooks/analysis_results/v6_phase1_dropin_ablation_2026-06-04.md) (§1 headline + §2.2 pseudo-B0 + §3 causal disconnect + §5 §III chapter evidence).
+> **trigger**: V6-W1 sweep 완료 (single seed s11, 14 runs) → analyzer 산출 [`v6_phase1_dropin_ablation_2026-06-04.md`](../notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase1_dropin_ablation_2026-06-04.md) (§1 headline + §2.2 pseudo-B0 + §3 causal disconnect + §5 §III chapter evidence).
 
 - **게이트 판단**: V6 plan §1 Phase 1 게이트 위 **"모두 시드 변동 폭 내 변화만 → 음성 결과 기록" 분기 confirm** ★. → **V6-W1 ✅ 완료 (negative result 확정)**.
 - **Actual outcome (predicted prior 와의 confirm/refute)**:
@@ -667,7 +1219,7 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
   - **root**: EXPERIMENT_HISTORY/CATALOG/ID_MIGRATION 3종 위 V6-W1 17 cells (single-seed s11 + pseudo-B0 framing) 등재 (analyzer 산출 §1 headline matrix + `outputs/analysis/v6_phase1_dropin_metrics_2026-06-04.{csv,json}` 정합)
   - **root (별도 trigger)**: 학위 본 심사 §III chapter §III.3/§III.4/§III.7/§III.9 본문 spec 작성 (V6-W0 + V6-W1 통합 evidence base 위) — 사용자 명시 trigger 시
 - **Cross-reference (closure)**:
-  - analyzer 산출 [`v6_phase1_dropin_ablation_2026-06-04.md`](../notebooks/analysis_results/v6_phase1_dropin_ablation_2026-06-04.md) §2.2 pseudo-B0 + §3 causal disconnect ρ=-0.40 + §5 §III chapter evidence
+  - analyzer 산출 [`v6_phase1_dropin_ablation_2026-06-04.md`](../notebooks/analysis_results/01_v6_oversmoothing_chain/v6_phase1_dropin_ablation_2026-06-04.md) §2.2 pseudo-B0 + §3 causal disconnect ρ=-0.40 + §5 §III chapter evidence
   - [V6 plan §1 Phase 1 게이트 판단 결과](oversmoothing/oversmoothing_v6_plan_2026-06-01.md) (2026-06-04 음성 결과 confirm)
 
 ### §V6-W2~W4 활성 launch (2026-06-04 사용자 trigger — V6-W1 closure 직후 보류 retract)
@@ -719,14 +1271,14 @@ V6-W2 Phase 2 ✅ CLOSED. **남은 wave 재정의 + 우선순위 재배분** —
   - **V6-W2 (본 wave 외 별도 trigger 영역) 활성 trigger**: 사용자 명시 trigger
 - **Cross-reference**:
   - [V6 plan §0.4](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#04-paper--학위-본-심사-일정-정합) + [§1 Phase 1 격하 sub-section](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#phase-1--drop-in-완화-3종-rfp-phase-1--post-paper-backlog-격하-2026-06-01) + [§2 의존성 흐름](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#2-의존성--우선순위--게이트-흐름) + [§7 산출물](oversmoothing/oversmoothing_v6_plan_2026-06-01.md#7-산출물-paper--학위-본-심사--supplementary)
-  - analyzer 산출 [`v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md) §6.1 retain matrix + §6.2 V6-W1 priors + §6.3 §III chapter 보강 candidate
+  - analyzer 산출 [`v1_v5_retrospective_v6_metrics_2026-06-01.md`](../notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md) §6.1 retain matrix + §6.2 V6-W1 priors + §6.3 §III chapter 보강 candidate
 
 - **Cross-reference (entry 전체)**:
   - [planning/oversmoothing/oversmoothing_rfp_2026-06-01.md](oversmoothing/oversmoothing_rfp_2026-06-01.md) — RFP 사용자 입력
   - [planning/oversmoothing/oversmoothing_v6_plan_2026-06-01.md](oversmoothing/oversmoothing_v6_plan_2026-06-01.md) — V6 plan (§0~§9, 2026-06-01 갱신: §0.4 + §1 Phase 1 격하 + §2 + §6 + §7.1~§7.4)
   - [planning/oversmoothing/README.md](oversmoothing/README.md) — §3.3 V6 chain sub-section + V1~V5 chain narrative
   - [planning/DECISIONS.md 2026-05-26 §후속 정정 #1](DECISIONS.md) — Baseline GAT checkpoint 정합 (`best_gat_qcond_nl3.pt`)
-  - [notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md](../notebooks/analysis_results/v1_v5_retrospective_v6_metrics_2026-06-01.md) — analyzer 산출 retrospective 리포트 (§1~§9 + 산출물 4종)
+  - [notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md](../notebooks/analysis_results/01_v6_oversmoothing_chain/v1_v5_retrospective_v6_metrics_2026-06-01.md) — analyzer 산출 retrospective 리포트 (§1~§9 + 산출물 4종)
   - EXPERIMENT_PLAN.md Phase B Wave V6 entry (Wave 15 직전 prepend)
 
 ---
@@ -875,7 +1427,7 @@ root 가 M4 reproducibility package 작업 진행 위 본 entry §Scope 의 3가
    > "PLM backbone (Qwen3-Embedding-0.6B, 27× params, 1024-dim) swap 의 framework F1_harm contribution = **ΔF1_harm=-0.0026 sub-noise** — Wave 15 Builder/Selector marginal pattern 의 PLM-level retain ★ confirm. Cost/benefit ratio 위 Qwen3 **~6.8× slower encoding (median 실측)** + **~72× higher single-call GPU peak (실측)** + ~6.6× lower throughput + 2.78× larger cache 의 framework F1_harm benefit = sub-noise negative — PLM backbone scaling 의 zero/negative ROI evidence. paper main contribution (LLM Filter as first-class stage, Extractor schema completeness) 의 **framework design robustness evidence** ★."
 6. **§5 Per-difficulty / Per-DB heterogeneous evidence** (challenging 위 spread reverse + 7/11 DB Qwen3 positive + thrombosis -0.0901 의학 도메인 underrepresentation → post-paper backlog #28 motivation 표기)
 7. **§6 Cross-evidence link**: Wave 15 Module Importance Ranking (paper §10) + Wave 8 SGBE base premise 의 PLM-level retain + Wave 5 V-3-ext L1 collapse retain pending
-8. **상세 link**: `notebooks/analysis_results/wave16_encoder_backbone_m4_2026-05-22.md` + `wave16_encoder_distribution_2026-05-22.md` + EXPERIMENT_HISTORY Wave 16 entry + DECISIONS 2026-05-22 §1~§4
+8. **상세 link**: `notebooks/analysis_results/05_ablation_waves/wave16_encoder_backbone_m4_2026-05-22.md` + `wave16_encoder_distribution_2026-05-22.md` + EXPERIMENT_HISTORY Wave 16 entry + DECISIONS 2026-05-22 §1~§4
 
 ### §6. §10 framework_ablation Wave 15 sub-section 의 Wave 16 PLM-level retain confirm 항 추가 spec
 
@@ -887,7 +1439,7 @@ root 가 M4 reproducibility package 작업 진행 위 본 entry §Scope 의 3가
   |---|---|---:|---:|---|---|
   | **5 (신규, Wave 16)** | **PLM backbone (Qwen3 1024-dim 27×)** | **-0.0026** | -0.0176 | marginal sub-noise | Encoder swap of all-MiniLM-L6-v2 → Qwen/Qwen3-Embedding-0.6B retain M4 구조. Builder/Selector marginal pattern 의 PLM-level cross-evidence (자매 §V.5.x.M.22). Cost: ~10× slower encoding + ~4.6× GPU peak + 2.78× cache. |
 - **본 표 직후 신규 항 (narrative)**:
-  > "Wave 15 의 Builder/Selector marginal contribution pattern 이 PLM backbone-level retain confirmed (Wave 16, 5/22). Qwen3-Embedding-0.6B (27× params 1024-dim) swap 위 ΔF1_harm=-0.0026 sub-noise — **PLM backbone marginal axis 의 추가 evidence** ★. Filter (-0.6133) + Extractor (-0.0869) 가 framework critical path retain. Cost / Benefit ratio 위 Qwen3 의 zero / negative ROI — paper main contribution 의 framework design robustness evidence retain. 상세: §V.5.x.M.22 sub-section + [notebooks/analysis_results/wave16_encoder_backbone_m4_2026-05-22.md](../notebooks/analysis_results/wave16_encoder_backbone_m4_2026-05-22.md)."
+  > "Wave 15 의 Builder/Selector marginal contribution pattern 이 PLM backbone-level retain confirmed (Wave 16, 5/22). Qwen3-Embedding-0.6B (27× params 1024-dim) swap 위 ΔF1_harm=-0.0026 sub-noise — **PLM backbone marginal axis 의 추가 evidence** ★. Filter (-0.6133) + Extractor (-0.0869) 가 framework critical path retain. Cost / Benefit ratio 위 Qwen3 의 zero / negative ROI — paper main contribution 의 framework design robustness evidence retain. 상세: §V.5.x.M.22 sub-section + [notebooks/analysis_results/05_ablation_waves/wave16_encoder_backbone_m4_2026-05-22.md](../notebooks/analysis_results/05_ablation_waves/wave16_encoder_backbone_m4_2026-05-22.md)."
 
 ### §7. 영향 범위
 
@@ -1009,7 +1561,7 @@ root 가 M4 reproducibility package 작업 진행 위 본 entry §Scope 의 3가
 
 **구현 위치**:
 - analyzer 위임: `src/analysis/wave16_encoder_distribution.py` 신설 — predictions.jsonl + score_analysis_*.jsonl + gold join + 분포 plot
-- 산출물: `notebooks/analysis_results/wave16_encoder_distribution_2026-05-XX.md`
+- 산출물: `notebooks/analysis_results/05_ablation_waves/wave16_encoder_distribution_2026-05-22.md`
 
 #### §7.4 GAT 학습 Epoch 별 R/Loss/L1 Saturation Logging (root 위임)
 
@@ -1363,7 +1915,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 - **근거**:
   - 사용자 5/20 42nd turn 의 Filter mechanism = M4 fixed 결정
-  - [notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md §0+§2.1](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) — c_v3a 1st run vs rerun stochastic drift evidence
+  - [notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md §0+§2.1](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md) — c_v3a 1st run vs rerun stochastic drift evidence
   - 직전 DECISIONS 2026-05-20 (Wave 11 c_v3a EX-Best 결과 채택) — paper §V.5.x.M.20 신규 sub-section base (정합 정합 정정 trigger)
   - 직전 DECISIONS 2026-05-20 (Wave 13 Phase C 통합 점검) — paper main contribution 정합 정합 base
 
@@ -1373,7 +1925,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
   - paper §V.5.x.M.12 F1-EX Decoupling narrative 의 Quadruple → Triple Evidence 정합 정정.
   - EXPERIMENT_PLAN.md Wave 11 entry 의 정합 정합 정정 (c_v3a post-paper extension candidate marker).
   - EXPERIMENT_PLAN.md post-paper backlog #26 신규 추가 (c_v3a multi-rerun stochastic validation).
-  - 학술 agent cover note (scholar_agent_chain_final_cover_note_2026-05-20.md) 의 Q6 의 정합 정합 정정 (Generator-side Serialization novelty 의 학술 weight 약화).
+  - 학술 agent cover note (scholar_agent/scholar_agent_chain_final_cover_note_2026-05-20.md) 의 Q6 의 정합 정합 정정 (Generator-side Serialization novelty 의 학술 weight 약화).
 
 - **에스컬레이션 필요 여부**:
   - **Planner 후속 갱신 (본 turn 직후)**: paper §V.5.x.M.20 narrative 의 학술 weight 약화 정정 + paper §10 Wave 5+9+11+13 표 의 EX-best M4 retain 정정 + paper §V.5.x.M.12 narrative 의 Triple Evidence 정합 정정 + EXPERIMENT_PLAN.md 정합 정정 + 학술 agent cover note 의 Q6 정합 정정.
@@ -1461,7 +2013,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
   - 직전 DECISIONS 2026-05-20 (Wave 14 Wave 9 Per-Difficulty R/P/F1 결과 채택) — paper §10 per-difficulty + §V.5.x.M.5 보강 base
   - 직전 DECISIONS 2026-05-20 (Wave 11 c_v3a Schema Serialization EX-Best 결과 채택) — paper §V.5.x.M.20 + Pareto base
   - 직전 DECISIONS 2026-05-20 (Wave 13 Phase B 결과 채택) — paper §V.5.x.M.4 + §V.5.x.M.15 + metric_spec §1.1/§1.3 base
-  - [notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md §2+§6+§8](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) — Wave 13 Phase B base
+  - [notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md §2+§6+§8](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md) — Wave 13 Phase B base
   - [EXPERIMENT_HISTORY.md Wave 13 Phase B Closure (2026-05-20)](../EXPERIMENT_HISTORY.md) — commit f67fa65 + 21ee9ad + 3733949
 
 - **영향 범위**:
@@ -1472,7 +2024,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 - **에스컬레이션 필요 여부**:
   - **Root (HISTORY 갱신, 우선순위 1 retain)**: 직전 turn 의 root 핸드오프 retain — EXPERIMENT_HISTORY 의 64 cells × R/F1_harmonic 정정 + Wave 11/12/13/14 신규 entries 등재 (analyzer csv 직접 사용).
-  - **사용자 → 학술 Agent (paper drafting trigger cover note, ✅ 본 turn 작성 완료)**: [planning/scholar_agent_chain_final_cover_note_2026-05-20.md](scholar_agent_chain_final_cover_note_2026-05-20.md) 작성 ✅. 7 chain 통합 정량 base + Q1~Q9 통합 정합 (Q1~Q5 Wave 8 retain + Q6~Q9 신규: Generator-side Serialization novelty / Perfect SL upper bound / Evaluator alias resolution reproducibility / Difficulty-stratified mechanism universality). 사용자 send timing 결정 후 학술 agent 의견 수렴 trigger.
+  - **사용자 → 학술 Agent (paper drafting trigger cover note, ✅ 본 turn 작성 완료)**: [planning/scholar_agent/scholar_agent_chain_final_cover_note_2026-05-20.md](scholar_agent/scholar_agent_chain_final_cover_note_2026-05-20.md) 작성 ✅. 7 chain 통합 정량 base + Q1~Q9 통합 정합 (Q1~Q5 Wave 8 retain + Q6~Q9 신규: Generator-side Serialization novelty / Perfect SL upper bound / Evaluator alias resolution reproducibility / Difficulty-stratified mechanism universality). 사용자 send timing 결정 후 학술 agent 의견 수렴 trigger.
 
 - **추가 필요 분석**: 현재 부재 — paper drafting trigger 가능 state + 학술 agent send 사전 검토 cover note ✅ 작성 완료.
 
@@ -1480,7 +2032,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 ## 2026-05-20 (Wave 14 Wave 9 Per-Difficulty R/P/F1 결과 채택 + paper §10 per-difficulty 추가 + §V.5.x.M.5 difficulty-stratified mechanism evidence 보강 — 사용자 trigger 5/20 40th turn)
 
-> **사용자 직전 input (5/20, 40th turn)**: Wave 14 analyzer 산출 [`notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md`](../notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md) §0 TL;DR + §2 정량 결과 + §4 difficulty-stratified mechanism + §5 §10 갱신 권고 + §8 핵심 finding 수신. **2 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + (선택) Wave 6/Wave 8 per-difficulty retrospective trigger 검토.
+> **사용자 직전 input (5/20, 40th turn)**: Wave 14 analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md`](../notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md) §0 TL;DR + §2 정량 결과 + §4 difficulty-stratified mechanism + §5 §10 갱신 권고 + §8 핵심 finding 수신. **2 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + (선택) Wave 6/Wave 8 per-difficulty retrospective trigger 검토.
 
 ### §1. Wave 14 결과 정합 정리
 
@@ -1529,7 +2081,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 - 본 Wave 14 의 `src/analysis/wave9_per_difficulty_rpf1.py` pattern 위 확장
 - 대상 cells: Wave 6 9 cells (M1-A/B/C, M2~M5, C1, C2) + Wave 8 9 cells (D1+D2+D3+D4 × 2 variants + Comb-A) = 18 cells × 3 difficulty × R/P/F1 (54 entries)
 - 데이터 source: `outputs/experiments/abl/wave6_recall_biased/*/predictions.jsonl` + `outputs/experiments/abl/wave8_m4_extensions/*/predictions.jsonl` + dev.json (difficulty)
-- 산출: `notebooks/analysis_results/wave6_wave8_per_difficulty_rpf1_2026-05-XX.md`
+- 산출: `wave6_wave8_per_difficulty_rpf1 (미산출 placeholder, 2026-06-10 정리)`
 - paper 영향: paper §10 의 본 framework cells 의 per-difficulty 추가 정합 (Wave 9 baseline 의 per-difficulty 와 직접 비교 base) + paper §V.5.x.M.5 의 본 framework difficulty-stratified evidence 보강 (sub-noise refinement)
 - **paper main contribution narrative 본질 영향 없음** (sub-noise refinement only, paper drafting 직전 priority 3 trigger)
 
@@ -1556,7 +2108,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 - **근거**:
   - 사용자 5/20 40th turn 의 2 결정 위임 + (선택) Wave 6/Wave 8 후속 trigger 검토
-  - [notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md §0+§2+§4+§5+§8](../notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md)
+  - [notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md §0+§2+§4+§5+§8](../notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md)
   - 직전 DECISIONS 2026-05-20 (Wave 14 Wave 9 Baseline Relog Per-Difficulty R/P/F1 Post-hoc 측정 신규 활성) — Wave 14 chain 활성 entry
   - 직전 DECISIONS 2026-05-20 (Wave 11 c_v3a Schema Serialization EX-Best 결과 채택) — paper §10 sub-section base
   - 직전 DECISIONS 2026-05-20 (Wave 13 Phase B 결과 채택) — alias-aware patch + overall R 정합 base
@@ -1578,7 +2130,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 ## 2026-05-20 (Wave 11 c_v3a Schema Serialization EX-Best 결과 채택 + paper §V.5.x.M.20 신규 sub-section 신설 + Pareto frontier EX-best 갱신 — 사용자 trigger 5/20 39th turn)
 
-> **사용자 직전 input (5/20, 39th turn)**: Wave 11 Schema Serialization Direction C 의 c_v3a / c_v3b rerun 결과 통합된 analyzer 보고서 [`notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md`](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) §2.2 c_v3a mechanism + §4 Pareto + §4.3 §V.5.x.M.4 draft + §4.2 §V.5.x.M.20 draft + §5 §10 표 + §8 finding 참조 5 결정 위임. 5 결정 중 (a)/(c)/(e) = 직전 turn 완료 retain 확인 + 신규 (b) §V.5.x.M.20 신규 sub-section + (d) §10 c_v3a row 추가 = 본 turn 의 핵심 작업.
+> **사용자 직전 input (5/20, 39th turn)**: Wave 11 Schema Serialization Direction C 의 c_v3a / c_v3b rerun 결과 통합된 analyzer 보고서 [`notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md`](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md) §2.2 c_v3a mechanism + §4 Pareto + §4.3 §V.5.x.M.4 draft + §4.2 §V.5.x.M.20 draft + §5 §10 표 + §8 finding 참조 5 결정 위임. 5 결정 중 (a)/(c)/(e) = 직전 turn 완료 retain 확인 + 신규 (b) §V.5.x.M.20 신규 sub-section + (d) §10 c_v3a row 추가 = 본 turn 의 핵심 작업.
 
 ### §1. Wave 11 c_v3a 결과 정합 정리
 
@@ -1663,7 +2215,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 - **근거**:
   - 사용자 5/20 39th turn 의 5 결정 위임 trigger
-  - [notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md §2.2 + §4.2 + §4.3 + §5 + §8](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) — Wave 11 c_v3a 결과 통합 + paper §V.5.x.M.20 narrative draft
+  - [notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md §2.2 + §4.2 + §4.3 + §5 + §8](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md) — Wave 11 c_v3a 결과 통합 + paper §V.5.x.M.20 narrative draft
   - [planning/filter_improvement_wave10_2026-05-19.md](filter_improvement_wave10_2026-05-19.md) — Wave 11 Schema Serialization Direction C 작업 지시서 (사용자 직접 작성)
   - 직전 DECISIONS 2026-05-19 (Wave 11 Schema Serialization Direction C 신규 활성) — chain 활성 entry
   - 직전 DECISIONS 2026-05-20 (Wave 13 Phase B 결과 채택) — (a)/(c)/(e) 결정 retain base
@@ -1722,7 +2274,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 **Analyzer 직접 (~10 분)**:
 - 신규 script 또는 Wave 12 `src/analysis/oracle_baseline_rpf1.py` 의 pattern 정합 + dev.json join + per-difficulty 분해
 - 산출:
-  - `notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md` (보고서)
+  - `notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md` (보고서)
   - `outputs/analysis/wave9_per_difficulty_rpf1_2026-05-20.csv` (3 cells × 3 difficulty × R/P/F1 + overall summary)
   - `outputs/baselines/wave9_relog/{g_retriever, linkalign, xiyansql}_relog/output_rpf1.jsonl` (per-query R/P/F1 — 가능 시)
 
@@ -1761,12 +2313,12 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
   - 사용자 5/20 38th turn trigger ("Wave 9 Baseline relog 의 per-difficulty R/P/F 를 다시 계산하자")
   - 직전 turn 의 baseline per-difficulty 정합 답변 의 ⚠️ Wave 9 per-difficulty R/P/F1 미측정 정합
   - [planning/DECISIONS.md 2026-05-20 (Wave 13 Phase B 결과 채택)](DECISIONS.md) — Wave 13 patch 정합 위 measurement spec
-  - [notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md §1.1](../notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md) — per-difficulty EX 정합 base (분해 검증 source)
-  - [notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md §2.1](../notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md) — Wave 12 oracle per-difficulty pattern reference
+  - [notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md §1.1](../notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md) — per-difficulty EX 정합 base (분해 검증 source)
+  - [notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md §2.1](../notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md) — Wave 12 oracle per-difficulty pattern reference
 
 - **영향 범위**:
   - EXPERIMENT_PLAN.md Wave 14 신규 entry 등록.
-  - `notebooks/analysis_results/wave9_per_difficulty_rpf1_2026-05-20.md` (analyzer 산출).
+  - `notebooks/analysis_results/05_ablation_waves/wave9_per_difficulty_rpf1_2026-05-20.md` (analyzer 산출).
   - `outputs/analysis/wave9_per_difficulty_rpf1_2026-05-20.csv` (3 cells × 3 difficulty × R/P/F1).
   - paper_research_direction.md §10 Wave 12+Wave 9 sub-section 의 per-difficulty 추가 (planner 후속 갱신).
   - EXPERIMENT_HISTORY 의 Wave 9 entry per-difficulty R/P/F1 추가 (root 후속 갱신, paper drafting 직전).
@@ -1782,7 +2334,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 ## 2026-05-20 (Wave 13 Phase B 결과 채택 + Phase C 갱신 ✅ 완료 — paper §V.5.x.M.4/.M.15/§10 + metric_spec 정합 정정, Sanity Check 4종 PASS)
 
-> **사용자 직전 input (5/20, 36th turn)**: Wave 13 Phase B analyzer 산출 [`notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md`](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md) 의 §0 TL;DR + §4.2 paper 갱신 영향 + §4.3 narrative 정정 + §7 핵심 finding 수신. **4 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + root 병렬 위임 (EXPERIMENT_HISTORY 갱신).
+> **사용자 직전 input (5/20, 36th turn)**: Wave 13 Phase B analyzer 산출 [`notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md`](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md) 의 §0 TL;DR + §4.2 paper 갱신 영향 + §4.3 narrative 정정 + §7 핵심 finding 수신. **4 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + root 병렬 위임 (EXPERIMENT_HISTORY 갱신).
 
 ### §1. Wave 13 Phase B 결과 정합 정리
 
@@ -1859,7 +2411,7 @@ Wave 16 측정 완료 후 analyzer 가 작성할 비교 matrix spec:
 
 - **근거**:
   - 사용자 5/20 36th turn 의 4 결정 위임 + root 병렬 위임 trigger
-  - [notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md §0+§2+§3+§4+§5+§7](../notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-20.md)
+  - [notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md §0+§2+§3+§4+§5+§7](../notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md)
   - 직전 DECISIONS 2026-05-20 (Wave 13 Evaluator Alias Resolution Patch + Retrospective R 재측정 신규 활성) — Wave 13 chain 활성 entry
   - 직전 DECISIONS 2026-05-20 (Wave 12 Oracle Baseline R/P/F1 분석 결과 채택) — 직전 Wave 12 갱신 위 의 정합 정정 base
 
@@ -1947,7 +2499,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   - c01 6 cells / c02 7 cells / c03 25 cells (anchor + Phase 1.1/1.2/2 grid)
   - (Wave 11 진행 중 cells 는 본 chain 의 정합 정정 후 launch trigger)
 - 산출:
-  - `notebooks/analysis_results/evaluator_alias_fix_retrospective_2026-05-XX.md` (보고서)
+  - `notebooks/analysis_results/07_baselines_audits/evaluator_alias_fix_retrospective_2026-05-20.md` (보고서)
   - `outputs/analysis/evaluator_alias_fix_retrospective_2026-05-XX.csv` (cells × R_old / R_new / ΔR + summary)
   - 본 framework 의 R 상한 갱신 정량 (0.9968 → ~1.0 expected)
 
@@ -1982,7 +2534,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/20 34th turn 의 Option B 선택 (Code patch + retrospective R 재측정)
-  - [notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md §3.2](../notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md) — 19 queries × 18 alias names 의 root cause 분석
+  - [notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md §3.2](../notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md) — 19 queries × 18 alias names 의 root cause 분석
   - 직전 DECISIONS 2026-05-20 (Wave 12 Oracle Baseline R/P/F1 분석 결과 채택) — Wave 12 결과 위 본 chain trigger
   - [planning/metric_spec_2026-05-20.md §8.1 + §8.2](metric_spec_2026-05-20.md) — col-only spec + disambiguation logic 정합 base
 
@@ -2007,7 +2559,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-20 (Wave 12 Oracle Baseline R/P/F1 분석 결과 채택 + paper §10/.M.4/.M.12 narrative 갱신 + Wave 9 R/P/F1 후속 chain 결정)
 
-> **사용자 직전 input (5/20, 32nd turn)**: Wave 12 Oracle Baseline R/P/F1 analyzer 산출 ([`notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md`](../notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md)) 의 §0 TL;DR + §4 paper 갱신 영향 + §6 핵심 finding 수신. **3 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + Wave 9 R/P/F1 후속 chain 결정.
+> **사용자 직전 input (5/20, 32nd turn)**: Wave 12 Oracle Baseline R/P/F1 analyzer 산출 ([`notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md`](../notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md)) 의 §0 TL;DR + §4 paper 갱신 영향 + §6 핵심 finding 수신. **3 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)** + Wave 9 R/P/F1 후속 chain 결정.
 
 ### §1. Wave 12 분석 결과 정합 정리
 
@@ -2055,7 +2607,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 **spec (post-paper backlog #24)**:
 - 신규 script: Wave 12 `src/analysis/oracle_baseline_rpf1.py` 의 pattern 정합 — `outputs/baselines/wave9_relog/*/predictions.jsonl` 의 `final_nodes` 위에 R/P/F1 post-hoc 계산
-- 산출: `notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md` 의 §6.1 확장 또는 별도 supplemental
+- 산출: `notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md` 의 §6.1 확장 또는 별도 supplemental
 - paper §10 갱신 timing: paper drafting 직전 (post-paper backlog #24 의 활성 trigger)
 
 ### §4. Wave 10/Wave 11/Wave 8 와의 정합
@@ -2078,7 +2630,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/20 32nd turn 의 Wave 12 분석 결과 채택 + 3 결정 위임 (planner 직접 갱신)
-  - [notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md §0+§2+§3+§4+§6](../notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md)
+  - [notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md §0+§2+§3+§4+§6](../notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md)
   - 직전 DECISIONS 2026-05-20 (Wave 12 Oracle Baseline R/P/F1 Post-hoc 측정 신규 활성) — chain 활성 entry
   - [planning/metric_spec_2026-05-20.md §1.1-1.4](metric_spec_2026-05-20.md) — Spec A 의 정확 spec base
 
@@ -2164,7 +2716,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 - 데이터 source: 3 cell × predictions.jsonl + `dev_tables.json`
 - 의존성: `sqlglot` (gold SQL parsing) + `src/utils/evaluator.py` 의 `parse_sql_elements` + `calculate_schema_metrics` (재사용)
 - 산출:
-  - `notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md` (분석 보고서 + sanity check + paper 영향)
+  - `notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md` (분석 보고서 + sanity check + paper 영향)
   - `outputs/analysis/glm_baseline/{b1_full, b2_gold_table, b3_gold_column}/output_rpf1.jsonl` (per-query R/P/F1, 신규 file)
   - summary table (3 cells × R/P/F1/EX 4자리 통합)
 
@@ -2197,7 +2749,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **영향 범위**:
   - EXPERIMENT_PLAN.md Wave 12 신규 entry 등록 (Wave 11 Schema Serialization Direction C 와 별도, 의존성 없음).
-  - `notebooks/analysis_results/oracle_baseline_rpf1_2026-05-20.md` (analyzer 산출) + `outputs/analysis/glm_baseline/*/output_rpf1.jsonl` (3 신규 file).
+  - `notebooks/analysis_results/07_baselines_audits/oracle_baseline_rpf1_2026-05-20.md` (analyzer 산출) + `outputs/analysis/glm_baseline/*/output_rpf1.jsonl` (3 신규 file).
   - paper §10 6-baseline 비교 표 의 R/P/F1 컬럼 추가 (planner 후속 갱신).
   - paper §V.5.x.M.4 Three-Caveat narrative 의 절대 upper bound reference 정합 보강 (planner 후속 갱신).
   - EXPERIMENT_HISTORY.md line 3003-3011 의 EX-only 표 의 R/P/F1 추가 (root 후속 갱신).
@@ -2255,7 +2807,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 - 본 phase 산출: 5 cells × output_*.jsonl + predictions.jsonl + HISTORY/CATALOG/ID_MIGRATION 갱신
 
 **Phase C — 분석 + 결정 (analyzer + planner)**:
-- analyzer: `notebooks/analysis_results/wave11_schema_serialization_2026-05-XX.md` 산출
+- analyzer: `wave11_schema_serialization (미산출 placeholder, 2026-06-10 정리)` 산출
   - Primary metric: ΔEX vs C-v0 (목표: 최소 하나의 variant ΔEX > 0)
   - **Schema Content Invariance 검증** (필수): ΔR/ΔP/ΔF1 ≈ 0 (±0.0001 허용) — implementation 정합 검증
   - Auxiliary: 난이도별 EX 분해 (E-SQL challenging 효과 정합) + JOIN 수별 EX (C-v3 JOIN simplification 효과) + F+B vs F-only 비율 (C-v1 태그 활용) + Enrichment 품질 정성 분석 + Cost ROI
@@ -2307,7 +2859,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   - **Filter 모듈 세션 (Phase A 위임, 우선순위 1)**: serializer 3 modules 신규 구현 + filter_pipeline + sql_generator 수정 + M4 F/B 별도 저장 정합. 본 turn 의 핸드오프 block 참조.
   - **~~사용자 (few-shot examples 작성)~~ → ✅ Planner self-execution 완료 (5/19 30th turn)**: C-v2 few-shot 12개 작성 완료. 저장 위치: [`planning/few_shot_examples_wave11_2026-05-19.json`](few_shot_examples_wave11_2026-05-19.json). DB diversity (11 DBs 모두 cover, european_football_2 의 moderate+challenging 2개) + difficulty balanced (simple 4 / moderate 4 / challenging 4). 각 example: question_id, db_id, difficulty, original_question, evidence (BIRD hint), filtered_schema (gold SQL 의 사용 columns), enriched_question (E-SQL 형식 정합 — schema element table.column reference + JOIN condition + filter condition + intent 보존). 사용 방식: `src/serializers/question_enricher.py` 의 `few_shot_examples` 인자에 본 list 의 examples 전달 + 각 test query 의 DB 와 다른 DB 의 examples 만 filter (data leakage 방지).
   - **Root (Phase B 위임, Filter 구현 완료 후)**: 5-cell config 작성 + script + parallel launch + HISTORY/CATALOG/ID_MIGRATION 갱신.
-  - **Analyzer (Phase C 위임, 실험 완료 후)**: `notebooks/analysis_results/wave11_schema_serialization_2026-05-XX.md` 산출.
+  - **Analyzer (Phase C 위임, 실험 완료 후)**: `wave11_schema_serialization (미산출 placeholder, 2026-06-10 정리)` 산출.
   - **사용자 (Wave 8 cover note send timing 변경)**: Wave 8 cover note send 를 Wave 11 결과 도착 후 paper drafting final integration 와 함께 진행 권고.
 
 - **추가 필요 분석**: 현재 부재 — Phase A Filter 모듈 구현 완료 후 Phase B 실험 launch trigger.
@@ -2316,7 +2868,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-19 (Wave 8 Comb-A 분석 결과 채택 + Wave 8 closure — paper §V.5.x.M.12 F1-EX Decoupling 강력 정량 evidence 보강 + §V.5.x.M.17/.M.18 narrative 보강 + §V.5.x.M.19 신규 sub-section + Wave 8 closure marker + Pareto frontier 갱신)
 
-> **사용자 직전 input (5/19, 28th turn)**: Wave 8 Comb-A (D4 v1 + D3 v2 직렬 stacking) launch 완료 (commit 96b7314) + analyzer 산출 [`notebooks/analysis_results/wave8_comb_a_2026-05-19.md`](../notebooks/analysis_results/wave8_comb_a_2026-05-19.md) §0 TL;DR + §2 F1 mechanism + §3 EX paradox + §5 paper §V.5.x.M 갱신 권고 + §6 Wave 8 closure + §8 핵심 finding 수신. **5 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)**.
+> **사용자 직전 input (5/19, 28th turn)**: Wave 8 Comb-A (D4 v1 + D3 v2 직렬 stacking) launch 완료 (commit 96b7314) + analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md`](../notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md) §0 TL;DR + §2 F1 mechanism + §3 EX paradox + §5 paper §V.5.x.M 갱신 권고 + §6 Wave 8 closure + §8 핵심 finding 수신. **5 결정 위임 (planner 직접 갱신, ✅ 본 entry 작성 시점 전부 완료)**.
 
 ### §1. Comb-A Verdict — Fail (EX < D3 v2 alone) + F1 Globally Best Post-Wave 5
 
@@ -2406,8 +2958,8 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/19 28th turn 의 Wave 8 Comb-A 분석 결과 채택 + 5 결정 위임 (planner 직접 갱신)
-  - [notebooks/analysis_results/wave8_comb_a_2026-05-19.md §0+§2+§3+§5+§6+§8](../notebooks/analysis_results/wave8_comb_a_2026-05-19.md)
-  - [notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md §5 Top 2 사전 정량 base](../notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md)
+  - [notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md §0+§2+§3+§5+§6+§8](../notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md)
+  - [notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md §5 Top 2 사전 정량 base](../notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md)
   - 직전 DECISIONS 2026-05-19 (Wave 8 M4 발전 4 Direction 분석 결과 채택 + Comb-A Option A 사용자 채택)
   - EXPERIMENT_HISTORY.md Wave 8 Comb-A entry (2026-05-19, commit 96b7314)
 
@@ -2417,13 +2969,13 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   - paper_research_direction.md §V.5.x.M.18 sub-section 의 🆕 Comb-A Stacking Platform Evidence — D4 의 Pre-Filter Base Property sub-section 신설.
   - paper_research_direction.md §V.5.x.M.19 신규 sub-section 신설 (Pre-Filter + Post-Filter Stacking Synergy — F1-best Mechanism).
   - EXPERIMENT_PLAN.md Wave 8 entry — Comb-A 결과 marker + Wave 8 closure marker + Pareto frontier 갱신 + Comb-B/C/D post-paper extension 위임.
-  - **학술 Agent Cover Note 작성** ✅ ([planning/scholar_agent_wave8_chain_cover_note_2026-05-19.md](scholar_agent_wave8_chain_cover_note_2026-05-19.md)) — Wave 8 chain (M4 발전 4 Direction + Comb-A closure) 의 학술 agent 검토 trigger (Q1~Q5 정합) + 5 chain 통합 narrative (Wave 6+7+8+9+10).
+  - **학술 Agent Cover Note 작성** ✅ ([planning/scholar_agent/scholar_agent_wave8_chain_cover_note_2026-05-19.md](scholar_agent/scholar_agent_wave8_chain_cover_note_2026-05-19.md)) — Wave 8 chain (M4 발전 4 Direction + Comb-A closure) 의 학술 agent 검토 trigger (Q1~Q5 정합) + 5 chain 통합 narrative (Wave 6+7+8+9+10).
   - paper main contribution narrative 강력 정량 base 완성 — Wave 8 evidence 의 충분 정합 위에 paper drafting trigger.
 
 - **에스컬레이션 필요 여부**:
   - **Root (Comb-A HISTORY 갱신 + Wave 8 closure marker)**: EXPERIMENT_HISTORY.md Wave 8 M4 발전 chain 의 Comb-A entry 추가 (commit 96b7314 정합) + Wave 8 closure marker + EXPERIMENT_CATALOG 의 abl_wave8_comb_a_value_hint_verify2round entry 추가 + EXPERIMENT_ID_MIGRATION 정합.
-  - **사용자 → 학술 Agent (Wave 8 chain cover note send trigger)**: [planning/scholar_agent_wave8_chain_cover_note_2026-05-19.md](scholar_agent_wave8_chain_cover_note_2026-05-19.md) 의 Q1~Q5 정합 검토 요청. 학술 agent 의 의견 수렴 후 추가 chain 의 결정 trigger (paper drafting timing + 학술 agent 의 paper draft review trigger).
-  - **Analyzer (Wave 8 후속 candidate, priority 낮음)**: Comb-A 의 EX-down 40 queries 의 case-by-case 분석 (per-DB / per-difficulty 의 schema modification trigger 분류) + Comb-A per-DB R/P/F1/EX 분포 + D3 verify 의 base-schema sensitivity 분석. 산출: `notebooks/analysis_results/wave8_comb_a_2026-05-19.md §7 확장` 또는 별도 supplemental.
+  - **사용자 → 학술 Agent (Wave 8 chain cover note send trigger)**: [planning/scholar_agent/scholar_agent_wave8_chain_cover_note_2026-05-19.md](scholar_agent/scholar_agent_wave8_chain_cover_note_2026-05-19.md) 의 Q1~Q5 정합 검토 요청. 학술 agent 의 의견 수렴 후 추가 chain 의 결정 trigger (paper drafting timing + 학술 agent 의 paper draft review trigger).
+  - **Analyzer (Wave 8 후속 candidate, priority 낮음)**: Comb-A 의 EX-down 40 queries 의 case-by-case 분석 (per-DB / per-difficulty 의 schema modification trigger 분류) + Comb-A per-DB R/P/F1/EX 분포 + D3 verify 의 base-schema sensitivity 분석. 산출: `notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md §7 확장` 또는 별도 supplemental.
   - **Root (paper drafting trigger)**: Wave 8 closure 후 paper drafting trigger 가능 — Wave 8 evidence + Wave 9 baseline relog + Wave 10 framework audit 의 3 chain 통합 정량 base 위에 paper §V.5.x.M.* sub-section narrative 의 final integration. 학술 agent 의견 수렴 후 진행 권고.
 
 - **추가 필요 분석**: 현재 부재 — Wave 8 closure 후 paper drafting trigger. Comb-B/C/D 의 post-paper extension 은 paper closure 후 정합 (post-paper backlog #23 candidate).
@@ -2432,7 +2984,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-19 (Wave 8 M4 발전 4 Direction 분석 결과 채택 — paper §V.5.x.M.15 axis #15 evidence #5 (D1) 격하 + §V.5.x.M.16 (D2) 격하 + §V.5.x.M.17 (D3) retain + §V.5.x.M.18 (D4) retain + Top 2 조합 Comb-A launch/closure 사용자 결정 pending)
 
-> **사용자 직전 input (5/19, 26th turn)**: Wave 8 M4 발전 4 Direction (D1+D2+D3+D4 8 cells) 완료 + analyzer 산출 [`notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md`](../notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md) §0 TL;DR + §2 5 Cases 판정 + §5 Top 2 조합 + §6 paper §V.5.x.M.15~19 권고 + §8 핵심 finding 수신. 4 결정 위임 (1-3 planner 직접 갱신 ✅ 완료 + 4 사용자 결정 trigger pending).
+> **사용자 직전 input (5/19, 26th turn)**: Wave 8 M4 발전 4 Direction (D1+D2+D3+D4 8 cells) 완료 + analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md`](../notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md) §0 TL;DR + §2 5 Cases 판정 + §5 Top 2 조합 + §6 paper §V.5.x.M.15~19 권고 + §8 핵심 finding 수신. 4 결정 위임 (1-3 planner 직접 갱신 ✅ 완료 + 4 사용자 결정 trigger pending).
 
 ### §1. Wave 8 정량 핵심 정리 — 8 cells × R/P/F1/EX + Pareto Frontier
 
@@ -2515,7 +3067,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/19 26th turn 의 Wave 8 분석 결과 채택 + 4 결정 위임 (planner 직접 갱신 + 사용자 결정 trigger)
-  - [notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md §0+§2+§5+§6+§8](../notebooks/analysis_results/wave8_m4_extensions_2026-05-19.md)
+  - [notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md §0+§2+§5+§6+§8](../notebooks/analysis_results/05_ablation_waves/wave8_m4_extensions_2026-05-19.md)
   - 직전 DECISIONS 2026-05-18 (Wave 8 M4 발전 chain 신규 활성) + [planning/improving_m4_plan_scholar_agent_2026-05-18.md](improving_m4_plan_scholar_agent_2026-05-18.md)
 
 - **영향 범위**:
@@ -2527,7 +3079,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 - **에스컬레이션 필요 여부**:
   - **Root (Comb-A launch 위임, 우선순위 1)**: ✅ 사용자 Option A 채택 → 다음 turn 의 핸드오프 block 참조. D4 v1 + D3 v2 직렬 stacking config 작성 + script (or run command) + launch + HISTORY/CATALOG/ID_MIGRATION 갱신 + Comb-A 결과 도착 후 보고. Wave 8 M4 발전 4 Direction Chain entry 도 함께 갱신 (8 cells + Comb-A).
   - **Module:filters (Comb-A 구현 위임, root 가 launch 전 trigger)**: 기존 BidirectionalValueHintFilter (D4 v1) + BidirectionalVerifyLoopFilter (D3 v2) 의 직렬 stacking — 직접 통합 config 작성 가능 or 신규 ComposedFilter wrapper 작성 필요 여부 root 판단. config 작성 후 root 가 launch.
-  - **Analyzer (Comb-A 결과 후, priority 1)**: Comb-A vs M4 / D4 v1 / D3 v2 의 mechanism 분해 (R/P/F1/EX 정량 + Pre-Filter D4 의 schema retention 단계의 effect + Post-Filter D3 의 verify loop 단계의 effect 분리 + per-stage EX transition matrix). 산출: `notebooks/analysis_results/wave8_comb_a_2026-XX-XX.md`.
+  - **Analyzer (Comb-A 결과 후, priority 1)**: Comb-A vs M4 / D4 v1 / D3 v2 의 mechanism 분해 (R/P/F1/EX 정량 + Pre-Filter D4 의 schema retention 단계의 effect + Post-Filter D3 의 verify loop 단계의 effect 분리 + per-stage EX transition matrix). 산출: `notebooks/analysis_results/05_ablation_waves/wave8_comb_a_2026-05-19.md`.
   - **Analyzer (Wave 8 후속 추가 candidate, priority 낮음)**: Wave 8 cells 의 per-DB 분포 + D3 v2 recovery case study + D4 v1 evidence_high_count distribution.
 
 - **추가 필요 분석**: Comb-A 결과 도착 후 — (a) analyzer 의 mechanism 분해 분석 + (b) paper §V.5.x.M.17 + .M.18 narrative 의 Comb-A boost evidence 통합 (planner 직접) + (c) EX > M4 시 paper §V.5.x.M.19 신규 sub-section candidate (직교 mechanism boost 통합 narrative).
@@ -2536,7 +3088,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-18 (Wave 9 Baseline Relog 분석 결과 채택 + paper §10 갱신 + §V.5.x.M.2 narrative retain — prompt-axis confounder ΔΔ +0.05~+0.06 schema linking effect 정량 evidence)
 
-> **사용자 직전 input (5/18, 25th turn)**: Wave 9 baseline relog 3 cells (G-Retriever / LinkAlign / XiYan-SQL) 19:35 종료 + analyzer 산출 [`notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md`](../notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md) §0 TL;DR + §5 paper §10 갱신 권고 + §7 핵심 finding 수신. 4 작업 위임 (planner 직접 갱신 + DECISIONS 신규 entry): paper §10 6 baseline 표 갱신 + paper main contribution baseline 우위 narrative 정량 정확화 + paper §V.5.x.M.2 narrative retain 확인 + DECISIONS 신규 entry.
+> **사용자 직전 input (5/18, 25th turn)**: Wave 9 baseline relog 3 cells (G-Retriever / LinkAlign / XiYan-SQL) 19:35 종료 + analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md`](../notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md) §0 TL;DR + §5 paper §10 갱신 권고 + §7 핵심 finding 수신. 4 작업 위임 (planner 직접 갱신 + DECISIONS 신규 entry): paper §10 6 baseline 표 갱신 + paper main contribution baseline 우위 narrative 정량 정확화 + paper §V.5.x.M.2 narrative retain 확인 + DECISIONS 신규 entry.
 
 ### §1. Wave 9 정합 정량 핵심 정리
 
@@ -2614,7 +3166,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/18 25th turn 의 Wave 9 분석 결과 채택 + 4 작업 위임 (planner 직접 갱신)
-  - [notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md §0+§2+§5+§7](../notebooks/analysis_results/wave9_baseline_relog_2026-05-18.md)
+  - [notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md §0+§2+§5+§7](../notebooks/analysis_results/05_ablation_waves/wave9_baseline_relog_2026-05-18.md)
   - 직전 DECISIONS 2026-05-18 (Wave 10 Phase B 사용자 결정) — Spec A 단일 채택 정합
 
 - **영향 범위**:
@@ -2634,7 +3186,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-18 (Wave 10 Phase B 사용자 결정 — Spec A 단일 채택 + Phase C trigger)
 
-> **사용자 직전 input (5/18, 23rd turn)**: Phase A audit 결과 ([`notebooks/analysis_results/measurement_framework_audit_2026-05-18.md`](../notebooks/analysis_results/measurement_framework_audit_2026-05-18.md)) §0 TL;DR + §4.4 학술 정합 권고 표 + §5 Phase C 재계산 inventory + §7 핸드오프 수신. **Phase B 결정 = Option A (Spec A 단일 채택, main.py col-only)** + Phase C 후속 작업 위임 (paper 표 갱신 + Spec B capacity indices footnote 보강).
+> **사용자 직전 input (5/18, 23rd turn)**: Phase A audit 결과 ([`notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md`](../notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md)) §0 TL;DR + §4.4 학술 정합 권고 표 + §5 Phase C 재계산 inventory + §7 핸드오프 수신. **Phase B 결정 = Option A (Spec A 단일 채택, main.py col-only)** + Phase C 후속 작업 위임 (paper 표 갱신 + Spec B capacity indices footnote 보강).
 
 ### §1. Phase A audit 결과 정식 채택
 
@@ -2711,7 +3263,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **근거**:
   - 사용자 5/18 23rd turn 의 Phase B Option A 결정 (BIRD/RoSL/RethinkSL convention 정합 + Spec B mechanism axis 보조 retain)
-  - [notebooks/analysis_results/measurement_framework_audit_2026-05-18.md §0 + §4.4 + §5 + §7](../notebooks/analysis_results/measurement_framework_audit_2026-05-18.md)
+  - [notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md §0 + §4.4 + §5 + §7](../notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md)
   - 직전 DECISIONS 2026-05-18 (Wave 10 Measurement Framework Audit chain 활성)
 
 - **영향 범위**:
@@ -2771,7 +3323,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   - FK arrow 포함 vs 제외
   - 정규화 (lowercase / strip / quote 등)
 - (d) paper academic 정합 위에서 어느 spec 이 적절한지 분석 + 권고
-- 산출: `notebooks/analysis_results/measurement_framework_audit_2026-05-XX.md`
+- 산출: `notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md`
 
 **Phase B — 사용자 framework 결정 trigger** (Phase A 결과 도착 후):
 - 두 framework 의 정확 차이 + 학술 정합 권고 위에서 사용자 결정
@@ -2812,7 +3364,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 - **근거**:
   - 사용자 5/18 22nd turn 정합 지적 (framework cross-pollution 정합 의 보수성 정정)
   - 직전 DECISIONS 2026-05-18 (M2 R inconsistency audit 결과 채택) — Hypothesis (a) confirmed
-  - [notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md §1.3+§4.2](../notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md)
+  - [notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md §1.3+§4.2](../notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md)
 
 - **영향 범위**:
   - EXPERIMENT_PLAN.md post-paper backlog #22 → active Wave 10 entry 격상.
@@ -2820,7 +3372,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   - Wave 9 Baseline Relog Chain 과 정합 정합 — Wave 10 audit 결과로 baseline 표 통합 갱신.
 
 - **에스컬레이션 필요 여부**:
-  - **Analyzer 세션 (Phase A 위임)**: spec 차이 정확 소상 + 권고. 산출: notebooks/analysis_results/measurement_framework_audit_2026-05-XX.md.
+  - **Analyzer 세션 (Phase A 위임)**: spec 차이 정확 소상 + 권고. 산출: notebooks/analysis_results/07_baselines_audits/measurement_framework_audit_2026-05-18.md.
   - **User 결정 (Phase B)**: framework 통일 결정 trigger (Phase A 결과 도착 후).
   - **Analyzer 또는 module utility (Phase C)**: post-hoc 재계산 + paper 표 갱신.
 
@@ -2832,7 +3384,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 ## 2026-05-18 (M2 R inconsistency audit 결과 채택 — Root cause measurement framework 차이 (Hypothesis (a)) confirmed + paper §V.5.x.M.4 + §V.5.x.M.15 narrative 강화 + Wave 7 §1.1 + paper §V.5.x.M.12 R_ext spec footnote + post-paper backlog #22) [PARTIAL SUPERSEDED by Wave 10 Framework Audit — footnote retain, post-paper #22 → active]
 
-> **사용자 직전 input (5/18, 21st turn)**: Analyzer 산출 [`notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md`](../notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md) §3+§4 receive + 3 사항 정식 채택 + post-paper backlog #22 등록 요청.
+> **사용자 직전 input (5/18, 21st turn)**: Analyzer 산출 [`notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md`](../notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md) §3+§4 receive + 3 사항 정식 채택 + post-paper backlog #22 등록 요청.
 
 ### §1. Audit 결과 — Hypothesis (a) Measurement Framework 차이 confirmed
 
@@ -2892,7 +3444,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
   6. paper main contribution narrative (M4 EX gain + F1-EX 분리 + axis #5~#15) 영향 없음 retain.
 
 - **근거**:
-  - [notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md](../notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md) §1~§4
+  - [notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md](../notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md) §1~§4
   - 직전 DECISIONS 2026-05-18 (M2 R=0.9745 > Extractor R=0.9710 inconsistency 발견 — Analyzer 위임)
   - outputs/experiments/abl/wave6_recall_biased/w6_p2a_m2cot_strong/ + score_analysis (parse_errors 86.25% telemetry)
   - src/utils/evaluator.py:45 calculate_schema_metrics (main.py col-only spec)
@@ -2900,7 +3452,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 
 - **영향 범위**:
   - paper_research_direction.md 3 영역 갱신: §V.5.x.M.4 본문 (Caveat 1 R-axis section) + §V.5.x.M.15 axis #15 narrative (R mechanism dimension) + §V.5.x.M.12 R_ext spec footnote.
-  - notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md §1.1 footnote 추가.
+  - notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md §1.1 footnote 추가.
   - EXPERIMENT_PLAN.md §4 Phase B — post-paper backlog #22 신규.
   - 직전 DECISIONS 2026-05-18 (M2 R inconsistency 발견) 의 검증 결과 채택 — Hypothesis (a) confirmed.
 
@@ -3044,7 +3596,7 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 5. measurement framework 의 정합 차이 식별 (Wave 6 vs Wave 7)
 6. paper narrative 의 영향 정합 (axis #15 + axis #12 + axis #4)
 
-**산출**: `notebooks/analysis_results/m2_r_inconsistency_audit_2026-05-18.md`
+**산출**: `notebooks/analysis_results/07_baselines_audits/m2_r_inconsistency_audit_2026-05-18.md`
 
 ### §6. 결정 요약
 
@@ -3056,8 +3608,8 @@ def parse_sql_elements(sql: str) -> Tuple[Set[str], Set[str]]:
 - **근거**:
   - 사용자 5/18 19th turn 정합 지적 (R_fil > R_ext 의 mechanism 위반)
   - outputs/experiments/abl/wave6_recall_biased/w6_p2a_m2cot_strong/metrics.txt (recall: 0.9745)
-  - notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md §1.1 (Extractor R=0.9710)
-  - notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md §1.2 (Wave 7 relog 의 sub-noise variance evidence)
+  - notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md §1.1 (Extractor R=0.9710)
+  - notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md §1.2 (Wave 7 relog 의 sub-noise variance evidence)
 
 - **영향 범위**:
   - paper narrative 영향 잠재 (axis #4 Caveat 1 + axis #15 evidence #2 의 M2 reference)
@@ -3219,7 +3771,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 ## 2026-05-18 (Wave 7 Stage-wise EX Chain 결과 채택 + §3.5b query-level mechanism categories + paper §V.5.x.M.12 dual mechanism evidence + §V.5.x.M.15 M4 ΔΔ=+0.0183 정량 + m4_anchor_framework_analysis §5.5+§5.6.1 EX cell 채움)
 
-> **사용자 직전 input (5/18, 17th turn)**: Analyzer 산출 [`notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md`](../notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md) §3+§3.5b+§4+§5 + 갱신된 m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 receive + 3 사항 정식 채택 요청.
+> **사용자 직전 input (5/18, 17th turn)**: Analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md`](../notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md) §3+§3.5b+§4+§5 + 갱신된 framework/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 receive + 3 사항 정식 채택 요청.
 
 ### §1. Wave 7 Stage-wise EX 결과 정합
 
@@ -3284,7 +3836,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 → **paper main contribution F1-EX dual axis narrative 의 정량 완성** — Filter Dominance 가 F1 axis 에서 dominant 단 EX axis 에서 mechanism dependent (Backward Union 의 specific gain mechanism).
 
-### §5. m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 채움
+### §5. framework/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 채움
 
 (사용자가 직전에 m4_anchor_framework_analysis 의 n/a cell 4 종 정량 갱신 완료. Wave 7 결과 정합 위에서:)
 - §5.5.1 row (1) Selector only EX = 0.3507 (n/a → 정량 갱신)
@@ -3298,19 +3850,19 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
   1. paper §V.5.x.M.12 본문 강화 — Filter F1-EX Decoupling Dual Mechanism 신규 sub-section (Wave 7 evidence + §3.5b query-level mechanism categories (a)-(f)).
   2. paper §V.5.x.M.15 본문 강화 — Wave 7 Stage-wise EX 첫 정량 신규 sub-section (M4 ΔΔ=+0.0183 정확화).
   3. §V.5.x.M sub-section 매트릭스 M.12 / M.15 row + §3.5 axis 표 axis #12 / #15 row 갱신 (각 evidence dimension 통합).
-  4. m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 갱신 (Wave 7 정량 값 채움).
+  4. framework/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 갱신 (Wave 7 정량 값 채움).
   5. Filter Dominance 의 multi-axis dual evidence 완성 — F1 axis +0.6555 dominant vs EX axis -0.0033 micro-negative dual mechanism (cost-benefit sub-noise cancellation).
 
 - **근거**:
-  - [notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md](../notebooks/analysis_results/wave7_stagewise_ex_2026-05-18.md) §3 + §3.5b + §4 + §5
-  - [planning/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1](../planning/m4_anchor_framework_analysis_2026-05-17.md) (Wave 7 정량 갱신 정합)
+  - [notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md](../notebooks/analysis_results/05_ablation_waves/wave7_stagewise_ex_2026-05-18.md) §3 + §3.5b + §4 + §5
+  - [planning/framework/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1](../planning/framework/m4_anchor_framework_analysis_2026-05-17.md) (Wave 7 정량 갱신 정합)
   - 직전 DECISIONS 2026-05-18 (Wave 7 Stage-wise EX Chain 신규 활성) — launch spec 정합
   - 직전 DECISIONS 2026-05-17 (Wave 6 chain final closure) — axis #15 Quadruple Evidence base
   - 직전 DECISIONS 2026-05-16 (Phase 3.1 Shapley Breakdown 결과 채택) — axis #12 base
 
 - **영향 범위**:
   - paper_research_direction.md 4 영역 갱신: §V.5.x.M sub-section 매트릭스 (M.12 + M.15) + §V.5.x.M.12 본문 + §V.5.x.M.15 본문 + §3.5 axis #12 + #15 rows.
-  - m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 갱신 정합.
+  - framework/m4_anchor_framework_analysis_2026-05-17.md §5.5+§5.6.1 EX cell 갱신 정합.
   - paper main contribution Filter Dominance 의 multi-axis dual evidence (axis #12 F1-EX dual mechanism + axis #15 M4 ΔΔ=+0.0183 정량) 완성.
   - F1 axis vs EX axis 의 dual narrative — paper §V.5.x.M.12 + §V.5.x.M.15 cross-reference evidence 정합.
 
@@ -3320,7 +3872,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
   - **다음 단계 (post-Wave-7)**: paper draft 본 작성 진입 (학회 paper Extended Abstract 3p + 학위 paper Part III) 또는 학술 agent cover note (Wave 6+7 chain final closure 보고 + paper main contribution narrative 완성).
 
 - **추가 필요 분석** (post-Wave-7):
-  - m4_anchor_framework_analysis_2026-05-17.md 의 §5.6.1 M3 MAJORITY EX / M3 AND EX 정량 갱신 (Wave 7 §1.1 정합)
+  - framework/m4_anchor_framework_analysis_2026-05-17.md 의 §5.6.1 M3 MAJORITY EX / M3 AND EX 정량 갱신 (Wave 7 §1.1 정합)
   - challenging query (n=145) 의 Filter EX cost -0.0138 의 query-level mechanism 추가 분석 (4× magnitude 의 root cause)
   - formula_1 DB 의 5 queries (9 Filter EX cost 의 56%) 의 schema-specific mechanism 분석
 
@@ -3330,7 +3882,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 ### §1. n/a EX cell 4 종 정합
 
-**M4 anchor framework 분석 보고서 [planning/m4_anchor_framework_analysis_2026-05-17.md](../planning/m4_anchor_framework_analysis_2026-05-17.md) 의 빈 EX 영역**:
+**M4 anchor framework 분석 보고서 [planning/framework/m4_anchor_framework_analysis_2026-05-17.md](../planning/framework/m4_anchor_framework_analysis_2026-05-17.md) 의 빈 EX 영역**:
 
 | Cell | 위치 | 현재 표기 | 측정 spec |
 |---|---|---|---|
@@ -3387,37 +3939,37 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 - **결정**:
   1. EXPERIMENT_PLAN.md Wave 7 신규 활성 entry — Stage-wise EX Chain 4 cells.
-  2. m4_anchor_framework_analysis_2026-05-17.md 의 §5.5.1 + §5.6.1 빈 EX 영역 결과 도착 후 갱신.
+  2. framework/m4_anchor_framework_analysis_2026-05-17.md 의 §5.5.1 + §5.6.1 빈 EX 영역 결과 도착 후 갱신.
   3. 학술 가치 정합: Stage-wise Shapley breakdown EX dimension + Filter Dominance Necessity 직접 evidence + M3 voting full coverage.
   4. Module:filters / root 위임 — Option A (별도 launcher script + pre-processing) 권고.
   5. cost ~$9~18 + ~1.5h parallel (4 streams 정합 GLM API rate limit 검토).
 
 - **근거**:
   - 사용자 5/18 16th turn 옵션 ① 선택 — 전체 4 cells launch
-  - [planning/m4_anchor_framework_analysis_2026-05-17.md §5.5.1 + §5.6.1](../planning/m4_anchor_framework_analysis_2026-05-17.md) — n/a cell 영역
+  - [planning/framework/m4_anchor_framework_analysis_2026-05-17.md §5.5.1 + §5.6.1](../planning/framework/m4_anchor_framework_analysis_2026-05-17.md) — n/a cell 영역
   - 직전 DECISIONS 2026-05-17 (Wave 6 chain final closure) — paper §V.5.x.M.15 Quadruple Evidence + Pareto 6 cells 정합
   - 직전 DECISIONS 2026-05-17 (Wave 6 Phase 3 통합 채택) §3 M3 voting variants (post-hoc OR/MAJORITY/AND R/P/F1)
 
 - **영향 범위**:
   - EXPERIMENT_PLAN.md Wave 7 entry (§4 Phase 0) + Phase B 신규.
-  - m4_anchor_framework_analysis_2026-05-17.md §5.5.1 + §5.6.1 (결과 도착 후 갱신).
+  - framework/m4_anchor_framework_analysis_2026-05-17.md §5.5.1 + §5.6.1 (결과 도착 후 갱신).
   - paper §V.5.x.M.15 axis #15 evidence 의 EX dimension 추가 (Filter ablation table 의 voting axis 완전 coverage).
   - paper §V.5.x.M.12 Shapley breakdown 의 EX dimension 추가 (stage-wise contribution).
 
 - **에스컬레이션 필요 여부**:
   - **Module 위임 (Option A 권고)**: pre-processing script (selector_only / extractor_only / m3_voted_majority / m3_voted_and schema input JSON 추출) — root 단독 가능 (기존 outputs/experiments/abl/wave6_recall_biased/w6_p2_m3_voting/ 의 output_*.jsonl 에서 voted_nodes 추출).
   - **Root 세션 (launch)**: configs 4 신규 + scripts/run_wave7_stage_wise_ex.sh + parallel launch (4 streams GLM API rate limit 정합 위해 conservative 2~3 streams 권고). HISTORY/CATALOG/ID_MIGRATION 3종 갱신.
-  - **Analyzer 세션 (post-launch)**: 4 cells 결과 분석 + m4_anchor_framework_analysis_2026-05-17.md 갱신 권고 (planner 가 직접 갱신 or analyzer 위임).
+  - **Analyzer 세션 (post-launch)**: 4 cells 결과 분석 + framework/m4_anchor_framework_analysis_2026-05-17.md 갱신 권고 (planner 가 직접 갱신 or analyzer 위임).
 
 - **추가 필요 분석** (Wave 7 결과 도착 후):
   - Stage-wise EX trajectory (Selector only → Extractor only → Filter anchor → Filter M4) — Shapley breakdown 의 EX dimension contribution 정량
   - Filter Dominance Necessity 직접 evidence — Extractor only EX vs anchor Filter EX 0.5176 차이 정량 (Filter contribution to EX)
   - M3 voting EX axis full coverage (OR 0.5202 measured + MAJORITY measured + AND measured) — voting strategy 의 R-P-EX 3D trade-off 정합
-  - m4_anchor_framework_analysis_2026-05-17.md 갱신 (n/a → 정량값)
+  - framework/m4_anchor_framework_analysis_2026-05-17.md 갱신 (n/a → 정량값)
 
 ## 2026-05-17 (Wave 6 Phase 5 C2 결과 + H3 Partial Entanglement 확정 + axis #15 Quadruple Evidence 격상 + Wave 6 chain main contribution 완성)
 
-> **사용자 직전 input (5/17, 15th turn)**: Analyzer 산출 [`notebooks/analysis_results/wave6_phase5_c2_2026-05-17.md`](../notebooks/analysis_results/wave6_phase5_c2_2026-05-17.md) §2+§3+§6+§8+§9 receive + 4 사항 정식 채택 요청 + Wave 6 chain 종료 결정.
+> **사용자 직전 input (5/17, 15th turn)**: Analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave6_phase5_c2_2026-05-17.md`](../notebooks/analysis_results/05_ablation_waves/wave6_phase5_c2_2026-05-17.md) §2+§3+§6+§8+§9 receive + 4 사항 정식 채택 요청 + Wave 6 chain 종료 결정.
 
 ### §1. Wave 6 Phase 5 C2 (M4 + M3 MAJORITY Forward) 결과 정합
 
@@ -3530,7 +4082,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
   7. Wave 6 chain main contribution 완성 — paper main contribution narrative 의 multi-axis dual evidence (Wave 5 + Wave 6) 정합 완성.
 
 - **근거**:
-  - [notebooks/analysis_results/wave6_phase5_c2_2026-05-17.md](../notebooks/analysis_results/wave6_phase5_c2_2026-05-17.md) §1~§10
+  - [notebooks/analysis_results/05_ablation_waves/wave6_phase5_c2_2026-05-17.md](../notebooks/analysis_results/05_ablation_waves/wave6_phase5_c2_2026-05-17.md) §1~§10
   - EXPERIMENT_HISTORY.md "Wave 6 Phase 5 Top 2 C2" entry (commit 00bbe97)
   - Module:filters commit 7a07a6b (BidirectionalFilter + voting_multi_prompt Forward)
   - 직전 DECISIONS 2026-05-17 (Wave 6 Phase 4 C1 결과 + C2 launch 결정) §6
@@ -3557,7 +4109,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 ## 2026-05-17 (Wave 6 Phase 4 C1 결과 + Backward mechanism Forward-prompt-dependent 첫 정량 evidence + C2 launch 결정)
 
-> **사용자 직전 input (5/17, 14th turn)**: Analyzer 산출 [`notebooks/analysis_results/wave6_phase4_c1_2026-05-17.md`](../notebooks/analysis_results/wave6_phase4_c1_2026-05-17.md) §2+§3+§5+§6 receive + 3 사항 정식 채택 요청.
+> **사용자 직전 input (5/17, 14th turn)**: Analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave6_phase4_c1_2026-05-17.md`](../notebooks/analysis_results/05_ablation_waves/wave6_phase4_c1_2026-05-17.md) §2+§3+§5+§6 receive + 3 사항 정식 채택 요청.
 
 ### §1. Wave 6 Phase 4 C1 (M4 + M1-B strong Forward) 결과 정합
 
@@ -3666,7 +4218,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
   5. C2 launch 결정 — Module:filters + root 후속 핸드오프 chain.
 
 - **근거**:
-  - [notebooks/analysis_results/wave6_phase4_c1_2026-05-17.md](../notebooks/analysis_results/wave6_phase4_c1_2026-05-17.md) §1~§7
+  - [notebooks/analysis_results/05_ablation_waves/wave6_phase4_c1_2026-05-17.md](../notebooks/analysis_results/05_ablation_waves/wave6_phase4_c1_2026-05-17.md) §1~§7
   - EXPERIMENT_HISTORY.md "Wave 6 Phase 4 Top 2 C1" entry (commit 778ef06)
   - Module:filters commit 60b6988 (BidirectionalFilter forward_prompt_mode flag)
   - 직전 DECISIONS 2026-05-17 (Wave 6 Phase 3 통합 채택) §4 Top 2 C1 launch spec
@@ -3692,7 +4244,7 @@ Top 2 directions 결합 (단독 실험 후 EX gain 기준 결정):
 
 ## 2026-05-17 (Wave 6 Phase 3 통합 채택 — paper §V.5.x.M.15 정식 + axis #15 정식 row + §3.1 Backward mechanism bullet + Top 2 (C1) launch + post-paper #20+#21)
 
-> **사용자 직전 input (5/17, 13th turn)**: Analyzer 산출 [`notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md`](../notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md) §6+§7+§8+§9 receive + 5 사항 정식 채택 요청.
+> **사용자 직전 input (5/17, 13th turn)**: Analyzer 산출 [`notebooks/analysis_results/05_ablation_waves/wave6_phase2_results_all_methods_2026-05-17.md`](../notebooks/analysis_results/05_ablation_waves/wave6_phase2_results_all_methods_2026-05-17.md) §6+§7+§8+§9 receive + 5 사항 정식 채택 요청.
 
 ### §1. Wave 6 Phase 3 (Aggregate + Pareto + paper narrative 정식 채택) 결과 정합
 
@@ -3787,7 +4339,7 @@ paper main contribution narrative 의 multi-axis dual evidence 확보:
   7. Top 2 조합 C1 (M4 + M1-B strong) launch 결정 — Wave 6 Phase 4 신규 활성 + module:filters + root 후속 핸드오프.
 
 - **근거**:
-  - [notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md](../notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md) §1~§10
+  - [notebooks/analysis_results/05_ablation_waves/wave6_phase2_results_all_methods_2026-05-17.md](../notebooks/analysis_results/05_ablation_waves/wave6_phase2_results_all_methods_2026-05-17.md) §1~§10
   - 직전 DECISIONS 2026-05-17 (Wave 6 Phase 2 launch 완료 + Phase 3 위임) §2 보강 권고 4 항
   - 직전 DECISIONS 2026-05-16 (Wave 6 Phase 1 결과 + Phase 2 (a) 활성) §V.5.x.M.15 candidate marker
   - 직전 DECISIONS 2026-05-16 (Wave 6 Phase 2 a+aggressive M2~M5 동시 launch)
@@ -3885,7 +4437,7 @@ paper main contribution narrative 의 multi-axis dual evidence 확보:
   - 직전 DECISIONS 2026-05-16 (Wave 6 Phase 1 결과 + Phase 2 (a) 활성) §5 Success criterion (a)/(b) 분기 → **(b) confirmed**.
 
 - **에스컬레이션 필요 여부**:
-  - **Analyzer 세션**: 사용자 prompt 그대로 + planner 보강 4 항 추가 전달. 산출: notebooks/analysis_results/wave6_phase2_results_all_methods_2026-05-17.md.
+  - **Analyzer 세션**: 사용자 prompt 그대로 + planner 보강 4 항 추가 전달. 산출: notebooks/analysis_results/05_ablation_waves/wave6_phase2_results_all_methods_2026-05-17.md.
   - **추가 위임 보류**: Phase 3 결과 도착 후 paper narrative 정식 채택 turn (planner 다시 호출) + Top 2 조합 launch trigger (root) 결정.
 
 - **추가 필요 분석** (Phase 3 결과 후):
@@ -4003,7 +4555,7 @@ paper §V.5.x.M.15 candidate 의 evidence 강화 + paper main contribution narra
 
 ## 2026-05-16 (Wave 6 Phase 1 M1 결과 채택 + Phase 2 (a) 분기 활성 결정 — paper §V.5.x.M.15 candidate marker + axis #15 candidate row + axis #11 정합 함의 Phase 2 후 결정)
 
-> **사용자 직전 input (5/16, 10th turn)**: Analyzer 보고서 [`notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-16.md`](../notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-16.md) §5+§6+§7 receive + 4 사항 정식 채택 요청.
+> **사용자 직전 input (5/16, 10th turn)**: Analyzer 보고서 [`notebooks/analysis_results/05_ablation_waves/wave6_phase1_recall_biased_2026-05-16.md`](../notebooks/analysis_results/05_ablation_waves/wave6_phase1_recall_biased_2026-05-16.md) §5+§6+§7 receive + 4 사항 정식 채택 요청.
 
 ### §1. Wave 6 Phase 1 M1 결과 (3 variants)
 
@@ -4103,7 +4655,7 @@ M2 + M1 best 조합 (Phase 2 (a)):
   7. EXPERIMENT_PLAN.md Wave 6 Phase 1 entry 완료 마킹 + Phase 2 (a) 활성 entry 갱신 (별도 task).
 
 - **근거**:
-  - [notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-16.md](../notebooks/analysis_results/wave6_phase1_recall_biased_2026-05-16.md) §1~§7
+  - [notebooks/analysis_results/05_ablation_waves/wave6_phase1_recall_biased_2026-05-16.md](../notebooks/analysis_results/05_ablation_waves/wave6_phase1_recall_biased_2026-05-16.md) §1~§7
   - 직전 DECISIONS 2026-05-16 (Wave 6 신규 활성) §3 Phase 2 분기 spec
   - 학술 agent filter improve plan §3.3 Phase 2 분기 spec + §4 M2 CoT spec
   - EXPERIMENT_HISTORY.md "Wave 6 Phase 1 M1 Recall-Biased Prompt" entry (commit 18d896f)
@@ -4221,7 +4773,7 @@ Phase 2 spec 의 상세 (학술 agent plan §4~§7) 는 M1 결과 도착 후 별
 
 ## 2026-05-16 (Phase 4.1 α Sweep + Phase 4.2 TCR-Conditional Filter 결과 통합 채택 — paper §V.5.x.M.13/.M.14 + axis #13/#14 정식 추가 + §V.5.x.M.11 갱신 + §V.5.x.M.3 보강 + §3.1 Co-Design 강화 — 학술 agent plan Phase 3+4 chain final closure)
 
-> **사용자 직전 input (5/16, 8th turn)**: Analyzer 2 보고서 receive — [`phase4_1_integrated_alpha_sweep_2026-05-16.md`](../notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-16.md) + [`phase4_2_conditional_filter_2026-05-16.md`](../notebooks/analysis_results/phase4_2_conditional_filter_2026-05-16.md) + 8 사항 일괄 채택 요청.
+> **사용자 직전 input (5/16, 8th turn)**: Analyzer 2 보고서 receive — [`phase4_1_integrated_alpha_sweep_2026-05-16.md`](../notebooks/analysis_results/05_ablation_waves/phase4_1_integrated_alpha_sweep_2026-05-16.md) + [`phase4_2_conditional_filter_2026-05-16.md`](../notebooks/analysis_results/04_filter/phase4_2_conditional_filter_2026-05-16.md) + 8 사항 일괄 채택 요청.
 
 ### §1. Phase 4.1 α sweep 결과 (6 cells, fixed θ=0.1 K=20)
 
@@ -4295,8 +4847,8 @@ Phase 4.1+4.2 통합 evidence 가 paper main contribution 의 학술 정합 강�
   8. 학술 agent plan Phase 3+4 chain final closure 명시 — paper 본 작성 단계 진입 가능.
 
 - **근거**:
-  - [notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-16.md](../notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-16.md) §1~§4
-  - [notebooks/analysis_results/phase4_2_conditional_filter_2026-05-16.md](../notebooks/analysis_results/phase4_2_conditional_filter_2026-05-16.md) §2~§7
+  - [notebooks/analysis_results/05_ablation_waves/phase4_1_integrated_alpha_sweep_2026-05-16.md](../notebooks/analysis_results/05_ablation_waves/phase4_1_integrated_alpha_sweep_2026-05-16.md) §1~§4
+  - [notebooks/analysis_results/04_filter/phase4_2_conditional_filter_2026-05-16.md](../notebooks/analysis_results/04_filter/phase4_2_conditional_filter_2026-05-16.md) §2~§7
   - 직전 DECISIONS 2026-05-16 (학술 agent plan Phase 3+4 §3 Phase 4.1 + 4.2)
   - 직전 DECISIONS 2026-05-16 (Phase 3.1 Shapley Breakdown 결과 채택) — axis #12 정합
   - 직전 DECISIONS 2026-05-16 (Phase 2 Grid Sweep CLOSED — Wave 5 closure narrative final retain)
@@ -4320,7 +4872,7 @@ Phase 4.1+4.2 통합 evidence 가 paper main contribution 의 학술 정합 강�
 
 ## 2026-05-16 (Phase 3.1 Shapley Breakdown 결과 채택 — Filter Dominance 3-Zone Mechanism Mapping + paper §V.5.x.M.12 + axis #12 정식 추가, Wave 5 closure narrative 의 정량 boundary 강화)
 
-> **사용자 직전 input (5/16, 7th turn)**: Analyzer 보고서 [`notebooks/analysis_results/phase3_shapley_breakdown_2026-05-16.md`](../notebooks/analysis_results/phase3_shapley_breakdown_2026-05-16.md) §4+§5 receive + 3 사항 정식 채택 요청.
+> **사용자 직전 input (5/16, 7th turn)**: Analyzer 보고서 [`notebooks/analysis_results/05_ablation_waves/phase3_shapley_breakdown_2026-05-16.md`](../notebooks/analysis_results/05_ablation_waves/phase3_shapley_breakdown_2026-05-16.md) §4+§5 receive + 3 사항 정식 채택 요청.
 
 ### §1. Phase 3.1 Shapley Breakdown 결과 — 3-Zone Mechanism Mapping
 
@@ -4388,7 +4940,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   4. §3.5 Filter Dominance section header narrative 갱신 (analyzer §5.1 draft) — "anchor-band sub-noise region 의 dominant contributor 94.6%" + region-conditional refinement bullet 추가.
 
 - **근거**:
-  - [notebooks/analysis_results/phase3_shapley_breakdown_2026-05-16.md](../notebooks/analysis_results/phase3_shapley_breakdown_2026-05-16.md) §2~§5
+  - [notebooks/analysis_results/05_ablation_waves/phase3_shapley_breakdown_2026-05-16.md](../notebooks/analysis_results/05_ablation_waves/phase3_shapley_breakdown_2026-05-16.md) §2~§5
   - 직전 DECISIONS 2026-05-16 (학술 agent plan Phase 3+4 활성 §3.1)
   - 직전 DECISIONS 2026-05-16 (Phase 2 Grid Sweep CLOSED — Wave 5 closure narrative final)
   - 직전 DECISIONS 2026-05-16 (Paper §V.5.x.M.9/.M.10/.M.11 본문 narrative 채택)
@@ -4461,21 +5013,21 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   - Extractor 단독 변경 (K=20 고정, θ=0.1→0.3) → F1_B
   - 둘 다 변경 → F1_new
 - **Shapley contribution**: ΔF1_sel ≈ (F1_A − F1_baseline), ΔF1_ext ≈ (F1_B − F1_baseline), ΔF1_fil ≈ (F1_new − max(F1_A, F1_B))
-- **산출**: notebooks/analysis_results/phase3_shapley_breakdown_2026-05-XX.md
+- **산출**: notebooks/analysis_results/05_ablation_waves/phase3_shapley_breakdown_2026-05-16.md
 
 #### Phase 4.1 (module:extractors + root, ~1.5일):
 - **Code 변경**: Extractor 의 seed 선택 mode 신규 (`integrated_score`)
 - **α grid**: {0.0, 0.2, 0.4, 0.6, 0.8, 1.0} 6 cells
 - **고정 (θ, K)**: anchor c01_01 (θ=0.1, K=20) 또는 plateau best p2_03 (θ=0.1, K=30) — 사용자 결정
 - **측정**: TCR_new + Filter Pruning Ratio + R/P/F1/EX
-- **산출**: notebooks/analysis_results/phase4_1_integrated_alpha_sweep_2026-05-XX.md
+- **산출**: notebooks/analysis_results/05_ablation_waves/phase4_1_integrated_alpha_sweep_2026-05-16.md
 
 #### Phase 4.2 (module:filters + root, ~1.5일):
 - **Code 변경**: Filter wrapper 에 `conditional_call` mode (TCR(q) < threshold → skip)
 - **Threshold candidate**: TCR_threshold ∈ {0.3, 0.5, 0.7} 3 cells
 - **고정 (θ, K)**: anchor c01_01 (θ=0.1, K=20)
 - **측정**: Filter 호출 비율 + Filter skip 시 F1 손실 + cost 절감 (LLM call -%)
-- **산출**: notebooks/analysis_results/phase4_2_conditional_filter_2026-05-XX.md
+- **산출**: notebooks/analysis_results/04_filter/phase4_2_conditional_filter_2026-05-16.md
 
 ### §4. 결정 요약
 
@@ -4511,7 +5063,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
 
 ## 2026-05-16 (Phase 2 Grid Sweep CLOSED — Success criterion (a) plateau 흡수 confirm + (b) R 갱신 lever 잠정 sub-noise — Wave 5 closure narrative final retain)
 
-> **사용자 직전 input (5/16, 5th turn)**: Analyzer 보고서 [`notebooks/analysis_results/phase2_grid_heatmap_2026-05-16.md`](../notebooks/analysis_results/phase2_grid_heatmap_2026-05-16.md) §3+§4 receive + 4 사항 정식 채택 요청.
+> **사용자 직전 input (5/16, 5th turn)**: Analyzer 보고서 [`notebooks/analysis_results/05_ablation_waves/phase2_grid_heatmap_2026-05-16.md`](../notebooks/analysis_results/05_ablation_waves/phase2_grid_heatmap_2026-05-16.md) §3+§4 receive + 4 사항 정식 채택 요청.
 
 ### §1. Phase 2 Grid Sweep 결과 (25 cells 완료)
 
@@ -4565,9 +5117,9 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   6. post-paper backlog #14 신규 — seed sweep (5+ seeds × p2_03/p2_07) 으로 GLM noise floor confidence interval 측정 + p2_03/p2_07 systematic lever 검증.
 
 - **근거**:
-  - [notebooks/analysis_results/phase2_grid_heatmap_2026-05-16.md](../notebooks/analysis_results/phase2_grid_heatmap_2026-05-16.md) §3 + §4
+  - [notebooks/analysis_results/05_ablation_waves/phase2_grid_heatmap_2026-05-16.md](../notebooks/analysis_results/05_ablation_waves/phase2_grid_heatmap_2026-05-16.md) §3 + §4
   - [EXPERIMENT_HISTORY.md "Phase 2 Grid Sweep" entry (2026-05-16)](../EXPERIMENT_HISTORY.md)
-  - [notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md](../notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md) §3.3 + §4
+  - [notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md](../notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md) §3.3 + §4
   - 직전 DECISIONS 2026-05-16 (Wave 5 Partial Reopen §3 success criterion 2 분기 spec)
   - 직전 DECISIONS 2026-05-16 (Paper §V.5.x.M.9/.M.10/.M.11 본문 narrative 채택)
 
@@ -4589,7 +5141,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
 
 ## 2026-05-16 (Paper §V.5.x.M.9/.M.10/.M.11 본문 narrative 채택 + §3.5 axis 표 #10/#11 신규 + §V Limitations Footnote — Wave 5 Partial Reopen §4 즉시 진행 영역 closure)
 
-> **사용자 직전 input (5/16, 4th turn)**: Analyzer 보고서 [`notebooks/analysis_results/paper_v5x_mechanism_narrative_2026-05-16.md`](../notebooks/analysis_results/paper_v5x_mechanism_narrative_2026-05-16.md) §1.2+§2.2+§3.2+§4+§5 receive + 5 사항 정식 채택 요청.
+> **사용자 직전 input (5/16, 4th turn)**: Analyzer 보고서 [`notebooks/analysis_results/08_paper_narratives/paper_v5x_mechanism_narrative_2026-05-16.md`](../notebooks/analysis_results/08_paper_narratives/paper_v5x_mechanism_narrative_2026-05-16.md) §1.2+§2.2+§3.2+§4+§5 receive + 5 사항 정식 채택 요청.
 
 ### §1. 5 사항 정식 채택 — paper_research_direction.md 갱신 완료
 
@@ -4630,9 +5182,9 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   7. Wave 5 Partial Reopen §4 의 즉시 진행 영역 closure 명시.
 
 - **근거**:
-  - [notebooks/analysis_results/paper_v5x_mechanism_narrative_2026-05-16.md](../notebooks/analysis_results/paper_v5x_mechanism_narrative_2026-05-16.md) §1~§5
-  - [notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md](../notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md) §1~§4
-  - [notebooks/analysis_results/three_caveat_recalibration_c01_01_2026-05-16.md](../notebooks/analysis_results/three_caveat_recalibration_c01_01_2026-05-16.md) §3
+  - [notebooks/analysis_results/08_paper_narratives/paper_v5x_mechanism_narrative_2026-05-16.md](../notebooks/analysis_results/08_paper_narratives/paper_v5x_mechanism_narrative_2026-05-16.md) §1~§5
+  - [notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md](../notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md) §1~§4
+  - [notebooks/analysis_results/05_ablation_waves/three_caveat_recalibration_c01_01_2026-05-16.md](../notebooks/analysis_results/05_ablation_waves/three_caveat_recalibration_c01_01_2026-05-16.md) §3
   - 직전 DECISIONS 2026-05-16 (Wave 5 Partial Reopen §4 task 위임)
 
 - **영향 범위**:
@@ -4715,9 +5267,9 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   6. Analyzer 핸드오프 — paper §V.5.x.M.X/M.Y/M.5 narrative 갱신 (Phase 2 결과 도착 전부터 즉시 진행).
 
 - **근거**:
-  - [notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §3.3 Phase 2 grid spec](../notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md)
-  - [phase1_sensitivity_analysis §1.3 θ mechanism 분석](../notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md)
-  - [phase1_sensitivity_analysis §2.3 K mechanism 분석](../notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md)
+  - [notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §3.3 Phase 2 grid spec](../notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md)
+  - [phase1_sensitivity_analysis §1.3 θ mechanism 분석](../notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md)
+  - [phase1_sensitivity_analysis §2.3 K mechanism 분석](../notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md)
   - [planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §Phase 1.3](improving_exp_plan_by_scholar_agent_2026-05-15.md)
   - 사용자 정합 검증 (5/16 3rd turn 의 옵션 ④): "θ 와 K 는 DSN/V5 mitigation chain 안에서 한 번도 동시에 sweep 된 적 없는 축이며 결 세팅 축과 별개"
 
@@ -4780,7 +5332,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   - `EXPERIMENT_HISTORY.md:2552~2616` DSN Phase 1 α sweep (2026-05-06) — best F1=0.8660 ≈ anchor 0.8664 sub-noise.
   - `configs/training/train_gat_enriched_v2_config.yaml` vs `train_gat_directed_supernode_p80.yaml` 의 spec 동등 (V-2 directed_from_sn 핵심).
   - V5 inference 보고서 압축비 9.71x + selector identity fungibility 결론.
-  - `notebooks/analysis_results/builder_axis_candidate_2026-05-15.md` §4.2 의 ③-A expected ΔF1 +0.005~+0.020 — DSN/V5 plateau spread 안 흡수 가능 정합.
+  - `notebooks/analysis_results/05_ablation_waves/builder_axis_candidate_2026-05-15.md` §4.2 의 ③-A expected ΔF1 +0.005~+0.020 — DSN/V5 plateau spread 안 흡수 가능 정합.
 
 - **영향 범위**:
   - `EXPERIMENT_PLAN.md` Wave 5 entry (§4 Phase 0) + Phase B (§4 Phase B) 전면 갱신 — 모든 ★★★ entry 를 🗂 post-paper backlog 로 격하.
@@ -4799,7 +5351,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
 
 ## 2026-05-16 (Builder enriched_v2 spec mismatch 정합 + Wave 5 2-step plan 확정 + V5-D-2 chain trigger 확정) [SUPERSEDED by 2026-05-16 Wave 5 CLOSURE]
 
-> **사용자 직전 input (5/16)**: Analyzer 검증 결과 `notebooks/analysis_results/builder_axis_candidate_2026-05-15.md` §4.2 + §4.3 receive + 3 사항 정식 채택 요청.
+> **사용자 직전 input (5/16)**: Analyzer 검증 결과 `notebooks/analysis_results/05_ablation_waves/builder_axis_candidate_2026-05-15.md` §4.2 + §4.3 receive + 3 사항 정식 채택 요청.
 
 ### §1. Builder enriched_v2 spec mismatch 정합 결과 (analyzer §1 + §2 + §3)
 
@@ -4824,7 +5376,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
 
 ### §3. V5-D-2 chain trigger 확정 (정식 GO)
 
-**V5-D-1 GO trigger 4/4 충족** ([v5_d1_plm_lower_bound.md §4.1](../notebooks/analysis_results/v5_d1_plm_lower_bound.md)):
+**V5-D-1 GO trigger 4/4 충족** ([v5_d1_plm_lower_bound.md §4.1](../notebooks/analysis_results/06_selector_encoder_bottleneck/v5_d1_plm_lower_bound.md)):
 | 조건 | 결과 | 충족 |
 |---|---|---|
 | Enriched builder 가 PLM lower bound lowering | Δ=-0.0279 (n=55, 10/11 DBs negative) | ✅ |
@@ -4843,10 +5395,10 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   4. Post-paper backlog #16 (Neurosymbolic 3-layer chain) + #17 (Triplet × QCondGAT × GLM) 신규 추가.
 
 - **근거**:
-  - [builder_axis_candidate_2026-05-15.md §4.2 Wave 5 2-step plan](../notebooks/analysis_results/builder_axis_candidate_2026-05-15.md)
-  - [builder_axis_candidate_2026-05-15.md §3 Builder ↔ fungibility homogenization boundary](../notebooks/analysis_results/builder_axis_candidate_2026-05-15.md)
-  - [v5_d1_plm_lower_bound.md §4.1 GO trigger 4/4](../notebooks/analysis_results/v5_d1_plm_lower_bound.md)
-  - [v5_inference_phase1_integration_2026-05-15.md §B selector identity fungibility](../notebooks/analysis_results/v5_inference_phase1_integration_2026-05-15.md)
+  - [builder_axis_candidate_2026-05-15.md §4.2 Wave 5 2-step plan](../notebooks/analysis_results/05_ablation_waves/builder_axis_candidate_2026-05-15.md)
+  - [builder_axis_candidate_2026-05-15.md §3 Builder ↔ fungibility homogenization boundary](../notebooks/analysis_results/05_ablation_waves/builder_axis_candidate_2026-05-15.md)
+  - [v5_d1_plm_lower_bound.md §4.1 GO trigger 4/4](../notebooks/analysis_results/06_selector_encoder_bottleneck/v5_d1_plm_lower_bound.md)
+  - [v5_inference_phase1_integration_2026-05-15.md §B selector identity fungibility](../notebooks/analysis_results/06_selector_encoder_bottleneck/v5_inference_phase1_integration_2026-05-15.md)
 
 - **영향 범위**:
   - `EXPERIMENT_PLAN.md` Wave 5 ★★★ entry 전면 교체 (line 148 + line 161).
@@ -4882,7 +5434,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   - Root 핸드오프 prompt 보류 (analyzer 결과 도착 후 재작성).
 
 - **에스컬레이션 필요 여부**:
-  - **Analyzer 세션**: 위 3 candidate 중 Builder 축 lever 식별 + V5 inference 보고서가 의도한 "Builder enriched_v2" 의 실제 spec 확인. 산출: `notebooks/analysis_results/builder_axis_candidate_2026-05-15.md`.
+  - **Analyzer 세션**: 위 3 candidate 중 Builder 축 lever 식별 + V5 inference 보고서가 의도한 "Builder enriched_v2" 의 실제 spec 확인. 산출: `notebooks/analysis_results/05_ablation_waves/builder_axis_candidate_2026-05-15.md`.
   - **Module:builders 세션**: analyzer 결과로 신규 spec 이 필요하면 (예: enriched + 추가 column metadata) `src/modules/builders/EXPERIMENT_PLAN_builders.md` 갱신.
 
 - **추가 필요 분석**:
@@ -4896,7 +5448,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
   1. `EXPERIMENT_PLAN.md` §4 Phase 0 에 **Wave 5 (active, 2026-05-15 ~)** section 신규 추가. 4 entry: ★★★ Builder enriched_v2 ablation (최우선) / ★☆☆ V5 추가 학습 (post-paper backlog 격하) / ★★ Phase 2 5×5 Grid / ★★ Anchor baseline 정정.
   2. `EXPERIMENT_PLAN.md` §4 Phase B (Low-risk Quick Wins) 의 첫 entry 로 **Builder enriched_v2 ablation ★★★** 추가, 동시에 V5 추가 학습 entry 를 ★☆☆ 격하 + post-paper backlog 명시.
 
-- **근거**: [notebooks/analysis_results/v5_inference_phase1_integration_2026-05-15.md](../notebooks/analysis_results/v5_inference_phase1_integration_2026-05-15.md) 보고서 §A + §B 의 4 정량 fact —
+- **근거**: [notebooks/analysis_results/06_selector_encoder_bottleneck/v5_inference_phase1_integration_2026-05-15.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/v5_inference_phase1_integration_2026-05-15.md) 보고서 §A + §B 의 4 정량 fact —
   1. **압축비 9.71x**: stdev(Val R@15)=0.0175 vs stdev(final F1)=0.0018 — selector ceiling 변동의 ~10% 만 final F1 로 통과.
   2. **PCST closure invariant**: V5 7 cells × anchor 의 top-15 Jaccard 평균 **0.2625** 임에도 final F1 |ΔF1| ≤ **0.0031** (anchor c01_01 F1=0.8664 plateau 수렴). Selector identity fungibility 의 직접 증거.
   3. **V5 추가 학습 ROI 계산**: R@15 0.61→0.65 가정 시 final F1 변화 = 0.04 × (1/9.71) = +**0.0041** ≈ sweep noise (0.0030). 즉 추가 학습 cost 가 noise floor 를 넘기 어려움.
@@ -4918,7 +5470,7 @@ paper §V.5.x.M.4 Three-Caveat outlier magnitude 의 mechanism axis breakdown:
 
 ## 2026-05-15 (Phase 1.3 Sensitivity 분석 완료 — θ Anchor-Band + K Filter-Invariant + Phase 2 Grid Spec (5×5 = 25 cells) + c01_01 Baseline 정정 권고 + paper §V.5.x.M.9/.M.10 신규 + Root 핸드오프 Trigger + Post-Paper Backlog 3 추가)
 
-> **사용자 직전 input (5/15)**: Analyzer 의 Phase 1.3 sensitivity 분석 완료 (`notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md`) + 5 planner 작업 spec.
+> **사용자 직전 input (5/15)**: Analyzer 의 Phase 1.3 sensitivity 분석 완료 (`notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md`) + 5 planner 작업 spec.
 
 ### §1. 핵심 결과 정합
 
@@ -5028,7 +5580,7 @@ Phase 1.1 θ sweep 결과 (BIRD-Dev n=1534, K=20 fixed):
     의 정량 base 와 정합 (직전 §V.5.x.M.4 의 80.61% pruning 의 sensitivity 측면)
 
 근거:
-  - notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §1
+  - notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §1
   - outputs/experiments/abl/c01_threshold_sweep/c01_{01..06}_*/
 ```
 
@@ -5080,7 +5632,7 @@ mechanism 강화):
     sub-noise) 와 같은 mechanism — XiYan filter 의 over-include absorb capability
 
 근거:
-  - notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §2
+  - notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §2
   - outputs/experiments/abl/c02_topk_sweep/c02_{01..07}_*/
 ```
 
@@ -5113,7 +5665,7 @@ baseline 갱신 영향:
     deterministic baseline)
 
 근거:
-  - notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §3 + §4
+  - notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §3 + §4
   - outputs/experiments/abl/c01_threshold_sweep/c01_01_theta_0.1/metrics.txt
 ```
 
@@ -5134,7 +5686,7 @@ baseline 갱신 영향:
 ```
 먼저 /home/hyeonjin/thesis_refactored/CLAUDE.md (실험 실행 + sweep config 규칙) +
 planning/DECISIONS.md 최상단 entry (2026-05-15 Phase 1.3 완료 + Phase 2 grid spec
-결정) + notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §3.3
+결정) + notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §3.3
 정독.
 
 작업: Phase 2 — Hyperparameter 2D Grid (θ × K = 5×5 = 25 cells) sweep launch.
@@ -5165,7 +5717,7 @@ Sweep launch:
     CUDA_VISIBLE_DEVICES=0,1 (parallel GPU 0+1)
     25 cells 의 batch 또는 wave 단위 launch (sequential 부담 회피)
 
-측정 지표 (analyzing_index_for_capacity_2026-05-14.md spec + EX 통합):
+측정 지표 (framework/analyzing_index_for_capacity_2026-05-14.md spec + EX 통합):
   per cell:
     - TCR + N_seed + AUC_ext
     - TOR + R_sel + P_sel + F1_sel
@@ -5193,12 +5745,12 @@ git operations (사용자 정합):
 
 Sweep 완료 후:
   - 사용자 → Analyzer 핸드오프 (Phase 2 Pareto frontier 분석)
-  - Analyzer 산출물: notebooks/analysis_results/phase2_pareto_frontier_2026-05-XX.md
+  - Analyzer 산출물: phase2_pareto_frontier (미산출 placeholder, 2026-06-10 정리)
   - 3 option (Aggressive / Conservative / Balanced) Pareto 분석 base
 
 근거:
   - planning/DECISIONS.md 2026-05-15 (Phase 1.3 완료 + Phase 2 grid spec) §2 + §5
-  - notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §3.3
+  - notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §3.3
   - planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §"Phase 2"
 ```
 
@@ -5244,7 +5796,7 @@ Sweep 완료 후:
 ### §10. 근거
 
 - 사용자 직접 input (Phase 1.3 완료 보고 + 5 작업 spec)
-- notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-15.md §0~§7
+- notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md §0~§7
 - outputs/analysis/phase1_sensitivity_2026-05-15.{jsonl,csv} (13 cells records)
 - 직전 entries: 2026-05-15 Path γ 정식 채택 + 학술 Agent Improving Plan + Phase 1 Sweep 실제 완료 confirm
 
@@ -5305,7 +5857,7 @@ V5 inference chain (진행 중) + Improving Plan Phase 1.3 chain 의 **병행 tr
 먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entries (2026-05-15 Phase 1
 Sweep 실제 완료 confirm + Path γ 정식 채택 + 학술 Agent Improving Plan) +
 planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §"Phase 1.1" + §"Phase 1.2"
-+ §"Phase 1.3" + planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec) 정독.
++ §"Phase 1.3" + planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec) 정독.
 
 작업: 학술 Agent Improving Plan 의 Phase 1.3 — Phase 1.1 θ sweep (6 cells) + Phase 1.2
 K sweep (7 cells) 의 sensitivity 분석 + Phase 2 grid 범위 결정 spec.
@@ -5315,7 +5867,7 @@ K sweep (7 cells) 의 sensitivity 분석 + Phase 2 grid 범위 결정 spec.
   outputs/experiments/abl/c02_topk_sweep/c02_{01..07}_topk_{15..100}/
   → 13 cells × 1534 queries × per-stage metrics + 5 capacity 지표
 
-목표 (analyzing_index_for_capacity_2026-05-14.md + improving plan spec 정합):
+목표 (framework/analyzing_index_for_capacity_2026-05-14.md + improving plan spec 정합):
 
 (1) Phase 1.1 θ sweep 6 cells per-cell 정량:
   per θ ∈ {0.1, 0.2, 0.3, 0.4, 0.5, 0.6}:
@@ -5355,7 +5907,7 @@ K sweep (7 cells) 의 sensitivity 분석 + Phase 2 grid 범위 결정 spec.
   - TOR + BNR + TCR 의 K 별 sensitivity — Selector ↔ Extractor interaction mechanism
 
 산출물:
-  (a) notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-XX.md
+  (a) notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md
       §0 TL;DR — sensitivity curve 의 정량 + 최적 (θ, K) 범위 + anchor 정합 정정
       §1 Phase 1.1 θ sweep 6 cells 매트릭스 + sensitivity curve
       §2 Phase 1.2 K sweep 7 cells 매트릭스 + sensitivity curve
@@ -5386,9 +5938,9 @@ V5 chain 과의 정합:
   - planning/DECISIONS.md 2026-05-15 (Path γ 정식 채택)
   - planning/DECISIONS.md 2026-05-15 (학술 Agent Improving Plan)
   - planning/improving_exp_plan_by_scholar_agent_2026-05-15.md (Phase 1+2 spec)
-  - planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 정의)
+  - planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 정의)
   - outputs/experiments/abl/{c01_threshold_sweep, c02_topk_sweep}/ (13 cells data)
-  - notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md (anchor base)
+  - notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md (anchor base)
 ```
 
 ### §5. Chain Status 정정 (5/15)
@@ -5530,7 +6082,7 @@ Phase 1.2 — Selector Top-K sweep (7 cells):
   
   Sweep launch (Phase 1.1 와 병렬 가능, GPU 0+1):
 
-측정 지표 (analyzing_index_for_capacity_2026-05-14.md spec 정합 + EX 통합):
+측정 지표 (framework/analyzing_index_for_capacity_2026-05-14.md spec 정합 + EX 통합):
   per cell:
     - N_seed, TCR, TCR_gold (Phase 1.1 specific)
     - R_ext, P_ext, F1_ext (Extractor 이후)
@@ -5542,7 +6094,7 @@ Phase 1.2 — Selector Top-K sweep (7 cells):
   outputs/experiments/abl/c01_threshold_sweep/c01_{01..06}_*/
   outputs/experiments/abl/c02_topk_sweep/c02_{01..07}_*/
     - predictions.jsonl + output_*.jsonl + metrics.txt + score_analysis_*.jsonl
-    - per-query 26 fields (analyzing_index_for_capacity_2026-05-14.md spec)
+    - per-query 26 fields (framework/analyzing_index_for_capacity_2026-05-14.md spec)
 
 EXPERIMENT_HISTORY 갱신 (sweep 완료 후):
   - "Phase 1.1 Extractor θ Sensitivity Sweep" entry (6 cells, ΔF1/ΔP/ΔR/ΔEX/Filter Prune
@@ -5566,14 +6118,14 @@ git operations 규칙 (사용자 정합):
 
 Sweep 완료 후:
   - 사용자 → Analyzer 핸드오프 (Phase 1.3 sensitivity 분석 — Phase 2 grid 범위 결정 spec)
-  - Analyzer 산출물: notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-XX.md
+  - Analyzer 산출물: notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md
   - relative measurement (Δ vs anchor F1=0.8434, Δ vs anchor Filter Prune 80.61%) 정합
 
 근거:
   - planning/DECISIONS.md 2026-05-15 (Path γ 정식 채택) §1~§3
   - planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §"Phase 1.1" + §"Phase 1.2"
-  - planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
-  - notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md (anchor base, F1=0.8434
+  - planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
+  - notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md (anchor base, F1=0.8434
     + Filter Prune 80.61% 의 5 지표)
 ```
 
@@ -5743,7 +6295,7 @@ Phase 1.2 — Selector Top-K sweep (7 cells):
   
   Sweep launch (Phase 1.1 와 병렬 가능, GPU 0+1):
 
-측정 지표 (analyzing_index_for_capacity_2026-05-14.md spec 정합):
+측정 지표 (framework/analyzing_index_for_capacity_2026-05-14.md spec 정합):
   per cell:
     - N_seed, TCR, TCR_gold, R_ext, P_ext, F1_ext (Extractor 이후)
     - R_fil, P_fil, F1_fil (Filter 이후)
@@ -5755,7 +6307,7 @@ Phase 1.2 — Selector Top-K sweep (7 cells):
   outputs/experiments/abl/c01_threshold_sweep/c01_{01..06}_*/
   outputs/experiments/abl/c02_topk_sweep/c02_{01..07}_*/
     - predictions.jsonl + output_*.jsonl + metrics.txt + score_analysis_*.jsonl
-    - per-query 26 fields (analyzing_index_for_capacity_2026-05-14.md spec)
+    - per-query 26 fields (framework/analyzing_index_for_capacity_2026-05-14.md spec)
 
 EXPERIMENT_HISTORY 갱신 (sweep 완료 후):
   - "Phase 1.1 Extractor θ Sensitivity Sweep" entry (6 cells, ΔF1/ΔP/ΔR/Filter Prune
@@ -5780,13 +6332,13 @@ git operations 규칙 (사용자 정합):
 Sweep 완료 후:
   - 사용자 → Analyzer 핸드오프 (Phase 1.3 분석 — sensitivity 결과 + Pareto curve +
     Phase 2 grid 범위 결정 spec)
-  - Analyzer 산출물: notebooks/analysis_results/phase1_sensitivity_analysis_2026-05-XX.md
+  - Analyzer 산출물: notebooks/analysis_results/05_ablation_waves/phase1_sensitivity_analysis_2026-05-15.md
 
 근거:
   - planning/DECISIONS.md 2026-05-15 (학술 Agent Improving Plan §4 + §6)
   - planning/improving_exp_plan_by_scholar_agent_2026-05-15.md §"Phase 1.1" + §"Phase 1.2"
-  - planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
-  - notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md (anchor base)
+  - planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
+  - notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md (anchor base)
 ```
 
 ### §7. 후속 Phase 의 Trigger Plan (Decision Gate 별)
@@ -5993,7 +6545,7 @@ deterministic partial fail 의 4-항목 진단 — config / prompt / trace diff 
     - 동일 input 에 대해 동일 output 인지 verify
 
 산출물:
-  (a) notebooks/analysis_results/anchor_sql_f1_partial_fail_diagnosis_2026-05-15.md
+  (a) anchor_sql_f1_partial_fail_diagnosis (미산출 placeholder, 2026-06-10 정리)
       §0 TL;DR — ΔF1 -0.0223 의 root cause 후보 (4 항목 중 dominant 식별)
       §1 auto_join_keys 정합 분석
       §2 XiYan filter prompt diff
@@ -6018,7 +6570,7 @@ ETA: ~수 시간 (단순 diff + config / prompt / trace 비교, sweep 재실행 
 근거:
   - planning/DECISIONS.md 2026-05-15 (Option γ 완료) §3 + §6
   - outputs/experiments/s04_ablation/pipeline/enriched_qcond_a05_mst_pcst_union_glm_sql/
-  - notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md §0 (F1=0.8434)
+  - notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md §0 (F1=0.8434)
   - 5/1 prior anchor sweep (정확한 path Root 자체 확인)
 ```
 
@@ -6104,9 +6656,9 @@ EX-axis Mechanism Boundary:
 ### §10. 근거
 
 - 사용자 직접 input (Analyzer 5 지표 + EX 완료 + 4 작업 spec)
-- notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md §0~§9
+- notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md §0~§9
 - outputs/analysis/anchor_capacity_indices_2026-05-15.{jsonl,csv} (1534 records)
-- planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
+- planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
 - planning/filter/filter_sweep_glm_9cell.md §5.3 + §5.3bis + §5.3ter + §5.3quater (Four-Caveat base)
 - 직전 entries: 2026-05-15 사용자 reframing + 사용자 새 방향 (Option γ + EX 측정)
 
@@ -6124,7 +6676,7 @@ EX-axis Mechanism Boundary:
 
 > **사용자 직전 input (5/15)**: 세 가지 결정:
 > 1. **성능 정체 인식** — 4 Direction (A/C/B/C-GT) 모두 production net negative / sub-noise → mechanism-level deep dive 필요
-> 2. **5 Capacity 지표 계산 요청** — `planning/analyzing_index_for_capacity_2026-05-14.md` 의 spec 따라 현 anchor 에 대한 정량 분석
+> 2. **5 Capacity 지표 계산 요청** — `planning/framework/analyzing_index_for_capacity_2026-05-14.md` 의 spec 따라 현 anchor 에 대한 정량 분석
 > 3. **🆕 EX 까지 동시 측정 요청** — Filter Pruning Breakdown 의 EX-axis 정량 mechanism-level evidence 추가 (5 지표 + EX 통합)
 
 ### §0. 사용자 결정 — Option (γ) 채택 (5/15) + ETA Cost 정정
@@ -6169,7 +6721,7 @@ ETA + Cost 정확 (사용자 정정 정합):
 
 → **Planner 권장 = (β) 두 anchor 동시 분석** (extractor variant 비교 + EX 측정 vs 미측정 + Three-Caveat 학술 weight 의 anchor cluster 정합 검증).
 
-### §3. 5 Capacity 지표 spec (analyzing_index_for_capacity_2026-05-14.md 인용)
+### §3. 5 Capacity 지표 spec (framework/analyzing_index_for_capacity_2026-05-14.md 인용)
 
 #### 3.1 공통 표기 + 정의
 
@@ -6221,7 +6773,7 @@ per_query_record = {
 ```
 먼저 src/analysis/CLAUDE.md + planning/CLAUDE.md (Planner 의 분석 위임 정합) +
 planning/DECISIONS.md 최상단 entry (2026-05-15 사용자 새 방향 + 5 Capacity 지표) +
-planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec 본문, 전체) 정독.
+planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec 본문, 전체) 정독.
 
 작업: 현 anchor stack 의 5 Capacity 지표 (TCR/BNR/TOR/AUC per stage/Filter Pruning
 Breakdown) 정량 계산 + per-query record + 전체 집계 + failure case 분석.
@@ -6246,7 +6798,7 @@ Breakdown) 정량 계산 + per-query record + 전체 집계 + failure case 분�
     (b) EX 측정 vs 미측정 의 정합 + (c) Three-Caveat 학술 weight 의 anchor cluster
     정합 검증 추가 가능. 단 사용자 결정 시 (α) 만 우선 진행 가능.
 
-목표 (analyzing_index_for_capacity_2026-05-14.md spec 정합 + 🆕 EX 측정 통합):
+목표 (framework/analyzing_index_for_capacity_2026-05-14.md spec 정합 + 🆕 EX 측정 통합):
 
 (1) 5 지표 정량 계산 (per-query record + 전체 집계):
     - TCR + TCR_gold + score 분포 histogram (gold vs non-gold)
@@ -6265,7 +6817,7 @@ Breakdown) 정량 계산 + per-query record + 전체 집계 + failure case 분�
       evidence — paper §V.5.x.M.4 의 EX-axis Filter-Invariant 의 추가 mechanism evidence)
     - per-query record 의 추가 fields: EX_correctness, ex_at_filter_stage
 
-(2) Per-query record 표준 form (analyzing_index_for_capacity_2026-05-14.md §"구현 시
+(2) Per-query record 표준 form (framework/analyzing_index_for_capacity_2026-05-14.md §"구현 시
     권장 출력 형식" 인용):
     - JSON list 또는 CSV — 24 fields per query × 1534 queries
     - 저장: outputs/analysis/anchor_capacity_indices_2026-05-15.{jsonl,csv}
@@ -6289,7 +6841,7 @@ Breakdown) 정량 계산 + per-query record + 전체 집계 + failure case 분�
          anchor 자체 의 mechanism-level base 가 Caveat 1/2/3 의 학술 weight 강화
 
 산출물:
-  (a) notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md
+  (a) notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md
       §0 TL;DR — 5 지표 핵심 정량 + 학술적 함의
       §1 anchor stack 정량 매트릭스 (5 지표 × 2 anchor cell)
       §2 TCR + score 분포 분석
@@ -6310,7 +6862,7 @@ Breakdown) 정량 계산 + per-query record + 전체 집계 + failure case 분�
 
 원칙:
   - 메트릭 표기 R/P/F1/AUC/Score 4-decimal (memory rule)
-  - per-query 기록 + 전체 평균 (analyzing_index_for_capacity_2026-05-14.md §"공통 표기법"
+  - per-query 기록 + 전체 평균 (framework/analyzing_index_for_capacity_2026-05-14.md §"공통 표기법"
     정합)
   - 쿼리별 C_gold 또는 C_all\C_gold 가 없는 경우 AUC 계산 제외 + count 기록
 
@@ -6331,7 +6883,7 @@ ETA: ~수 시간 (기존 sweep data 의 재집계, LLM 호출 없음)
 
 근거:
   - planning/DECISIONS.md 2026-05-15 (사용자 새 방향 + 5 지표 Analyzer 핸드오프) §§1-3
-  - planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec, 전체)
+  - planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec, 전체)
   - outputs/experiments/s04_ablation/pipeline/{enriched_qcond_a05_mst_pcst_union_glm,
     filter_sweep/c0_xiyan_glm_sql}/
   - 직전 entries: 2026-05-15 Direction B + C-GT 결과 + Three-Caveat Final Formulation
@@ -6362,13 +6914,13 @@ ETA: ~수 시간 (기존 sweep data 의 재집계, LLM 호출 없음)
 ### §7. 영향 범위
 
 - planning/DECISIONS.md (본 entry)
-- 후속: Analyzer `notebooks/analysis_results/anchor_capacity_indices_2026-05-15.md` + `outputs/analysis/anchor_capacity_indices_2026-05-15.{jsonl,csv}`
+- 후속: Analyzer `notebooks/analysis_results/05_ablation_waves/anchor_capacity_indices_2026-05-15.md` + `outputs/analysis/anchor_capacity_indices_2026-05-15.{jsonl,csv}`
 - paper_research_direction.md §V.5.x.M.x narrative 의 mechanism-level evidence 추가 (Analyzer 보고서 receive 후)
 
 ### §8. 근거
 
 - 사용자 직접 input (성능 정체 인식 + 5 지표 계산 요청)
-- planning/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
+- planning/framework/analyzing_index_for_capacity_2026-05-14.md (5 지표 spec)
 - 직전 entries: 2026-05-15 사용자 reframing (Filter 구조 확정 prerequisite + Full paper reframing)
 
 ### §9. 사용자 후속 actions
@@ -6409,7 +6961,7 @@ ETA: ~수 시간 (기존 sweep data 의 재집계, LLM 호출 없음)
 
 ### §2. Analyzer §5.3quater Caveat 4 Footnote 완료 보고
 
-`notebooks/analysis_results/filter_sweep_glm_9cell.md` §5.3quater (신규) 추가 완료:
+`notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md` §5.3quater (신규) 추가 완료:
 
 | 항목 | 내용 |
 |---|---|
@@ -6750,10 +7302,10 @@ Analyzer 영역의 사용자 명시 trigger — 본 entry 의 spec base. Analyze
 
 ```
 먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (2026-05-15
-Direction B + C-GT 배포 Sweep 결과) + notebooks/analysis_results/direction_c_gt_sweep.md
+Direction B + C-GT 배포 Sweep 결과) + notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_gt_sweep.md
 §0~§7 정독.
 
-작업: notebooks/analysis_results/filter_sweep_glm_9cell.md §5.3 + §5.3bis + §5.3ter
+작업: notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md §5.3 + §5.3bis + §5.3ter
 의 Caveat 4 footnote 추가 — Option C (footnote candidate, paper main contribution
 scope 한정).
 
@@ -6792,7 +7344,7 @@ scope 한정).
 
 근거:
   - planning/DECISIONS.md 2026-05-15 (Direction B + C-GT 결과) §3 + §5
-  - notebooks/analysis_results/direction_c_gt_sweep.md §0~§7
+  - notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_gt_sweep.md §0~§7
 ```
 
 ### §8. Post-Paper Backlog 4 항목 (정식 추가)
@@ -6832,8 +7384,8 @@ scope 한정).
 ### §11. 근거
 
 - 사용자 직접 input (Analyzer 두 보고서 receive + 5 작업 spec)
-- notebooks/analysis_results/direction_b_hn_supcon_sweep.md §0~§6
-- notebooks/analysis_results/direction_c_gt_sweep.md §0~§7
+- notebooks/analysis_results/07_baselines_audits/direction_b_hn_supcon_sweep.md §0~§6
+- notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_gt_sweep.md §0~§7
 - EXPERIMENT_HISTORY.md "Direction B + Direction C-GT 배포 Sweep" entry (5/14 20:46)
 - 직전 entries: 2026-05-14 학술 Agent Phase 5 + Three-Caveat Final Formulation + Direction A + C 결과
 
@@ -6857,7 +7409,7 @@ scope 한정).
 ```
 planning/
 ├── CLAUDE.md, DECISIONS.md, framework_snapshot_*, paper_research_direction.md,
-│   paper_outline_*, presentation_brief_*, Full Paper Structure.md,
+│   paper_outline_*, presentation_brief_*, paper/Full Paper Structure.md,
 │   mechanism_final_concept_summary_* (root level, 보존)
 ├── advisor_inputs/, proposals/, templates/ (보존)
 ├── 🆕 filter/ (14 files + README.md)
@@ -6975,8 +7527,8 @@ Working tree modified (다음 commit candidate):
 
 | 산출물 | 내용 |
 |---|---|
-| `notebooks/analysis_results/direction_b_hn_supcon_sweep.md` | F1 / R / P / EX / SLR / per-DB + Filter-Invariant 경계 확정 narrative (시나리오 α/β/γ/δ 분기) |
-| `notebooks/analysis_results/direction_c_gt_sweep.md` | F1 / R / P / EX / per-DB + Mechanism-Agnostic Limit narrative (Direction C original 대비) |
+| `notebooks/analysis_results/07_baselines_audits/direction_b_hn_supcon_sweep.md` | F1 / R / P / EX / SLR / per-DB + Filter-Invariant 경계 확정 narrative (시나리오 α/β/γ/δ 분기) |
+| `notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_gt_sweep.md` | F1 / R / P / EX / per-DB + Mechanism-Agnostic Limit narrative (Direction C original 대비) |
 
 #### 4.4 5/21~5/22 학위 논문 chapter draft + 학회 paper §3.5 draft (마감)
 
@@ -7175,7 +7727,7 @@ python src/main.py --config experiments/abl/b06_hn_supcon/b06_01_hn_supcon_glm
 
 ### §6. Analyzer 결과 보고서 Spec (5/19~5/20)
 
-**산출물**: `notebooks/analysis_results/direction_b_hn_supcon_results.md`
+**산출물**: `notebooks/analysis_results/07_baselines_audits/direction_b_hn_supcon_sweep.md`
 
 **핵심 section spec**:
 - §0 TL;DR — 4 시나리오 분기 의 어느 outcome 인지 명시 (α / β / γ / δ)
@@ -7515,7 +8067,7 @@ $$L = \log \frac{\exp(s(q_i, p_i)/\tau)}{\exp(s(q_i, p_i)/\tau) + \sum_j m_{ij} 
 
 ## 2026-05-14 (Option α' §3 Minimum Contribution 첫 단계 완료 — B1' 4-way EX 비교 정량 base 확보 + §V.5.x.M.5 final + §V.5.x.M.2 narrative 학술적 weight 재평가 + Mechanism-Agnostic Limit §V.5.x.M.6 신규 + Three-Caveat → Four-Boundary 확장)
 
-> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md` 작성 완료. 5 핵심 발견 + 6 planner 작업 trigger.
+> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/07_baselines_audits/direction_a_full_schema_baseline_comparison.md` 작성 완료. 5 핵심 발견 + 6 planner 작업 trigger.
 
 ### §1. Analyzer 5 핵심 발견 요약
 
@@ -7786,7 +8338,7 @@ Q4.4 정량 응답 — Direction A backward Step 2 Full Schema Input partial inc
 ### §11. 근거
 
 - 사용자 직접 input (Analyzer 보고서 receive + 6 작업 spec)
-- notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md §0~§8
+- notebooks/analysis_results/07_baselines_audits/direction_a_full_schema_baseline_comparison.md §0~§8
 - 직전 entries: 2026-05-14 Option α' 채택 + Direction C 배포 결과 + Three-Caveat Final Formulation
 
 ### §12. 사용자 후속 actions
@@ -7831,7 +8383,7 @@ Q4.4 정량 응답 — Direction A backward Step 2 Full Schema Input partial inc
 
 **즉시 trigger (Planner → Analyzer 핸드오프)**:
 - 작업 spec: Direction A EX 0.5169 + Direction C EX 0.5176 + anchor c0 EX 0.5202 + **B1' Full Schema baseline EX 0.5587 의 4-way 직접 비교** + schema reduction ratio 의 정량 정합 + paper §V.5.x.M.2 의 "schema noise tolerance" narrative 의 학술적 weight 재평가
-- 산출물 후보: `notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md`
+- 산출물 후보: `notebooks/analysis_results/07_baselines_audits/direction_a_full_schema_baseline_comparison.md`
 - ETA: ~수 시간 (기존 data 의 추가 정량 만, LLM 호출 없음)
 
 #### 2.4 학습 Chain 진행 (직전 결정 그대로)
@@ -7955,7 +8507,7 @@ Full Schema baseline 과의 직접 비교 + schema reduction ratio 정량 정합
     - 또는 두 chain 모두 R-P trade-off 의 fundamental limit (mechanism 외 factor) evidence
 
 산출물:
-  (a) notebooks/analysis_results/direction_a_full_schema_baseline_comparison.md
+  (a) notebooks/analysis_results/07_baselines_audits/direction_a_full_schema_baseline_comparison.md
       §1 4-way EX 비교 매트릭스
       §2 schema reduction ratio 정량 매트릭스
       §3 paper §V.5.x.M.2 narrative 의 학술적 weight 재평가 결과
@@ -7987,9 +8539,9 @@ ETA: ~수 시간 (기존 data 의 추가 정량 만, LLM 호출 없음)
   - planning/DECISIONS.md 2026-05-14 (Option α' 채택) §2.3 + §3
   - planning/paper_research_direction.md §V.5.x.M.5 (Direction A Full Schema Input
     Boundary, 본 entry 의 §4.1)
-  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md (Direction A 의 EX 0.5169)
-  - notebooks/analysis_results/direction_c_grast_fd_sweep.md (Direction C 의 EX 0.5176)
-  - notebooks/analysis_results/filter_sweep_glm_9cell.md (anchor c0 EX 0.5202 + B1'
+  - notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md (Direction A 의 EX 0.5169)
+  - notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md (Direction C 의 EX 0.5176)
+  - notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md (anchor c0 EX 0.5202 + B1'
     baseline 위치 식별)
 ```
 
@@ -8208,7 +8760,7 @@ ETA: ~수 시간 (기존 data 의 추가 정량 만, LLM 호출 없음)
 
 ## 2026-05-14 (Filter Dominance 7번째 축 Final Formulation — Three-Caveat Mechanism Spectrum 명문화 + Filter-Invariant Boundary 정식 + paper §3.5 Main Contribution Candidate 확정)
 
-> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/filter_sweep_glm_9cell.md` §5.3ter Caveat 3 (GRAST-FD, Direction C) 정식 명문화 완료. **Three-caveat 통합 (1 architectural + 2 LLM-based + 3 algorithmic)** 의 mechanism-agnostic dual evidence 확정 — GLM 4.7 backbone 의 schema noise tolerance + in-context column selection capability 가 EX-axis Filter-Invariant 의 **dominant mechanism** 임을 강력 입증.
+> **사용자 직전 input (5/14)**: Analyzer 의 `notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md` §5.3ter Caveat 3 (GRAST-FD, Direction C) 정식 명문화 완료. **Three-caveat 통합 (1 architectural + 2 LLM-based + 3 algorithmic)** 의 mechanism-agnostic dual evidence 확정 — GLM 4.7 backbone 의 schema noise tolerance + in-context column selection capability 가 EX-axis Filter-Invariant 의 **dominant mechanism** 임을 강력 입증.
 
 ### §1. Three-Caveat Mechanism Spectrum (filter_sweep_glm_9cell.md §5.3ter.3 정식 인용)
 
@@ -8362,9 +8914,9 @@ Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challeng
 ### §10. 근거
 
 - 사용자 직접 input (Analyzer §5.3ter 완료 보고 + 5 작업 spec)
-- notebooks/analysis_results/filter_sweep_glm_9cell.md §5.3bis (caveat 2) + §5.3ter (caveat 3, 신규) + §5.4 9-axis evidence matrix
-- notebooks/analysis_results/direction_a_rsl_backward_sweep.md §4.1 + §6.2 (caveat 2 base)
-- notebooks/analysis_results/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR (caveat 3 base)
+- notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md §5.3bis (caveat 2) + §5.3ter (caveat 3, 신규) + §5.4 9-axis evidence matrix
+- notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md §4.1 + §6.2 (caveat 2 base)
+- notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR (caveat 3 base)
 - 직전 entries: 2026-05-14 Direction C 배포 결과 + 2026-05-14 Direction A 배포 결과 (Three-caveat mechanism spectrum base)
 
 ### §11. 사용자 후속 actions
@@ -8378,7 +8930,7 @@ Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challeng
 
 ## 2026-05-14 (Direction C 배포 Sweep 결과 — F1 Sub-noise vs A (Δ=-0.0041) + 비용 효율 우세 (-33% LLM) + Mechanism-Agnostic Filter-Invariant 확정 + Three-Caveat 통합 + B-1/B-2 Post-Paper)
 
-> **사용자 직전 input (5/14)**: Direction C 배포 sweep 종료 (5/14 04:33:26, wall 1h50m single cell) + Analyzer 신규 보고서 `notebooks/analysis_results/direction_c_grast_fd_sweep.md` 작성 완료. **핵심 결과**: Direction C 가 Direction A 와 F1 sub-noise (Δ=-0.0041) + 비용 효율 우세 (-33% LLM, -48% token, -53% filter time) — Filter Dominance 7번째 축 dual evidence (mechanism-agnostic, caveat 2 + caveat 3 통합) 확정.
+> **사용자 직전 input (5/14)**: Direction C 배포 sweep 종료 (5/14 04:33:26, wall 1h50m single cell) + Analyzer 신규 보고서 `notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md` 작성 완료. **핵심 결과**: Direction C 가 Direction A 와 F1 sub-noise (Δ=-0.0041) + 비용 효율 우세 (-33% LLM, -48% token, -53% filter time) — Filter Dominance 7번째 축 dual evidence (mechanism-agnostic, caveat 2 + caveat 3 통합) 확정.
 
 ### §1. 핵심 정량 결과
 
@@ -8467,10 +9019,10 @@ Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challeng
 
 ```
 먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (2026-05-14 Direction C
-배포 결과 + Three-caveat 통합) + notebooks/analysis_results/direction_c_grast_fd_sweep.md
+배포 결과 + Three-caveat 통합) + notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md
 §6 정독.
 
-작업: notebooks/analysis_results/filter_sweep_glm_9cell.md §5.3bis 의 후속 §5.3ter
+작업: notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md §5.3bis 의 후속 §5.3ter
 신규 추가 — Caveat 3 (GRAST-FD, Direction C) 정식 명문화.
 
 신규 §5.3ter 내용 spec:
@@ -8503,8 +9055,8 @@ Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challeng
 
 근거:
   - planning/DECISIONS.md 2026-05-14 (Direction C 배포 결과) §1+§2.2
-  - notebooks/analysis_results/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR
-  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md (caveat 2 base)
+  - notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md §6.1~§6.4 + §0 TL;DR
+  - notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md (caveat 2 base)
 ```
 
 ### §5. Production Deployment Candidate — Direction C (paper §V.5.x.M.3 핵심)
@@ -8565,7 +9117,7 @@ Per-difficulty 정합 (Direction A + Direction C 모두 simple/moderate/challeng
 ### §9. 근거
 
 - 사용자 직접 input (Direction C 배포 결과 + 5 작업 spec)
-- notebooks/analysis_results/direction_c_grast_fd_sweep.md §0~§9 (Direction C 결과 본문)
+- notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_grast_fd_sweep.md §0~§9 (Direction C 결과 본문)
 - EXPERIMENT_HISTORY.md "Direction C 배포 Sweep" entry (3213~3289)
 - 직전 entries: Direction A 배포 결과 (5/14, caveat 2 base) + Direction C inferred_fk 핸드오프 (5/14) + 학술 Agent Phase 3 GO (5/13)
 
@@ -8700,7 +9252,7 @@ inferred_fk yaml ingestion schema (GRASTFDFilter commit e90d91a 정합):
     표시)
 
 산출물:
-  (a) notebooks/analysis_results/direction_c_inferred_fk.md
+  (a) notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_inferred_fk.md
       - §1 두 DB 의 declared FK 현황 (dev_tables.json 직접 인용)
       - §2 GPT-4.1-mini prompt + 출력 raw
       - §3 inferred FK 후보 list + per-candidate confidence (LLM + type + naming +
@@ -8758,7 +9310,7 @@ inferred_fk yaml ingestion schema (GRASTFDFilter commit e90d91a 정합):
 
 - planning/DECISIONS.md (본 entry — Analyzer 핸드오프 정식 launch)
 - 후속:
-  - Analyzer: `notebooks/analysis_results/direction_c_inferred_fk.md` + `outputs/analysis/direction_c_inferred_fk.yaml` + (선택) `src/analysis/direction_c_infer_fk.py`
+  - Analyzer: `notebooks/analysis_results/03_extractor_pcst_steiner/direction_c_inferred_fk.md` + `outputs/analysis/direction_c_inferred_fk.yaml` + (선택) `src/analysis/direction_c_infer_fk.py`
   - Root: Direction C sweep config 의 `params.inferred_fk` 인자에 yaml 의 두 DB list 통합 + 다른 9 DBs 는 declared FK only
 
 ### §10. 근거
@@ -8780,7 +9332,7 @@ inferred_fk yaml ingestion schema (GRASTFDFilter commit e90d91a 정합):
 
 ## 2026-05-14 (Direction A 배포 Sweep 결과 — F1 Net Negative -0.2832 + EX Maintained -0.0033 + Direction C 타겟 Launch Trigger 발효 + Guard 불필요 + B-1/B-2 Post-C)
 
-> **사용자 직전 input (5/14)**: Direction A 배포 sweep 종료 (5/13 23:51:20, wall 2h47m parallel) + Analyzer 신규 보고서 `notebooks/analysis_results/direction_a_rsl_backward_sweep.md` 작성 완료. 핵심 결과: **ΔF1 = -0.2832** (학술 Agent threshold +0.02 의 강한 negative) + **EX maintained -0.0033** (sub-noise).
+> **사용자 직전 input (5/14)**: Direction A 배포 sweep 종료 (5/13 23:51:20, wall 2h47m parallel) + Analyzer 신규 보고서 `notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md` 작성 완료. 핵심 결과: **ΔF1 = -0.2832** (학술 Agent threshold +0.02 의 강한 negative) + **EX maintained -0.0033** (sub-noise).
 
 ### §1. 핵심 정량 결과
 
@@ -8907,7 +9459,7 @@ inferred_fk yaml ingestion schema (GRASTFDFilter commit e90d91a 정합):
 
 ```
 먼저 src/modules/filters/CLAUDE.md + planning/DECISIONS.md 최상단 entry (Direction A
-배포 결과 + Direction C trigger 발효) + notebooks/analysis_results/direction_a_rsl_backward_sweep.md
+배포 결과 + Direction C trigger 발효) + notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md
 §6.3 + planning/filter/filter_proposal_data_spec_2026-05-13.md §C-1/C-2 정독.
 
 작업: src/modules/filters/grast_fd_filter.py 신규 클래스 GRASTFDFilter 구현 (Hoang 2025
@@ -8955,7 +9507,7 @@ launch 는 Root 세션 분담.
 
 근거:
   - planning/DECISIONS.md 2026-05-14 Direction A 배포 결과 entry §2.2 + §6
-  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md §6.3 Direction C trigger
+  - notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md §6.3 Direction C trigger
   - planning/filter/filter_proposal_by_scholar_agent_phase2_2026-05-13.md (학술 Agent Phase 3
     Direction C feasibility 권고)
   - planning/filter/filter_full_context_2026-05-12.md (Filter 모듈 종합 보고)
@@ -8967,10 +9519,10 @@ launch 는 Root 세션 분담.
 
 ```
 먼저 src/analysis/CLAUDE.md + planning/DECISIONS.md 최상단 entry (Direction A 배포
-결과 + Filter Dominance 7번째 축 caveat 2 추가) + notebooks/analysis_results/direction_a_rsl_backward_sweep.md
+결과 + Filter Dominance 7번째 축 caveat 2 추가) + notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md
 §6.2 정독.
 
-작업: notebooks/analysis_results/filter_sweep_glm_9cell.md §5.4 footnote 보강
+작업: notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md §5.4 footnote 보강
 — caveat 1 (multi-agent vote pathology, C3 outlier 기존) 외에 caveat 2 신규 추가:
 "RSL Backward (Direction A): F1 spread -0.2832 outlier but EX spread -0.0033 in
 band ⭐ — GLM 4.7 backbone 의 schema noise tolerance 가 EX 측 Filter-Invariant
@@ -8989,7 +9541,7 @@ GLM 4.7 의 schema noise tolerance 의 dual evidence.
 
 근거:
   - planning/DECISIONS.md 2026-05-14 Direction A 배포 결과 entry §3 + §5.2
-  - notebooks/analysis_results/direction_a_rsl_backward_sweep.md §4.1 + §6.2
+  - notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md §4.1 + §6.2
 ```
 
 ### §8. Chain Status 갱신 (5/14)
@@ -9024,7 +9576,7 @@ GLM 4.7 의 schema noise tolerance 의 dual evidence.
 ### §10. 근거
 
 - 사용자 직접 input (Direction A 배포 결과 + 4 작업 spec)
-- notebooks/analysis_results/direction_a_rsl_backward_sweep.md §0 TL;DR + §1.2 Δ matrix + §3.1 R-P tradeoff + §4.1 EX flip + §5.4 guard 불필요 + §6.3 Direction C trigger
+- notebooks/analysis_results/07_baselines_audits/direction_a_rsl_backward_sweep.md §0 TL;DR + §1.2 Δ matrix + §3.1 R-P tradeoff + §4.1 EX flip + §5.4 guard 불필요 + §6.3 Direction C trigger
 - EXPERIMENT_HISTORY.md "Direction A 배포 Sweep" entry (3213~3260 lines)
 - 직전 entries: 학술 Agent Phase 4 review (5/13) + recall_gained verification (5/13) + 학술 Agent Phase 3 Response (5/13) + anchor framework 정정 (5/13)
 
@@ -9162,7 +9714,7 @@ GLM 4.7 의 schema noise tolerance 의 dual evidence.
 2. Phase 1 → Phase 2 의 변경 lines 정확한 위치 (recall 계산 외에 L_bwd 추출 까지 영향 받았는지)
 3. 698 → 488 변화의 정확한 이유 — alias normalization 의 함수 / table prefix 통일 / 대소문자 처리 등
 4. **n=488 의 근거를 스크립트 주석에 명시** (학술 Agent 권장)
-5. `notebooks/analysis_results/recall_gained_denominator_verification.md` 에 §1.4 추가 — n=488 의 정확한 정의 + Phase 1 의 n=698 과의 비교 + bug fix 의 정확한 lines
+5. `notebooks/analysis_results/07_baselines_audits/recall_gained_denominator_verification.md` 에 §1.4 추가 — n=488 의 정확한 정의 + Phase 1 의 n=698 과의 비교 + bug fix 의 정확한 lines
 
 ### §3. 학술 Agent §4 — 보조 통계 표기 권장 (paper_research_direction.md §V.5.x.6 갱신)
 
@@ -9298,7 +9850,7 @@ query lift 0.3287 (simple 0.2216 의 1.48×) 와 일관.
 
 ## 2026-05-13 (recall_gained_by_restore Denominator Verification 완료 — Interpretation (b) 확정 + 학술 Agent narrative 정합 + Mathematical Identity 정합 + 학위 논문 §V.5.x.6 main 인용 final candidate)
 
-> **사용자 직전 input (5/13)**: Analyzer 의 `notebooks/analysis_results/recall_gained_denominator_verification.md` 작성 완료 보고. 학술 Agent Phase 3 의 수치 확인 요청 (recall_gained_by_restore = 0.5709 의 분모 정의 확인) 의 정식 응답 base.
+> **사용자 직전 input (5/13)**: Analyzer 의 `notebooks/analysis_results/07_baselines_audits/recall_gained_denominator_verification.md` 작성 완료 보고. 학술 Agent Phase 3 의 수치 확인 요청 (recall_gained_by_restore = 0.5709 의 분모 정의 확인) 의 정식 응답 base.
 
 ### §1. 핵심 결론 — Interpretation (b) 확정
 
@@ -9460,7 +10012,7 @@ narrative "of the gold columns that forward misses, backward recovers 57%" 정�
 ### §11. 근거
 
 - 사용자 직접 input (Analyzer 보고)
-- notebooks/analysis_results/recall_gained_denominator_verification.md §1~§5 (verification 본문)
+- notebooks/analysis_results/07_baselines_audits/recall_gained_denominator_verification.md §1~§5 (verification 본문)
 - src/analysis/filter_proposal_a3_restore_noise.py (lines 95-104, interpretation (b) 코드 직접 인용)
 - 직전 entry (학술 Agent Phase 3 Response) §1 recall_gained 정의 정합성 — 본 verification 의 정식 응답
 
@@ -9773,7 +10325,7 @@ LLM calls: 2 (XiYan 기존 + Preliminary SQL)
 
 ### 산출물 위치
 
-- `notebooks/analysis_results/filter_proposal_phase2_summary.md` (347 lines, 7 sections — analyzer 작성)
+- `notebooks/analysis_results/04_filter/filter_proposal_phase2_summary.md` (347 lines, 7 sections — analyzer 작성)
 - `outputs/analysis/filter_proposal/phase2_records.xlsx` (4 sheets, 0.20 MB)
 - `outputs/analysis/filter_proposal/{A2,A3,C1,C2}*.{jsonl,csv,json}` (재계산 + 신규)
 - `src/analysis/filter_proposal_{a2_backward_recall,c1_fd_graph,c2_structural_miss}.py`
@@ -10521,7 +11073,7 @@ Caveats (footnote):
 
 ### 근거
 
-- `notebooks/analysis_results/filter_sweep_glm_9cell.md` v2 §0 TL;DR + §1.2 Baseline 도달률 + §2.5 v1 EX-F1 decoupling 폐기 + §5.2 Filter-Invariant 정량 정의 + §6.2 anchor 유지 정당화 + §6.4 paper §3.5 통합 candidate
+- `notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md` v2 §0 TL;DR + §1.2 Baseline 도달률 + §2.5 v1 EX-F1 decoupling 폐기 + §5.2 Filter-Invariant 정량 정의 + §6.2 anchor 유지 정당화 + §6.4 paper §3.5 통합 candidate
 - 직전 5/13 (v1) Filter Sweep entry — 7-axis matrix
 - 직전 5/13 (저녁) SGBE Chain 완료 entry — 8-axis matrix
 - 직전 5/13 B1'+B2'+B3' GLM Baseline entry — v1 confounder mechanism (root prompt 재실험 진행 중)
@@ -10530,7 +11082,7 @@ Caveats (footnote):
 
 - planning/DECISIONS.md (본 entry)
 - planning/paper_research_direction.md §3.5 evidence #7 (5/13 갱신, 옛 EX-F1 decoupling) → **신 Filter-Invariant 7번째 axis 교체**
-- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 옛 → 신 교체, 8-axis SGBE 유지)
+- planning/framework/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 옛 → 신 교체, 8-axis SGBE 유지)
 - 후속 (paper §V.5.4 narrative final + 학위 논문 §V.5.5 lesson learned section)
 
 ### 추가 필요 분석
@@ -10666,7 +11218,7 @@ Caveats (footnote):
 
 ### 근거
 
-- `notebooks/analysis_results/sgbe_filter_results.md` §0 TL;DR + §4.2 P drop dominant 81.22% noise + §4.5 4 sub-mechanism dominant root cause (d) θ_keep anchor-incompatibility + §6.2 학술 Agent θ 부정합 confirm + §7.2 Filter Dominance 8th axis
+- `notebooks/analysis_results/04_filter/sgbe_filter_results.md` §0 TL;DR + §4.2 P drop dominant 81.22% noise + §4.5 4 sub-mechanism dominant root cause (d) θ_keep anchor-incompatibility + §6.2 학술 Agent θ 부정합 confirm + §7.2 Filter Dominance 8th axis
 - 직전 Module:Selector Phase 2 진단 (3-anchor TP-TN spread + paper main TP mean 0.4746)
 - 학술 Agent `filtering_suggestion_by_scholar_agent_2026-05-12.md` §"세 그룹의 score 분포" (TP 0.7108 / Filter✗ 0.6394 / TN ~0.40, spread 0.31)
 
@@ -10674,7 +11226,7 @@ Caveats (footnote):
 
 - planning/DECISIONS.md (본 entry)
 - planning/paper_research_direction.md §3.5 evidence — **7 → 8 axis** 갱신
-- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (8-axis 갱신)
+- planning/framework/framework_snapshot_2026-05-12.md §4 Narrative Status (8-axis 갱신)
 - 후속 (B4' 결과 후): paper §V.5.4 narrative final + 학위 논문 §V.5.x SGBE Negative Evidence section
 - Post-paper: alternative anchor SGBE 재평가 future work
 
@@ -10785,7 +11337,7 @@ Caveats (footnote):
 
 ### 근거
 
-- `notebooks/analysis_results/glm_baseline_3cell.md` §0 TL;DR + §3.2 EX gap 정량 + §4.1 결정적 비교 + §4.2 backbone-flip 가설 + §4.4 paper narrative 재검토 필요성 + §5.4 B4' launch 시점 결정 권고
+- `notebooks/analysis_results/07_baselines_audits/glm_baseline_3cell.md` §0 TL;DR + §3.2 EX gap 정량 + §4.1 결정적 비교 + §4.2 backbone-flip 가설 + §4.4 paper narrative 재검토 필요성 + §5.4 B4' launch 시점 결정 권고
 - 직전 Filter sweep §5.3 EX-F1 decoupling + §5.4 mechanism narrative
 - Maamari et al. 2024 "The Death of Schema Linking?" arXiv:2408.07702
 - 본 연구의 GLM 4.7 era anchor F1=0.8663 + EX 33.96%
@@ -10794,7 +11346,7 @@ Caveats (footnote):
 
 - planning/DECISIONS.md (본 entry)
 - planning/paper_research_direction.md §3.5 evidence #7 (5/13 갱신) → **5/13 GLM Baseline 후 narrative reframe** 추가 갱신 candidate
-- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신 후 EX backbone caveat 추가 candidate)
+- planning/framework/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신 후 EX backbone caveat 추가 candidate)
 - 후속 (B4' 결과 후): paper §V.5.4 narrative final integration + 학위 논문 §V Chapter
 
 ### 추가 필요 분석
@@ -10884,7 +11436,7 @@ Caveats (footnote):
 
 - planning/DECISIONS.md (본 entry)
 - planning/paper_research_direction.md §3.5 (line 505 evidence #6 갱신 + #7 신규 추가)
-- planning/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신)
+- planning/framework/framework_snapshot_2026-05-12.md §4 Narrative Status (7-axis 갱신)
 - 후속 (planner, V5 결과 통합 시): paper §V.5.4 main finding + B4' chain narrative integration
 
 ### 핵심 narrative 결론
@@ -10899,7 +11451,7 @@ Caveats (footnote):
 
 ### 근거
 
-- `notebooks/analysis_results/filter_sweep_glm_9cell.md` §0 TL;DR + §2.5 C4 cost 정당화 + §4.2 Filter dominant +0.6413 F1 + §5.3 EX-F1 ranking + §5.4 mechanism narrative + §6.2 통합 권고
+- `notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md` §0 TL;DR + §2.5 C4 cost 정당화 + §4.2 Filter dominant +0.6413 F1 + §5.3 EX-F1 ranking + §5.4 mechanism narrative + §6.2 통합 권고
 - 직전 DECISIONS entries (B1'~B3' 즉시 launch + B4' 보류 + Full Schema baseline 발견)
 
 ### Chain status 갱신 (5/13 기준)
@@ -11006,7 +11558,7 @@ Caveats (footnote):
   - 신규 산출물: `src/analysis/glm_baseline_sql_eval.py` (analyzer 작성)
   - 신규 scripts: `scripts/run_glm_baseline_3cell.sh` (root 작성)
   - 신규 outputs: `outputs/analysis/glm_baseline/{b1_full, b2_gold_table, b3_gold_column}/predictions.jsonl + metrics.txt`
-  - 신규 analyzer 보고서: `notebooks/analysis_results/glm_baseline_sql_eval_3cell.md`
+  - 신규 analyzer 보고서: `notebooks/analysis_results/07_baselines_audits/glm_baseline_3cell.md`
 
 - **에스컬레이션**:
   - **Analyzer** 세션 (cwd = `src/analysis/`) 에 script 작성 follow-up 핸드오프 (planner 작성)
@@ -11162,7 +11714,7 @@ Caveats (footnote):
   **Post-hoc analysis (Root launch 와 병행)**:
   - SGBE 결과 stats["score_collapse_detected"] + filter_info["filter_score_std"] 가 모든 query 에 기록 (Module:filters 보고)
   - Phase 3 sweep 결과에서 anchor GLM 의 score std 분포 측정 → threshold 0.05 의 hit rate 분석 (예상 ~0%)
-  - V4 era ckpt 의 score std 는 별도 측정 — V5 sweep 후 dsn_mitigation_v5_4dir.md 의 SGBE boundary case 통합 가능
+  - V4 era ckpt 의 score std 는 별도 측정 — V5 sweep 후 02_v1_v5_dsn_mitigation/dsn_mitigation_v5_17trial.md 의 SGBE boundary case 통합 가능
 
   → **즉시 Phase 3 launch 진행 + threshold 사후 검증** (conservative 동작, risk 없음).
 
@@ -11208,7 +11760,7 @@ Caveats (footnote):
 - **추가 필요 분석 (Phase 3 sweep 완료 후)**:
   - Score collapse threshold 0.05 의 hit rate 측정 → threshold update 결정
   - Phase 3 결과의 optimal θ (paper main anchor 9 cell sweep) → Phase 4 final SGBE launch trigger
-  - V4 era ckpt 의 score std 별도 측정 (V5 sweep 후 dsn_mitigation_v5_4dir.md 통합)
+  - V4 era ckpt 의 score std 별도 측정 (V5 sweep 후 02_v1_v5_dsn_mitigation/dsn_mitigation_v5_17trial.md 통합)
 
 ---
 
@@ -11351,7 +11903,7 @@ Caveats (footnote):
   - **단 V5-D-2 결과 후 narrative pivot 확정**. V5-D-1 만으로는 R@15 영향 measurement 없음 (다음 학습 chain 필요).
 
 - **근거**:
-  - `notebooks/analysis_results/v5_d1_plm_lower_bound.md` §0 TL;DR + §3.3 per-DB consistency + §4.1 trigger 조건 충족
+  - `notebooks/analysis_results/06_selector_encoder_bottleneck/v5_d1_plm_lower_bound.md` §0 TL;DR + §3.3 per-DB consistency + §4.1 trigger 조건 충족
   - 사용자 직접 input + 본 V5-D-1 진단 4/4 trigger 조건 충족
   - 학술 Agent v5_plan §4.4 Direction D + §5.3 Tier 1 권고
 
@@ -11591,7 +12143,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - Filter sweep 종료 → Analyzer (filter 9-cell 보고서) + Planner (Filter Dominance 7번째 axis 결정)
   - SGBE Phase 1+2 둘 다 완료 → SGBE Phase 3-5 (Root chain, multi-instance or 동일 root 세션)
   - SGBE Phase 5 종료 → Analyzer (sgbe_filter_results.md)
-  - V5 chain 종료 → Analyzer (dsn_mitigation_v5_4dir.md)
+  - V5 chain 종료 → Analyzer (02_v1_v5_dsn_mitigation/dsn_mitigation_v5_17trial.md)
   - Analyzer 둘 다 완료 → Planner (narrative integration: paper §3.5 + framework snapshot + DECISIONS)
 
 - **학회 / 학위 논문 일정 영향 (개선)**:
@@ -11660,7 +12212,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   | **Module: filter** | `ScoreGatedBatchExtractiveFilter` 구현 + per-column binary prompt + value retrieval 재사용 + smoke test | `src/modules/filters/score_gated_batch_extractive_filter.py` + `EXPERIMENT_PLAN_filters.md` 갱신 |
   | **Module: selector** | GAT score 의 column-level calibration 진단 + EnsembleSelector 의 raw score (cosine + GAT 분리 또는 blended) 가 filter 단에 전달되도록 interface 보강 | selector raw_score interface + 진단 보고 (단계별 측정 분포) |
   | **Root (orchestrator)** | Config 작성 + θ calibration sweep (9 cell) + Final SGBE 평가 + Ablation (XiYan ↔ SGBE + Step contribution) + HISTORY 갱신 | configs + scripts + outputs/ + HISTORY+CATALOG+ID_MIGRATION |
-  | **Analyzer** | θ calibration 결과 분석 + SGBE final 결과 + Step 별 기여도 분석 + boundary case (over-smoothing era V4 score collapse 시 SGBE 무력 caveat) | `notebooks/analysis_results/sgbe_filter_results.md` |
+  | **Analyzer** | θ calibration 결과 분석 + SGBE final 결과 + Step 별 기여도 분석 + boundary case (over-smoothing era V4 score collapse 시 SGBE 무력 caveat) | `notebooks/analysis_results/04_filter/sgbe_filter_results.md` |
 
 - **단계별 chain (6 Phase, single chain launch)**:
 
@@ -11698,7 +12250,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - selector interface 보강 (selector module session 작성): EnsembleSelector raw score 전달
   - 신규 configs (root): `configs/experiments/s04_ablation/pipeline/sgbe/` 하위
   - 신규 scripts (root): `scripts/run_sgbe_calibration.sh` + `scripts/run_sgbe_final_ablation.sh`
-  - 신규 analyzer 보고서: `notebooks/analysis_results/sgbe_filter_results.md`
+  - 신규 analyzer 보고서: `notebooks/analysis_results/04_filter/sgbe_filter_results.md`
   - HISTORY + CATALOG + ID_MIGRATION 갱신
   - 후속 (planner): 본 DECISIONS + paper §3.5 + framework snapshot §3/§4 갱신
 
@@ -11714,12 +12266,12 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ---
 
-## 2026-05-12 (framework_snapshot_2026-05-12.md 신규 — 현재 전체 구조 통합 reference)
+## 2026-05-12 (framework/framework_snapshot_2026-05-12.md 신규 — 현재 전체 구조 통합 reference)
 
 > **사용자 직전 input (2026-05-12)**: "현재 전체 구조를 정리한 자료도 만들어줘 이미 있으면 어떤 보고서인지 알려줘". → 기존 자료 점검 결과 "전체 구조" single document 미존재 (paper_research_direction.md 가 가장 가깝지만 paper narrative 위주). AskUserQuestion 결정: **Full snapshot (7 sections + 2 appendix), 다목적 청중**.
 
 - **결정 — 신규 산출물**:
-  [`planning/framework_snapshot_2026-05-12.md`](framework_snapshot_2026-05-12.md) — 다목적 framework snapshot 통합 reference (7 sections + 3 appendix, ~620 lines).
+  [`planning/framework/framework_snapshot_2026-05-12.md`](framework/framework_snapshot_2026-05-12.md) — 다목적 framework snapshot 통합 reference (7 sections + 3 appendix, ~620 lines).
 
 - **구조 — 7 sections + 3 appendix**:
   - §1 Pipeline Architecture — 5 모듈 + 데이터 흐름 + 인터페이스 + paper main anchor + 디렉토리 구조
@@ -11756,7 +12308,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 기존 12 planning 문서 점검 결과 — 통합 snapshot single document missing
 
 - **영향 범위**:
-  - planning/framework_snapshot_2026-05-12.md (신규)
+  - planning/framework/framework_snapshot_2026-05-12.md (신규)
   - 본 DECISIONS.md (본 entry)
   - 기존 문서 변경 X — 본 자료는 통합 reference
 
@@ -11772,10 +12324,10 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   | 분류 | 문서 | 목적 |
   |---|---|---|
   | Reference / Operations (7) | `CLAUDE.md` (루트) / `EXPERIMENT_HISTORY` / `EXPERIMENT_CATALOG` / `EXPERIMENT_ID_MIGRATION` / `EXPERIMENT_PLAN` / `planning/DECISIONS.md` / `planning/CLAUDE.md` | 운영 + 시간순 기록 |
-  | Paper / Narrative (5) | `paper_research_direction.md` / `Full Paper Structure.md` / `paper_outline_2026-05-08.md` / `presentation_brief_2026-04-28.md` / `mechanism_final_concept_summary_2026-05-05.md` | Paper / 발표 narrative |
+  | Paper / Narrative (5) | `paper_research_direction.md` / `paper/Full Paper Structure.md` / `paper/paper_outline_2026-05-08.md` / `presentation_brief_2026-04-28.md` / `framework/mechanism_final_concept_summary_2026-05-05.md` | Paper / 발표 narrative |
   | Over-smoothing (7) | `over_smoothing_research_summary.md` / `advisor_briefing_oversmoothing_2026-05-11.md` / `oversmoothing_root_cause_report_2026-05-11.md` / `oversmoothing_mitigation_theory_2026-05-07.md` / `oversmoothing_solution_methodology_2026-05-11_apa.md` / `oversmoothing_full_context_v4_2026-05-12.md` / `oversmoothing_v5_plan.md` | Over-smoothing 의 다층 narrative + V5 plan |
   | Filter (3) | `src/modules/filters/CLAUDE.md` / `src/modules/filters/EXPERIMENT_PLAN_filters.md` / `filter_full_context_2026-05-12.md` | Filter 의 module + 종합 보고서 |
-  | 🆕 **Framework Snapshot (1)** | **`framework_snapshot_2026-05-12.md`** | **전체 framework 통합 snapshot** |
+  | 🆕 **Framework Snapshot (1)** | **`framework/framework_snapshot_2026-05-12.md`** | **전체 framework 통합 snapshot** |
 
 ---
 
@@ -11893,7 +12445,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   | 5 | Root: V5-C Full AERO (V4-B + Hop Attention) 구현 + smoke test | src/models/gat_network_v2.py |
   | 6 | Root: V5 sweep launch (V5-A + V5-B (L=2/4/6) + V5-C 학습, GPU 0,1 병렬) | scripts/run_v5_mitigation_sweep.sh |
   | 7 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
-  | 8 | Analyzer (학습 완료 후): 14-trial V5 결과 + Layer 1/2/3 evidence 재정량 + narrative pivot candidate 평가 | notebooks/analysis_results/dsn_mitigation_v5_4dir.md |
+  | 8 | Analyzer (학습 완료 후): 14-trial V5 결과 + Layer 1/2/3 evidence 재정량 + narrative pivot candidate 평가 | notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v5_17trial.md |
   | 9 | Planner (analyzer 후): narrative pivot 결정 + 5 over-smoothing 문서 통합 갱신 | planning/* + paper §3.5 |
 
 - **GPU 자원 분배 (Root chain 운영 가이드)**:
@@ -11920,7 +12472,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
     - scripts/run_v5_mitigation_sweep.sh
     - HISTORY + CATALOG + ID_MIGRATION 갱신
   - 후속 (analyzer):
-    - `notebooks/analysis_results/dsn_mitigation_v5_4dir.md` (14-trial 결과 + 3 layer narrative pivot 평가)
+    - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v5_17trial.md` (14-trial 결과 + 3 layer narrative pivot 평가)
   - 후속 (planner, V5 결과 후):
     - DECISIONS pivot 결정 entry
     - 5 over-smoothing planning 문서 narrative integration (시나리오에 따라)
@@ -12040,7 +12592,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   | 2 | Root: smoke test (single query forward, GLM 4.7 호출 검증) | (logs) |
   | 3 | Root: sweep launch (`scripts/run_filter_sweep_glm.sh`, BIRD-dev 1534 query × 8 cells) | logs/ + outputs/ |
   | 4 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
-  | 5 | Analyzer (sweep 완료 후): 9-cell F1/R/P 매트릭스 + Filter-axis spread 정량 | notebooks/analysis_results/filter_sweep_glm_9cell.md |
+  | 5 | Analyzer (sweep 완료 후): 9-cell F1/R/P 매트릭스 + Filter-axis spread 정량 | notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md |
   | 6 | Planner (analyzer 후): paper §3.5 Filter Dominance 7번째 axis (Filter-invariant) candidate 갱신 | planning/paper_research_direction.md + DECISIONS |
 
 - **근거**:
@@ -12055,7 +12607,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
     - `scripts/run_filter_sweep_glm.sh`
     - HISTORY + CATALOG + ID_MIGRATION 갱신
   - 후속 (analyzer):
-    - `notebooks/analysis_results/filter_sweep_glm_9cell.md`
+    - `notebooks/analysis_results/04_filter/filter_sweep_glm_9cell.md`
   - 후속 (planner, analyzer 후):
     - paper §3.5 Filter Dominance 7번째 axis (Filter-invariant) candidate 갱신
     - DECISIONS sweep 완료 + narrative integration entry
@@ -12076,7 +12628,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-12 (Mitigation V4-Combo-Null 결과 + narrative integration 4 문서)
 
-> **사용자 직전 input (2026-05-12)**: "notebooks/analysis_results/dsn_mitigation_v4_combo.md 참조해 4 문서 narrative integration: (1) advisor briefing §3+§4+§7, (2) root cause report §3+§5, (3) paper §V.5.4 main finding, (4) DECISIONS V4-Combo-Null prepend".
+> **사용자 직전 input (2026-05-12)**: "notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v4_combo.md 참조해 4 문서 narrative integration: (1) advisor briefing §3+§4+§7, (2) root cause report §3+§5, (3) paper §V.5.4 main finding, (4) DECISIONS V4-Combo-Null prepend".
 
 - **결정적 결과** (analyzer dsn_mitigation_v4_combo.md, 10-trial 시점 5/12):
 
@@ -12124,7 +12676,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   4. **planning/DECISIONS.md** (본 entry, 본 항목)
 
 - **근거**:
-  - `notebooks/analysis_results/dsn_mitigation_v4_combo.md` §0 TL;DR + §3 10-trial 매트릭스 + §4.2 정식화 + §5.2 axis matrix + §9 paper §V.5.4 본문 candidate
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v4_combo.md` §0 TL;DR + §3 10-trial 매트릭스 + §4.2 정식화 + §5.2 axis matrix + §9 paper §V.5.4 본문 candidate
   - 직전 DECISIONS entry "Mitigation V4 채택 — Architectural Intervention 두 Phase" 의 chain 결과
   - 학회 narrative 의 2 시나리오 중 시나리오 2 (V4 둘 다 null → mech(ii-b) 5/5 절대 confirm + Filter Dominance 6번째 축 narrative 결정적 강화) 실현
 
@@ -12182,7 +12734,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   | 5 | Root: 신규 config 작성 (V4-A + V4-B 각각) | configs/training/dsn/train_*_v4_*.yaml |
   | 6 | Root: 학습 launch sweep | scripts/run_v4_mitigation_sweep.sh, GPU 0,1 |
   | 7 | Root: HISTORY + CATALOG + ID_MIGRATION 갱신 | 3 문서 |
-  | 8 | Analyzer (학습 완료 후): layer-wise cosine + attention metric 측정 | notebooks/analysis_results/dsn_mitigation_v4_combo.md |
+  | 8 | Analyzer (학습 완료 후): layer-wise cosine + attention metric 측정 | notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v4_combo.md |
   | 9 | Planner (analyzer 후): advisor briefing + root cause report narrative integration | planning/* (V4 결과 + paper §V.5.4 narrative 갱신) |
 
 - **이론적 근거 (보고서 §1 + §4 핵심 인용 — 코드 주석에 반영)**:
@@ -12205,7 +12757,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
     - `scripts/run_v4_mitigation_sweep.sh`
     - HISTORY / CATALOG / ID_MIGRATION 갱신
   - 후속 (analyzer 작성):
-    - `notebooks/analysis_results/dsn_mitigation_v4_combo.md` — V4-A + V4-B 결과 정량 + 직전 8-trial 과 비교
+    - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v4_combo.md` — V4-A + V4-B 결과 정량 + 직전 8-trial 과 비교
   - Planner (analyzer 후):
     - advisor briefing §3 (Mitigation 진화) + §4 (Mechanism 정식) + §7 (진행 중/향후) 갱신
     - root cause report §3 + §5 갱신 + paper §V.5.4 narrative integration
@@ -12385,7 +12937,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   3. **GAT 구조 자체의 inherent 특성** — 학습 변형이 gradient flow 의 path imbalance 를 흔들지 못함. 직전 entry 의 Paradox 3 (attention ckpt-invariance) 와 **같은 mechanism family**: 학습 변형이 GAT internal dynamics (attention / gradient flow) 어느 channel 도 흔들지 못함.
 
 - **갱신된 산출물**:
-  - `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 v1 ckpt 표 확장 (p80, qcond_nl3 → 4 ckpt 전체), §4.2(a) narrative "Phase 1 4 ckpt 의 skip_dict 3.24~4.49 ratio 2.85~3.04 spread 0.19" 로 갱신, §6.2 종합 dashboard 에 topk20/abstau07 행 추가
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md` §4.1 v1 ckpt 표 확장 (p80, qcond_nl3 → 4 ckpt 전체), §4.2(a) narrative "Phase 1 4 ckpt 의 skip_dict 3.24~4.49 ratio 2.85~3.04 spread 0.19" 로 갱신, §6.2 종합 dashboard 에 topk20/abstau07 행 추가
   - `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 에 4 ckpt × ρ_skip 표 추가 (advisor 보고용 톤 유지 — 간결 표 + "어떤 학습 변형도 ρ_skip 을 의미 있게 흔들지 못함" narrative)
   - `outputs/analysis/dsn_oversmoothing/batch_summary.json` — step3 key 채워짐 (4 ckpt × grad_mean / grad_ratio / entropy / topk_conc / num_layers)
 
@@ -12403,7 +12955,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **결정 — root chain 위임**:
   1. **코드 patch**: `src/analysis/dsn_oversmoothing_analysis.py:main` 에서 step3 결과를 `results['step3']` 로 dump 하도록 수정 (현재 누락 — PNG 만 출력되고 raw json 없음). 또는 별도 `outputs/analysis/dsn_oversmoothing/grad_summary.json` 출력.
   2. **재측정**: 4 ckpt (p80, topk20, abstau07, qcond_nl3) × single-DB n=50 (직전 protocol 일관). CPU forward ~1-2 min wall.
-  3. **Analyzer 보고서 보강**: `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §4.1 표에 topk20, abstau07 추가 (lin_dict / conv_L1/L2/L3 / out_lin_dict / skip_dict / ratio 모든 column).
+  3. **Analyzer 보고서 보강**: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md` §4.1 표에 topk20, abstau07 추가 (lin_dict / conv_L1/L2/L3 / out_lin_dict / skip_dict / ratio 모든 column).
   4. **Advisor briefing 보강**: `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §2 Paradox 2 부분에 4 ckpt × ρ_skip 표 추가. 표 형식 간결 (advisor briefing 톤 유지).
   5. **DECISIONS.md prepend**: 재측정 완료 entry.
 
@@ -12419,7 +12971,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **영향 범위**:
   - src/analysis/dsn_oversmoothing_analysis.py (코드 patch 1 곳)
-  - notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md §4.1 (topk20, abstau07 추가)
+  - notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md §4.1 (topk20, abstau07 추가)
   - planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md §2 (4 ckpt × ρ_skip 표 신규)
   - planning/DECISIONS.md (재측정 완료 entry, root 작성)
 
@@ -12564,8 +13116,8 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - 학회 발표 priority 만이면 Option B. Paper drafting 대비면 Option A.
 
 - **근거**:
-  - `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md` §3.1bis (4 ckpt × multi-DB n=55 표 + spread 0.0023) + §3.1ter (Phase 2 / v2 LN / v3 GIN cross-check, +0.40 sharpening claim same-protocol valid)
-  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative (수정 1+2+3 + 유지)
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md` §3.1bis (4 ckpt × multi-DB n=55 표 + spread 0.0023) + §3.1ter (Phase 2 / v2 LN / v3 GIN cross-check, +0.40 sharpening claim same-protocol valid)
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative (수정 1+2+3 + 유지)
   - DECISIONS.md 2026-05-11 (Multi-DB 재측정 완료) entry 의 정량 일치 (spread 0.0023, baseline 0.7144~0.7167)
 
 - **영향 범위**:
@@ -12599,7 +13151,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **근거**:
   - 사용자 remote-control 직접 input + DECISIONS.md 2026-05-11 (Multi-DB 재측정 완료) 의 paradox 정정 table
-  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative 검증 결과 (3 paradox 정식)
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_phase1_multi_db_recheck.md` §5 paradox narrative 검증 결과 (3 paradox 정식)
   - Paradox 3 의 학회 narrative 가치 평가: 학습 변형 invariance 는 "mitigation 만이 유일 검증 통로" 라는 결론의 직접 정당화 — Stage 4 motivation 강화
 
 - **영향 범위**:
@@ -12656,7 +13208,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - `scripts/run_dsn_phase1_multi_db_attention.sh` (신규)
   - `outputs/analysis/dsn_oversmoothing_multi_db/{p80, topk20, abstau07, qcond_nl3}/{attention_metrics, per_db_breakdown, fail_log}.json + plots`
   - `outputs/analysis/dsn_oversmoothing_multi_db/cross_ckpt_summary.json + comparison_4ckpt_multi_db.png`
-  - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` (analyzer 보고서 형식)
+  - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_phase1_multi_db_recheck.md` (analyzer 보고서 형식)
   - `planning/oversmoothing/advisor_briefing_oversmoothing_2026-05-11.md` §0/§1.3/§1.4 갱신 (수치 + 새 paradox 추가)
   - `planning/oversmoothing/over_smoothing_research_summary.md` §1.4 갱신 (수치 + caveat 갱신)
 
@@ -12700,7 +13252,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
     - `src/analysis/dsn_oversmoothing_phase1_multi_db.py` (또는 기존 dsn_oversmoothing_analysis.py 에 `--multi_db` flag 추가) — root 가 작성
     - `scripts/run_dsn_phase1_multi_db_attention.sh` — root single-command launch
     - `outputs/analysis/dsn_oversmoothing_multi_db/{p80, topk20, abstau07, qcond_nl3}/attention_metrics.json` + plots
-    - `notebooks/analysis_results/dsn_oversmoothing_phase1_multi_db_recheck.md` — analyzer 보고서 (single-DB n=2 vs multi-DB n=55 비교 + paradox narrative 검증)
+    - `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_phase1_multi_db_recheck.md` — analyzer 보고서 (single-DB n=2 vs multi-DB n=55 비교 + paradox narrative 검증)
   - 업데이트 대상:
     - advisor_briefing_oversmoothing_2026-05-11.md §0 timeline + §1.3 + §1.4 (수치 + caveat 갱신)
     - over_smoothing_research_summary.md §1.4 (4 ckpt × multi-DB 수치 표 추가)
@@ -12805,15 +13357,15 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **결정**:
   1. **(a) 신규 산출물** — [`planning/oversmoothing/over_smoothing_research_summary.md`](over_smoothing_research_summary.md): planner 신규 narrative 정리 마크다운 (15 sections, ~600 lines). analyzer 6 보고서 직접 인용 형태:
-     - [`dsn_oversmoothing_analysis.md`](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) (Phase 1 진단)
-     - [`dsn_phase2_mitigation_null_mechanism.md`](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4-mech)
-     - [`dsn_phase3_mitigation_results.md`](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) (4-trial dominance)
-     - [`dsn_mitigation_v2_results.md`](../notebooks/analysis_results/dsn_mitigation_v2_results.md) (7-trial mid-training)
-     - [`dsn_v2_layernorm_mechanism_decomposition.md`](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
-     - [`dsn_softmax_noise_sensitivity.md`](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) (A2)
-     - [`dsn_per_db_stratified_7ckpt.md`](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) (A3)
-     - [`dsn_mitigation_v2_final_7trial.md`](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) (Final 7-trial)
-     - [`dsn_mitigation_v3_8trial.md`](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8-trial Final + GIN)
+     - [`dsn_oversmoothing_analysis.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_analysis.md) (Phase 1 진단)
+     - [`dsn_phase2_mitigation_null_mechanism.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4-mech)
+     - [`dsn_phase3_mitigation_results.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase3_mitigation_results.md) (4-trial dominance)
+     - [`dsn_mitigation_v2_results.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_results.md) (7-trial mid-training)
+     - [`dsn_v2_layernorm_mechanism_decomposition.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
+     - [`dsn_softmax_noise_sensitivity.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_softmax_noise_sensitivity.md) (A2)
+     - [`dsn_per_db_stratified_7ckpt.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_per_db_stratified_7ckpt.md) (A3)
+     - [`dsn_mitigation_v2_final_7trial.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_final_7trial.md) (Final 7-trial)
+     - [`dsn_mitigation_v3_8trial.md`](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md) (8-trial Final + GIN)
 
   2. **(b) 정리 구조 — 7-stage + 5단계 mechanism deep dive**:
      - §0 TL;DR (over-smoothing 진단 + 8-trial null effect + Final dominance scoring)
@@ -12864,7 +13416,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-09 (Phase 4 8-trial Final 분석 완료 — 🎯 시나리오 V3-A 정식 confirm + 🆕 Mech(ii-b) 5/5 → 4/5 partial 부정 + Mech(i-b) 3/5 → 4/5 강화 + paper §V.5.4 narrative 8-trial 본문 정식 채택) — Mitigation v3 #2 max aggregation 5/13 launch (사용자 결정 (3)A 자동 trigger)
 
-> **Status**: Analyzer 신규 산출 [dsn_mitigation_v3_8trial.md](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries) 완료. **시나리오 V3-A 정식 confirm** (GIN R=0.5954 < Phase 1 0.6097, Δ=-0.0143). **🚨 Mech(ii-b) partial 부정 evidence 발견**: GIN L2_GAT cosine = 0.9137 (다른 mit ckpt 의 0.99+ 대비 -0.08, 11 DBs 모두 일관 partial 회복 0.82~0.95). 단 R ceiling 갱신 X → softmax-aggregation **combo** 한정 mechanism 입증. **paper §V.5.4 narrative 본문 정식 채택** (analyzer §14 직접 인용).
+> **Status**: Analyzer 신규 산출 [dsn_mitigation_v3_8trial.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries) 완료. **시나리오 V3-A 정식 confirm** (GIN R=0.5954 < Phase 1 0.6097, Δ=-0.0143). **🚨 Mech(ii-b) partial 부정 evidence 발견**: GIN L2_GAT cosine = 0.9137 (다른 mit ckpt 의 0.99+ 대비 -0.08, 11 DBs 모두 일관 partial 회복 0.82~0.95). 단 R ceiling 갱신 X → softmax-aggregation **combo** 한정 mechanism 입증. **paper §V.5.4 narrative 본문 정식 채택** (analyzer §14 직접 인용).
 
 - **결정**:
 
@@ -12982,7 +13534,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      | (3) | **post-paper Phase 5 LN+GIN combo / EGAT 학습 우선순위** | (A) #1 LN+GIN combo 만 학위 본 심사 후 (5/22~) 시도 / (B) #2 EGAT 만 학위 본 심사 후 시도 / (C) 모두 post-paper backlog (학위 논문 본문 narrative 만, 추가 학습 X) | **(C) 모두 post-paper backlog** — paper §V.5.4 narrative 의 mech(ii-b) sub-mechanism 정밀화 (softmax-aggregation combo) 만으로 학술적 weight 충분. LN+GIN combo / EGAT 는 paper §VI Future Work 1 줄 + 학위 본 심사 후 별도 연구 |
 
 - **근거**:
-  - **신규 analyzer 산출**: [dsn_mitigation_v3_8trial.md §0~§14](../notebooks/analysis_results/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries)
+  - **신규 analyzer 산출**: [dsn_mitigation_v3_8trial.md §0~§14](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md) (8 ckpt × 5 step + multi-DB stratified 55 queries)
   - **재현 데이터**: outputs/analysis/dsn_v3_8trial/ (batch_summary + 5 plots + 8 per-ckpt summary)
   - **재현 스크립트**: src/analysis/dsn_mitigation_v3_8trial.py (GIN 호환 + multi-DB stratified protocol)
   - **선행 6 보고서**: dsn_mitigation_v2_final_7trial.md (7-trial Final) + A1+A2+A3 + dsn_mitigation_v2_results.md + dsn_phase3_mitigation_results.md (4-trial)
@@ -13038,7 +13590,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      8-trial protocol 재실행 (Final 7-trial base + GIN ckpt + multi-DB stratified).
 
      산출 형식:
-     - 신규: notebooks/analysis_results/dsn_mitigation_v3_8trial.md
+     - 신규: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md
      - 본 보고서 (`dsn_mitigation_v2_final_7trial.md`) 의 §0~§8 구조 답습
      - 8 ckpt × 5 step protocol + multi-DB stratified (55 queries, 11 DBs, seed=42)
 
@@ -13162,7 +13714,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 ## 2026-05-08 (Final 7-trial Dominance Scoring 정식 명문화 — analyzer 신규 dsn_mitigation_v2_final_7trial.md 통합) — Mech(ii-b) DOMINANT 5/5 ⭐⭐ + (ii-a) partial mitigation 가능 5/5 + Mech(i) 3/5 부분 강화 (i-b sum direct) + Filter Dominance 6번째 축 narrative paper §V.5.4 본문 candidate 정식
 
-> **Status**: Analyzer 신규 산출 [dsn_mitigation_v2_final_7trial.md](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) 으로 7-trial Final dominance scoring 정식 명문화. 직전 5 보고서 (`dsn_mitigation_v2_results.md` + A1+A2+A3 + `dsn_phase3_mitigation_results.md`) 통합 + Root 5/8 sweep 정정 수치 + sub-mechanism 분리 정식. **paper §V.5.4 narrative 본문 candidate (§6) 권장** — 학위 논문 Part III chapter draft 작성용 자료 정식 확보.
+> **Status**: Analyzer 신규 산출 [dsn_mitigation_v2_final_7trial.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_final_7trial.md) 으로 7-trial Final dominance scoring 정식 명문화. 직전 5 보고서 (`dsn_mitigation_v2_results.md` + A1+A2+A3 + `dsn_phase3_mitigation_results.md`) 통합 + Root 5/8 sweep 정정 수치 + sub-mechanism 분리 정식. **paper §V.5.4 narrative 본문 candidate (§6) 권장** — 학위 논문 Part III chapter draft 작성용 자료 정식 확보.
 
 - **결정**:
 
@@ -13250,7 +13802,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      | (3) | **Mitigation v3 추가 candidate (max aggregation, EGAT) 학습 우선순위 (V3-A 결과 후)** | (A) #2 max aggregation 1 cell 추가 시도 (~10h, 5/13 GPU 0) — V3-A 시 mean (Phase 2) + sum (v2 #2) + max + GIN 4 aggregation function family null evidence 강화 / (B) #4 EGAT 만 추가 시도 (~10h+, architectural shift) / (C) 모두 post-paper backlog (학위 본 심사 timeline 충분) | **(A) max aggregation 추가 시도 (V3-A 시)** — V3-A 시 mean+sum+max+GIN 4 aggregation function family null evidence 가 paper §V.5.4 narrative 결정적 강화 (aggregation family 자체 limitation 절대적). V3-B/C 시 (C) 모두 post-paper |
 
 - **근거**:
-  - **신규 analyzer 산출**: [dsn_mitigation_v2_final_7trial.md §0~§8](../notebooks/analysis_results/dsn_mitigation_v2_final_7trial.md) (정식 dominance scoring, 5 보고서 통합)
+  - **신규 analyzer 산출**: [dsn_mitigation_v2_final_7trial.md §0~§8](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_final_7trial.md) (정식 dominance scoring, 5 보고서 통합)
   - **선행 5 보고서**: dsn_mitigation_v2_results.md (7-trial single-DB) + dsn_v2_layernorm_mechanism_decomposition.md (A1) + dsn_softmax_noise_sensitivity.md (A2) + dsn_per_db_stratified_7ckpt.md (A3) + dsn_phase3_mitigation_results.md (4-trial)
   - **선행 결정**: DECISIONS 직전 entries — 사용자 결정 confirm + Root sweep 보고 + Phase 1 deep dive 완료 + Phase 2 GIN 구현 완료
   - **재현 스크립트**: src/analysis/dsn_mitigation_v2_7trial.py + dsn_phase1_deep_dive.py
@@ -13448,7 +14000,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - 11 DBs 중 GIN 의 mech(ii) DOMINANT 일관성 (10/11 일관 / partial / 부정)
      - toxicology trivial schema 유지 caveat
 
-     산출물: notebooks/analysis_results/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
+     산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
      - §0 TL;DR — 8-trial dominance scoring 갱신 (mech(ii) 5/5 절대 강화 / 4/5 부분 부정 / 3/5 부정)
      - §0 시나리오 V3-A/B/C 결정
      - §10 Filter Dominance 6번째 축 8-trial evidence (4-trial → 7-trial → 8-trial)
@@ -13570,7 +14122,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - **mech(ii-a)/(ii-b) sub-mechanism 분리 (Phase 1 A1 결과 기반) 적용**:
        - GIN 가 mech(ii-a) softmax over-concentration 미해당 (attention 자체 부재)
        - GIN 가 mech(ii-b) weighted-mean propagation 자체 대체 (sum + MLP) → L1_GAT cosine 회복 가능성 직접 검증
-     - 산출물: `notebooks/analysis_results/dsn_mitigation_v3_8trial.md` (신규) 또는 `dsn_mitigation_v2_results.md §14` 보강
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md` (신규) 또는 `dsn_mitigation_v2_results.md §14` 보강
 
   6. **(f) Planner 후속 prep (Phase 4 종료 후, ~5/14)**:
      - 8-trial dominance scoring 갱신 (4-trial → 7-trial → 8-trial)
@@ -13605,7 +14157,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **근거**:
   - **Selector 모듈 단계 7 산출**: [EXPERIMENT_PLAN_selectors.md §V-3-ext 단계 7](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) (구현 + 7 smoke 통과 + GIN incompat 검증 + AGGREGATION_TYPES 확장)
   - **선행 결정**: DECISIONS 직전 엔트리 2026-05-08 (사용자 결정 A+B 통합) §1(c)/(e) — Mitigation v3 #1 GIN-style 학위 본 심사 전 진행 + Phase 2 selector 구현 spec
-  - **선행 분석**: [Phase 1 deep dive A1+A2+A3](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) + [A2](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) + [A3](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) — mech(ii-a)/(ii-b) sub-mechanism 분리 + multi-DB 정정
+  - **선행 분석**: [Phase 1 deep dive A1+A2+A3](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_v2_layernorm_mechanism_decomposition.md) + [A2](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_softmax_noise_sensitivity.md) + [A3](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_per_db_stratified_7ckpt.md) — mech(ii-a)/(ii-b) sub-mechanism 분리 + multi-DB 정정
   - **Cross-reference**: 단계 5 (Phase 3 #3+#4) + 단계 6 (Mitigation v2) + 단계 7 (Mitigation v3 #1) 모두 5/7~5/8 가속 완료 — 학위 본 심사 timeline 여유 확보
 
 - **영향 범위**:
@@ -13725,9 +14277,9 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **근거**:
   - **신규 analyzer 3 산출**:
-    - [dsn_v2_layernorm_mechanism_decomposition.md](../notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
-    - [dsn_softmax_noise_sensitivity.md](../notebooks/analysis_results/dsn_softmax_noise_sensitivity.md) (A2)
-    - [dsn_per_db_stratified_7ckpt.md](../notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md) (A3)
+    - [dsn_v2_layernorm_mechanism_decomposition.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_v2_layernorm_mechanism_decomposition.md) (A1)
+    - [dsn_softmax_noise_sensitivity.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_softmax_noise_sensitivity.md) (A2)
+    - [dsn_per_db_stratified_7ckpt.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_per_db_stratified_7ckpt.md) (A3)
   - **재현 데이터**: outputs/analysis/dsn_phase1_deep_dive/{a1, a2, a3}_*.json
   - **재현 스크립트**: src/analysis/dsn_phase1_deep_dive.py
   - **선행 분석**: dsn_mitigation_v2_results.md (7-trial single-DB) — A3 가 single-DB caveat 해소
@@ -13786,9 +14338,9 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
      | # | 분석 | 가설 / 측정 spec | 산출물 |
      |---|------|----|---|
-     | **A1** | **v2_LN nuanced mechanism** — LayerNorm 이 어떤 message component 정규화에 작용하는지 | LayerNormGATv2Conv 의 raw alpha tensor capture (forward hook) + per-head magnitude / variance / sign distribution 분석. softmax pre/post 분포 비교 + L1_GAT cosine = 1.0 collapse 가 어디서 발생하는지 (alpha → message → aggregation 단계별) decompose | `notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md` |
-     | **A2** | **Softmax noise sensitivity** — input perturbation 시 alpha 변동 정량 | 7 ckpt × column 노드 input 에 Gaussian noise (σ=0.01, 0.05, 0.1) 추가 → alpha tensor variance 측정. v2_LN 의 noise robustness 정량 + Phase 2/3 의 noise sensitivity 비교 | `notebooks/analysis_results/dsn_softmax_noise_sensitivity.md` |
-     | **A3** | **Per-DB stratified 11 DBs 재측정** — single-DB caveat 해소 (mech(ii) generalizability 검증) | BIRD-dev shuffle=True (seed 고정) 또는 per-DB stratified sampling (각 DB 5 queries × 11 DBs = 55 queries) → 7 ckpt × 4 mechanism × 5 step 재실행. mech(ii) DOMINANT 의 11 DBs invariance 검증. toxicology (작은 schema) vs european_football_2 (큰 schema) 의 mech(ii) 차이 정량 | `notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md` |
+     | **A1** | **v2_LN nuanced mechanism** — LayerNorm 이 어떤 message component 정규화에 작용하는지 | LayerNormGATv2Conv 의 raw alpha tensor capture (forward hook) + per-head magnitude / variance / sign distribution 분석. softmax pre/post 분포 비교 + L1_GAT cosine = 1.0 collapse 가 어디서 발생하는지 (alpha → message → aggregation 단계별) decompose | `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_v2_layernorm_mechanism_decomposition.md` |
+     | **A2** | **Softmax noise sensitivity** — input perturbation 시 alpha 변동 정량 | 7 ckpt × column 노드 input 에 Gaussian noise (σ=0.01, 0.05, 0.1) 추가 → alpha tensor variance 측정. v2_LN 의 noise robustness 정량 + Phase 2/3 의 noise sensitivity 비교 | `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_softmax_noise_sensitivity.md` |
+     | **A3** | **Per-DB stratified 11 DBs 재측정** — single-DB caveat 해소 (mech(ii) generalizability 검증) | BIRD-dev shuffle=True (seed 고정) 또는 per-DB stratified sampling (각 DB 5 queries × 11 DBs = 55 queries) → 7 ckpt × 4 mechanism × 5 step 재실행. mech(ii) DOMINANT 의 11 DBs invariance 검증. toxicology (작은 schema) vs european_football_2 (큰 schema) 의 mech(ii) 차이 정량 | `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_per_db_stratified_7ckpt.md` |
 
      **사용자 결정 갱신**: 직전 (2026-05-08 §1(9)) (3) per-DB 후속 측정 = (B) post-paper backlog → **본 엔트리 (A) 학위 본 심사 전 진행** (single-DB caveat 해소가 paper §V.5.4 narrative 강화 + 학위 논문 Part III chapter Limitations 1 줄 → 11 DBs 일관 evidence 로 격상)
 
@@ -13814,7 +14366,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
        - V3-A 시나리오 (GIN fail): 8-trial null = mech(ii) **5/5 절대적 강화** (aggregation family 한정도 못 해결)
        - V3-B 시나리오 (GIN partial): mech(ii) 4/5 부분 부정 + GIN 부분 효과 evidence
        - V3-C 시나리오 (GIN 회복): mech(ii) 3/5 부정 + paper main contribution 재평가
-     - 산출물: `notebooks/analysis_results/dsn_mitigation_v3_8trial.md` (analyzer 신규 또는 dsn_mitigation_v2_results.md §14 보강)
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md` (analyzer 신규 또는 dsn_mitigation_v2_results.md §14 보강)
 
   5. **(e) Selector 모듈 핸드오프 prompt (Phase 2, 5/10 시작)**:
      ```
@@ -13847,25 +14399,25 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - per-head magnitude / variance / sign distribution 분석
      - softmax pre/post 분포 비교
      - L1_GAT cosine = 1.0 collapse 가 어디서 발생하는지 (alpha → message → aggregation 단계별 decompose)
-     - 산출물: notebooks/analysis_results/dsn_v2_layernorm_mechanism_decomposition.md
+     - 산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_v2_layernorm_mechanism_decomposition.md
 
      A2. Softmax noise sensitivity:
      - 7 ckpt × column 노드 input 에 Gaussian noise (σ=0.01, 0.05, 0.1) 추가
      - alpha tensor variance 측정
      - v2_LN 의 noise robustness 정량 + Phase 2/3 비교
-     - 산출물: notebooks/analysis_results/dsn_softmax_noise_sensitivity.md
+     - 산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_softmax_noise_sensitivity.md
 
      A3. Per-DB stratified 11 DBs 재측정:
      - BIRD-dev shuffle=True (seed 고정) 또는 per-DB stratified (각 DB 5 queries × 11 DBs = 55 queries)
      - 7 ckpt × 4 mechanism × 5 step 재실행
      - mech(ii) DOMINANT 의 11 DBs invariance 검증
      - toxicology vs european_football_2 의 mech(ii) 차이 정량
-     - 산출물: notebooks/analysis_results/dsn_per_db_stratified_7ckpt.md
+     - 산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_per_db_stratified_7ckpt.md
 
      Phase 4 후속 (5/12 GIN 학습 종료 후):
      - 8 ckpt × 5 step protocol 재실행
      - 8-trial dominance scoring 갱신 (mech(ii) 5/5 결정적 강화 / 4/5 부분 부정 / 3/5 부정 분기)
-     - 산출물: notebooks/analysis_results/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
+     - 산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v3_8trial.md (또는 dsn_mitigation_v2_results.md §14 보강)
      ```
 
   7. **(g) Root 핸드오프 prompt (Phase 3, 5/11 시작)**:
@@ -14051,10 +14603,10 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      | (3) | **per-DB stratified 50 queries 후속 측정 필요 여부** | (A) 학위 본 심사 전 진행 (~₩0 LLM-free, ~수 시간) / (B) post-paper backlog (single-DB caveat 학위 논문 §V Limitations 1 줄 명시 충분) | **(B) post-paper backlog** — 7 ckpt × single-DB 일관 evidence 가 mech(ii) DOMINANT generalizability partial 입증 + post-paper 11 DBs 일반성 검증 여유 |
 
 - **근거**:
-  - **신규 analyzer 산출**: [dsn_mitigation_v2_results.md §0~§13](../notebooks/analysis_results/dsn_mitigation_v2_results.md) (7 ckpt × 4 mechanism × 5 step + paradox 분리 narrative + Filter Dominance 6번째 축 결정적 evidence)
+  - **신규 analyzer 산출**: [dsn_mitigation_v2_results.md §0~§13](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_results.md) (7 ckpt × 4 mechanism × 5 step + paradox 분리 narrative + Filter Dominance 6번째 축 결정적 evidence)
   - **재현 데이터**: outputs/analysis/dsn_mitigation_v2_7trial/ (batch_summary.json + 5 plots: recall_trajectory_overlay_7ckpt + ac_loss_trajectory_7ckpt + oversmoothing_heatmap_7ckpt + attention_heatmap_topk5_conc_7ckpt + attention_heatmap_entropy_7ckpt + 7 per-ckpt summary)
   - **재현 스크립트**: src/analysis/dsn_mitigation_v2_7trial.py (v1/v2 + Mitigation v2 옵션 자동 forward)
-  - **선행 분석**: [dsn_phase3_mitigation_results.md §6](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) (4-trial mech(ii) DOMINANT 5/5 직전 판정)
+  - **선행 분석**: [dsn_phase3_mitigation_results.md §6](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase3_mitigation_results.md) (4-trial mech(ii) DOMINANT 5/5 직전 판정)
   - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (Mitigation v2 #1+#3+#2 구현 완료) — Selector 단계 6 + Root 학습 launch + analyzer 위임
   - **EXPERIMENT_HISTORY**: L2691~ DSN Phase 2 + Phase 3 4-trial Mitigation Sweep entry + Mitigation v2 학습 entry (5/9~5/11)
 
@@ -14146,7 +14698,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   6. **(f) Analyzer 후속 prep (5/10, 5/11)**:
      - **5/10 (#1 + #3 학습 종료 후)**: `src/analysis/dsn_phase3_4trial_deep_dive.py` 의 4 ckpt → **6 ckpt (4 + #1 + #3) × 5 step** 재실행 — mech(ii) attention concentration 회복 정량 (top-5 conc / entropy / L1_GAT cosine)
      - **5/11 (#2 학습 종료 후)**: 통합 재실행 — **7 ckpt (4 + #1 + #3 + #2) × 5 step** 분석. 4 mechanism dominance scoring 갱신 (mech(ii) DOMINANT 5/5 confirm 강도)
-     - 산출물: `notebooks/analysis_results/dsn_mitigation_v2_results.md` 신규 또는 `dsn_phase3_mitigation_results.md §11` 보강
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_mitigation_v2_results.md` 신규 또는 `dsn_phase3_mitigation_results.md §11` 보강
      - **mech(ii) 회복 정도 정량 metrics**:
        - L1_GAT intra-table cosine (4-trial 모두 ≈ 1.0 → mitigation v2 가 0.9+ 으로 낮추는지)
        - Attention top-5 concentration (Phase 3 #4 의 0.83 → mitigation v2 가 0.5- 으로 낮추는지)
@@ -14384,10 +14936,10 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      | (3) | **Mitigation v2 candidate 우선순위 (post-paper)** | (A) #1 DropMessage + #2 Sum aggregation 학위 본 심사 후 시도 (2 cells, ~20h) / (B) #3 LayerNorm before softmax 만 (1 cell, ~10h) / (C) #4 Energy-based GNN 만 (1 cell, ~10h, 가장 architectural shift) / (D) 모두 post-paper backlog (학위 본 심사 timeline 부족) | **(D) 모두 post-paper backlog** — 학위 본 심사 timeline (~5/22) 부족 + mech(ii) DOMINANT 판정 evidence 충분, mitigation v2 는 paper 후 long-term direction |
 
 - **근거**:
-  - **신규 analyzer 산출**: [dsn_phase3_mitigation_results.md](../notebooks/analysis_results/dsn_phase3_mitigation_results.md) §0~§10 (TL;DR + 5 step + 4 mechanism dominance + §6.3 학위 논문 narrative 권장)
+  - **신규 analyzer 산출**: [dsn_phase3_mitigation_results.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase3_mitigation_results.md) §0~§10 (TL;DR + 5 step + 4 mechanism dominance + §6.3 학위 논문 narrative 권장)
   - **재현 데이터**: outputs/analysis/dsn_phase3_4trial_deep_dive/ (4 ckpt summary.json + ac_loss_trajectory.png + recall_trajectory_overlay.png)
   - **재현 스크립트**: src/analysis/dsn_phase3_4trial_deep_dive.py (v1/v2 자동 분기, Step 5 epoch trajectory parse)
-  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 base, mech(iii) DOMINANT 5/5 직전 판정 — 본 분석에서 갱신)
+  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 base, mech(iii) DOMINANT 5/5 직전 판정 — 본 분석에서 갱신)
   - **선행 결정**: DECISIONS 직전 엔트리 2026-05-07 (단계 5 완료, P3-A 절대 confirm — analyzer 위임 §1(8))
   - **EXPERIMENT_HISTORY**: L2691~ DSN Phase 2 + Phase 3 4-trial Mitigation Sweep entry
 
@@ -14490,12 +15042,12 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - (b) Skip dependence ratio (gradient flow 재측정): Phase 2 mit 1.89~2.13 vs Phase 3 ?
      - (c) AC target 별 main GAT path gradient 회복 정도: Phase 2 conv 0.07~0.18 vs Phase 3 #3 (gat_out_L_last) → main path 회복 정도
      - (d) Layer-wise LR 의 GAT path gradient 5× 회복 검증: Phase 3 #4
-     - 산출물: `notebooks/analysis_results/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
      - **planner 후속 단계**: analyzer 결과 dominant 판정 (P3-A 절대 confirm 의 mechanism evidence 강도) → 학위 논문 Part III chapter draft 의 mechanism §III.4 보강
 
 - **근거**:
   - **EXPERIMENT_HISTORY.md "DSN Phase 2 + Phase 3 4-trial Mitigation Sweep (V-3-ext 단계 5, 2026-05-06 → 05-07, 🎯 시나리오 P3-A 결정적 confirm)"** (root 2026-05-07 갱신, L2691~)
-  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4 mechanism deep dive, Skip Dependence Pathology DOMINANT 5/5 판정)
+  - **선행 분석**: [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) (Phase 2 4 mechanism deep dive, Skip Dependence Pathology DOMINANT 5/5 판정)
   - **선행 결정**: DECISIONS 직전 엔트리 2026-05-06 (Phase 3 #3+#4 구현 완료) + 2026-05-06 (Phase 3 학위 본 심사 전 진행)
   - **운영 결정**: 사용자 batch_size 변경 / Phase 3 가속 launch / alpha sweep skip (2026-05-06~07)
   - **AC loss mechanism**: Phase 3 #3 학습 log `logs/train/gat_directed_supernode_p80_b5_phase3_directAC_*.log` (AC=0.62 일관 유지)
@@ -14600,7 +15152,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
        - **(c) AC target 별 main GAT path gradient 회복 정도**: Phase 2 conv 0.07~0.18 vs Phase 3 #3 (gat_out_L_last) → main path 회복 정도
        - **(d) Layer-wise LR 의 GAT path gradient 5× 회복**: Phase 2 vs Phase 3 #4
      - `extract_layerwise_attention_v2` 재호출 — Phase 3 attention pattern (top-5 conc 변화)
-     - 산출물: `notebooks/analysis_results/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase3_mitigation_results.md` (또는 dsn_phase2_mitigation_null_mechanism.md §10 보강)
   9. **(i) 전체 timeline 가속 정리** — selector 모듈 5/6 동일자 가속으로 단계 1~5 모두 완료:
 
      | 일정 | 작업 | 상태 |
@@ -14729,7 +15281,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **근거**:
   - 사용자 직전 input (2026-05-06): "(1) (A) / (2) (A) / (3) 그래도 가능한 건 학위논문 본심사 전에 해 보고 싶어 대략적인 원인을 찾았는데 대안을 내 봐야지"
   - **선행 결정**: DECISIONS 직전 엔트리 (Phase 2 mitigation null mechanism dominant 판정 — Skip Dependence DOMINANT 5/5)
-  - **Mitigation candidate 출처**: [dsn_phase2_mitigation_null_mechanism.md §8.1](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) — analyzer 권장 4 candidate
+  - **Mitigation candidate 출처**: [dsn_phase2_mitigation_null_mechanism.md §8.1](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) — analyzer 권장 4 candidate
   - **Phase 2 학습 log**: `/tmp/directed_sn_train_logs/train_dsn_p80_b5_mitigation_b8.log`
 
 - **영향 범위**:
@@ -14762,7 +15314,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-06 (Phase 2 mitigation null mechanism dominant 판정 — Mechanism (iii) Skip Dependence Pathology 5/5 DOMINANT) — 학위 논문 Part III main mechanism finding 확정 + Filter Dominance 6번째 축 (training-pathology-invariant) 정량 정당화
 
 - **결정**:
-  1. **(a) Analyzer 산출 수령** — [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) (4 mechanism deep dive 완료, 2026-05-06):
+  1. **(a) Analyzer 산출 수령** — [dsn_phase2_mitigation_null_mechanism.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) (4 mechanism deep dive 완료, 2026-05-06):
      - 4 ckpt × 50 queries × column 노드
      - 4 mechanism evidence 강도 1-5 scale 정량 + dominant 판정
      - 학위 논문 Part III main mechanism finding 권장 narrative 도출
@@ -14827,7 +15379,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - **권장**: **(B) post-paper backlog** — 학위 본 심사 timeline 부족 + 학위 논문 Part III main contribution 은 mechanism finding 자체로 충분 학술적 weight
 
 - **근거**:
-  - **Analyzer 산출**: [dsn_phase2_mitigation_null_mechanism.md §0~§9](../notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md) — 2026-05-06
+  - **Analyzer 산출**: [dsn_phase2_mitigation_null_mechanism.md §0~§9](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md) — 2026-05-06
   - **재현 데이터**: outputs/analysis/dsn_phase2_mechanism_deep_dive/ (4 ckpt × 4 mechanism summary.json)
   - **재현 스크립트**: src/analysis/dsn_phase2_mechanism_deep_dive.py (v1/v2 자동 분기, compute_gradient_flow_compat)
   - **선행 분석**: dsn_oversmoothing_analysis.md (Phase 1 baseline) + s06_bottleneck_comparison.md (B5 mitigation reference)
@@ -14906,7 +15458,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
        - (iii) **Skip dependency pathology** — main GAT path 학습 신호 약함 + skip 의존
        - (iv) **Schema sibling 유사성** — raw PLM embedding 단계부터 sibling 유사 → mitigation 무효
      - **분석 위임 — Analyzer 요청 큐 (응답 본문 prompt)**: 4 ckpt 비교 (DSN p80 / DSN p80_b5_mitigation / s06 B5 / qcond_nl3) × 4 mechanism evidence 강도 1-5 scale
-     - **산출물**: `notebooks/analysis_results/dsn_phase2_mitigation_null_mechanism.md`
+     - **산출물**: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_phase2_mitigation_null_mechanism.md`
      - **학위 논문 Part III main mechanism finding 권장 narrative 도출**
   6. **(f) STEP 3-5 timeline 예고 (학습 종료 04:24 KST 5/7 후)**:
      - **STEP 3 (5/7~5/9)**: paper main stack alpha sweep subset 5 cells (α∈{0.0, 0.3, 0.5, 0.7, 1.0}) — Phase 2 b8 ckpt + Final F1 plateau spread Phase 1 0.0019 vs Phase 2 비교 (시나리오 A confirm 강화)
@@ -15102,7 +15654,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **근거**:
   - 사용자 직전 input (2026-05-06): "(1)(2) 모두 (A)로 진행하자"
   - 선행 결정: DECISIONS 직전 엔트리 (DSN over-smoothing 진단 완료, Phase 2 candidate + Attention 위임 후보 권장 옵션)
-  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md §3](../notebooks/analysis_results/s06_bottleneck_comparison.md) (B2~B5 cosine sim 비교)
+  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md §3](../notebooks/analysis_results/06_selector_encoder_bottleneck/s06_bottleneck_comparison.md) (B2~B5 cosine sim 비교)
   - **Cross-reference**: V-3-ext 단계 1 (selector class, 2026-05-05) + 단계 2/3 (학습/측정, 2026-05-05~06) + 단계 4 (over-smoothing 진단, 2026-05-06) + Phase 2 (mitigation 통합, 2026-05-10~15)
 
 - **영향 범위**:
@@ -15138,7 +15690,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-06 (DSN over-smoothing 진단 완료 — Phase 1 시나리오 A 확정 직후 V-3-ext 단계 4) — 🚨 H1 강력 지지 + qcond_nl3 baseline 정정 (0.55 추정 → 0.6061 실측) + Filter Dominance 5축 정량 evidence 강화 + Phase 2 candidate (post-paper)
 
 - **결정**:
-  1. **(a) Analyzer 산출 수령** — [dsn_oversmoothing_analysis.md](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) (V-3-ext 단계 4 진단, 2026-05-06, BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt):
+  1. **(a) Analyzer 산출 수령** — [dsn_oversmoothing_analysis.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_analysis.md) (V-3-ext 단계 4 진단, 2026-05-06, BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt):
      - §1 Training Trajectory (best R@15 + saturation)
      - §2 Layer-wise Over-smoothing (intra-table cosine sim)
      - §3 Step 3 Gradient flow (skip dependency pathology)
@@ -15192,10 +15744,10 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - 단순 Selector design choice (graph topology) 변동을 absorb 하는 것을 넘어 **GAT 학습의 internal pathology (over-smoothing) 까지 흡수** — Filter "first-class stage" 학술적 정당성 한 단계 더 격상
 
 - **근거**:
-  - **Analyzer 산출**: [notebooks/analysis_results/dsn_oversmoothing_analysis.md §0~§7](../notebooks/analysis_results/dsn_oversmoothing_analysis.md) — 2026-05-06 작성 (BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt)
+  - **Analyzer 산출**: [notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_analysis.md §0~§7](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/dsn_oversmoothing_analysis.md) — 2026-05-06 작성 (BIRD-dev 50 queries × 4 ckpt = 200 forward pass, column-pair n=150 per layer per ckpt)
   - **재현 데이터**: outputs/analysis/dsn_oversmoothing/ (4 ckpt × plots + batch_summary.json)
   - **재현 스크립트**: src/analysis/dsn_oversmoothing_analysis.py (hook-based extract_layerwise_dsn 포함)
-  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md](../notebooks/analysis_results/s06_bottleneck_comparison.md) §3 (s06 B2~B5 cosine sim 비교)
+  - **Mitigation evidence pool**: [s06_bottleneck_comparison.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/s06_bottleneck_comparison.md) §3 (s06 B2~B5 cosine sim 비교)
   - **선행 결정**: DECISIONS 직전 엔트리 (DSN Phase 1 시나리오 A 확정, F1 plateau 0.0019 spread)
   - **Cross-reference**: V-3-ext 단계 1 (selector class + GAT v1/v2 dispatch + smoke 7 통과, 2026-05-05) → 단계 2/3 (학습 + 측정, 2026-05-05~06) → 단계 4 (본 over-smoothing 진단, 2026-05-06)
 
@@ -15304,7 +15856,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **근거**:
   - **Selector 세션 단계 1 산출**: [src/modules/selectors/EXPERIMENT_PLAN_selectors.md §V-3-ext](../src/modules/selectors/EXPERIMENT_PLAN_selectors.md) "Directed Top-K SuperNode (학위 논문 Part III, 2026-05-05) — 단계 1 구현 완료" — 4 산출물 + 8 변경 파일 + 학습 변형 3 종 + 시나리오 A/B/C 인용
   - **선행 결정**: DECISIONS 2026-05-05 직전 엔트리 (analyzer raw_score 결과 인용 — threshold P80 primary 채택 + 단계 1 핸드오프 prompt) — 본 단계 1 완료의 base
-  - **Analyzer base**: [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) — Per-query ROC-AUC 0.7930, Cohen's d 1.1323, top-K=20 P78~P80 영역, Recall@20=0.6865
+  - **Analyzer base**: [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/raw_score_distribution_for_directed_topk.md) — Per-query ROC-AUC 0.7930, Cohen's d 1.1323, top-K=20 P78~P80 영역, Recall@20=0.6865
 
 - **영향 범위**:
   - **DECISIONS 본 엔트리** — 단계 1 완료 + 산출물 4 + 변경 파일 8 + root 단계 2/3 핸드오프 + paper narrative 시나리오 A/B/C 분기 prep
@@ -15336,7 +15888,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-05 (analyzer raw_score_distribution 결과 인용 — Directed Top-K SuperNode 학습 변형 3 종 + threshold P80 primary 채택) — 단계 1 (5/9~5/11 구현) Selector 모듈 핸드오프 준비 완료
 
 - **결정**:
-  1. **(a) Analyzer 산출 수령** — [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) (LLM-free 즉시 위임 결과, 2026-05-05, ₩0):
+  1. **(a) Analyzer 산출 수령** — [raw_score_distribution_for_directed_topk.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/raw_score_distribution_for_directed_topk.md) (LLM-free 즉시 위임 결과, 2026-05-05, ₩0):
      - §2 per-query raw cosine score 분포 (P25/P50/P75/P90/P95)
      - §3 gold vs non-gold 분리 (ROC-AUC, Cohen's d, threshold trade-off)
      - §4 기존 top-K=20 의 score range
@@ -15375,7 +15927,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   7. **(g) 학회 논문 narrative 영향 X**: paper main anchor t_00 (F1=0.8657) 영향 X, Filter Dominance 4 축 narrative 그대로. 학회 논문 §V.5.3 Future Work 1 줄 명시는 사용자 직접 처리 (Q3).
 
 - **근거**:
-  - **Analyzer 산출**: [notebooks/analysis_results/raw_score_distribution_for_directed_topk.md §0~§7](../notebooks/analysis_results/raw_score_distribution_for_directed_topk.md) — 2026-05-05 LLM-free 즉시 위임 결과
+  - **Analyzer 산출**: [notebooks/analysis_results/02_v1_v5_dsn_mitigation/raw_score_distribution_for_directed_topk.md §0~§7](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/raw_score_distribution_for_directed_topk.md) — 2026-05-05 LLM-free 즉시 위임 결과
     - §3 ROC-AUC 0.7930 + Cohen's d 1.1323 (gold/non-gold 분리)
     - §4 top-K=20 의 score range (top-20 min score mean=0.4957, P50=0.5425, P78~P80 영역)
     - §5 Threshold 후보 24 종 비교 raw 데이터
@@ -15426,7 +15978,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
        - top-K=20 의 score range (절대 score / percentile)
        - threshold 후보 (절대 / percentile / mean+std / elbow point)
        - threshold 별 평균 selected node 수 + recall 추정
-     - 산출물: `notebooks/analysis_results/raw_score_distribution_for_directed_topk.md`
+     - 산출물: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/raw_score_distribution_for_directed_topk.md`
   5. **(e) Directed Top-K SuperNode 학위 논문 Part III 단계 (analyzer 결과 후)**:
      - **단계 1** — 구현 (5/9~5/11): 신규 selector class `DirectedTopKSuperNodeSelector` (또는 기존 SuperNode 변형) — query_node→schema 단방향 edge + raw_score threshold filter
      - **단계 2** — 학습 (5/12~5/13): 신규 GAT ckpt `best_gat_directed_supernode_topk.pt`, threshold 변형 (analyzer 결과 후 1-3 변형) 별 학습, val recall@15 검증
@@ -15451,7 +16003,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 - **영향 범위**:
   - **DECISIONS 본 엔트리** — Directed Top-K Part III 결정 + threshold 기반 + analyzer 위임 + 시나리오 A/B/C 분기
   - **paper_research_direction.md (선택, 추후 갱신)** — §8 Future Works 의 학위 논문 Part III 항목 추가 (analyzer 결과 + 측정 후 갱신)
-  - **paper_outline_2026-05-08.md (사용자 자율)** — §V.5.3 Future Work 1 줄 추가 (advisor 제안 reflect)
+  - **paper/paper_outline_2026-05-08.md (사용자 자율)** — §V.5.3 Future Work 1 줄 추가 (advisor 제안 reflect)
   - **학회 논문 main contribution narrative 영향 X** — anchor t_00 + Filter Dominance 4 축 narrative 그대로 유지
   - **학위 논문 Part III 신설** — Filter 고도화 (Part II) 외 Selector 확장 (Part III) 추가
 
@@ -15514,7 +16066,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - 14 cells 중 유일 EX > 0.35 (0.3501) + F1 -0.0024 trade-off
      - schema-linking F1 ↔ SQL EX **decoupling 직접 evidence** (Filter 변형으로 EX 만 개선)
      - paper §V.5.2 1 paragraph 에 1-2 문장 보강 (Filter design 의 F1-optimal vs EX-optimal 분리 가능성)
-  7. **(g) paper_research_direction.md / paper_outline_2026-05-08.md 정정 사항 (planner Edit 즉시)**:
+  7. **(g) paper_research_direction.md / paper/paper_outline_2026-05-08.md 정정 사항 (planner Edit 즉시)**:
      - **paper §3.5**: Filter design variation evidence 추가 (14 cells, ΔF1 spread 0.0739 = on/off 의 12%)
      - **paper §8 Future Works**: Wave 4 ✅ 완료 표기 + Stacked Filter mechanism deep dive 신설 sub-항목 (학위 논문 Part II)
      - **paper §10 핵심 수치**: Wave 4 14 cells 결과 표 추가 (F1 ceiling a05_08 0.8809 + EX ceiling a05_07 0.3501 + R ceiling a05_04 0.9155 + a05_01 outlier caveat)
@@ -15531,7 +16083,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **영향 범위**:
   - **paper_research_direction.md (planner Edit)**: §3.5 Filter design variation evidence + §8 Wave 4 완료 + Stacked Filter Future Work + §10 14 cells 표 + §12 Changelog
-  - **paper_outline_2026-05-08.md (planner Edit)**: §III.5 Modular Filter design 보강 + §IV.4.4 신설 (Filter Design Variation) + §V.5.1 ceiling evidence + §V.5.2 a05_07 EX evidence + §V.5.3 Stacked Filter Future Work + Changelog
+  - **paper/paper_outline_2026-05-08.md (planner Edit)**: §III.5 Modular Filter design 보강 + §IV.4.4 신설 (Filter Design Variation) + §V.5.1 ceiling evidence + §V.5.2 a05_07 EX evidence + §V.5.3 Stacked Filter Future Work + Changelog
   - **DECISIONS 본 엔트리** — 옵션 A 채택 + 14 cells 결과 + 5 핵심 발견 + paper narrative 갱신 사항
   - **paper main contribution claim 보강 (옵션 A)**:
     - (a) 4 Module Co-Designed Pipeline
@@ -15560,7 +16112,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-05 (mechanism_final.md per-query 정밀화) — 🎯 §3.5 narrative 4차 정밀화 + α-invariant + schema-complexity-dependent (모든 schema net positive) 추가
 
 - **결정**:
-  1. **(a) Analyzer 산출 수령** — [mechanism_final.md](../notebooks/analysis_results/mechanism_final.md) (F-1 + H-G 17 cells 후속 per-query mechanism 정밀화, 2026-05-05 LLM-free, ₩0):
+  1. **(a) Analyzer 산출 수령** — [mechanism_final.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/mechanism_final.md) (F-1 + H-G 17 cells 후속 per-query mechanism 정밀화, 2026-05-05 LLM-free, ₩0):
      - §2 Filter F1 압축 per-query 분포 (히스토그램 + 변동성 ratio + difficulty 별)
      - §3 Filter absorption type 분류 (DB / 길이 / gold count / F-1 R 별)
      - §4 F-1 best α=0.1 vs With-Filter plateau saturation mechanism
@@ -15600,7 +16152,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - **§10 Per-Query Mechanism 정밀화 표 신규** — 11-row 정량 + paper §3.5 직접 인용 narrative 한 문단
 
 - **근거**:
-  - **Analyzer 산출**: [notebooks/analysis_results/mechanism_final.md](../notebooks/analysis_results/mechanism_final.md) — 2026-05-05 LLM-free 즉시 위임 결과
+  - **Analyzer 산출**: [notebooks/analysis_results/02_v1_v5_dsn_mitigation/mechanism_final.md](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/mechanism_final.md) — 2026-05-05 LLM-free 즉시 위임 결과
   - **재현 raw 데이터**: notebooks/analysis_results/mechanism_final_*.csv (시각화/검증용)
   - **재현 스크립트**: src/analysis/analyze_mechanism_final.py (scipy 의존성 없음)
   - **선행 분석**: alpha_plateau_mechanism.md (1차 H-B/H-F) + alpha_plateau_mechanism_validation.md (2차 보강 H-A/H-D 후)
@@ -15763,7 +16315,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-04 (analyzer validation 보강 — H-B ckpt-invariant + H-F ordering effect + 🔥 H-C partial 검증 + §3.5 paper main insight 정밀화) — 단일 Filter absorption → "2-stage absorption: Extractor MST set saturation + Filter precision" + 사용자 결정 2 항목 (F-1 full sweep + H-G 우선순위)
 
 - **결정**:
-  1. **(a) Analyzer 보강 산출 수령** — [alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/alpha_plateau_mechanism_validation.md) (H-A/H-D 부정 + 시나리오 ② 채택 후속, LLM-free 즉시 위임, 2026-05-04, ₩0):
+  1. **(a) Analyzer 보강 산출 수령** — [alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism_validation.md) (H-A/H-D 부정 + 시나리오 ② 채택 후속, LLM-free 즉시 위임, 2026-05-04, ₩0):
      - **H-B 보강** — Enriched ckpt per-query Pearson + Spearman correlation
      - **🔥 H-C partial 검증** — F-1 (no Filter) 가용 cells (3개, α=0/0.5/1.0) R/P/F1
      - **H-F 보강** — Enriched ckpt top-K Jaccard + ordering vs set 효과 분리
@@ -15821,13 +16373,13 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - **권장**: High (F-1 full sweep 과 함께 진행, ~₩0, ~1-2h 추가)
 
 - **근거**:
-  - **Analyzer 보강 산출**: [notebooks/analysis_results/alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/alpha_plateau_mechanism_validation.md) — 2026-05-04 LLM-free 즉시 위임 결과
+  - **Analyzer 보강 산출**: [notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism_validation.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism_validation.md) — 2026-05-04 LLM-free 즉시 위임 결과
     - §2 H-B 보강 (Enriched ckpt per-query correlation)
     - §3 H-C partial 검증 (F-1 가용 3 cells R/P/F1 + plateau 거의 유지 판정)
     - §4 H-F 보강 (Enriched ckpt Jaccard + ordering vs set 분리)
     - §5 paper §3.5 main insight 정밀화 권장 (2-stage absorption narrative)
     - §6 잔존 가설 (H-G Extractor MST set saturation 신설 + H-E SQL gen bottleneck)
-  - **선행 분석**: [alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) (qcond_nl3 ckpt 1차 분석)
+  - **선행 분석**: [alpha_plateau_mechanism.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md) (qcond_nl3 ckpt 1차 분석)
   - **F-1 cells 데이터 출처**: `outputs/.../stagewise/no_filter/qcond_{gat_basic, ens_a05, cos_a1}_no_filter/` + `outputs/.../pipeline/enriched_qcond_a05_mst_pcst_union_no_filter/`
 
 - **영향 범위**:
@@ -15940,7 +16492,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-05-04 (analyzer 결과 인용 — H-B 반증 + H-F partial mechanism + H10 정량 정당화) — paper §2.2/§3.5/§8/§9/§10 narrative 보강 + Filter absorption 정량 evidence 격상
 
 - **결정**:
-  1. **(a) Analyzer 산출 수령** — [alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) (LLM-free 즉시 위임 결과, 2026-05-04, ₩0):
+  1. **(a) Analyzer 산출 수령** — [alpha_plateau_mechanism.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md) (LLM-free 즉시 위임 결과, 2026-05-04, ₩0):
      - **H-B per-query Cosine ↔ GAT correlation 분석** (Pearson + Spearman, difficulty 분해)
      - **H-F top-K Jaccard overlap 분석** (k=10/20/30/50, α∈{0.0, 0.5, 1.0})
      - **11 α × 3 difficulty EX/F1 heatmap** + Adaptive α oracle EX 상한
@@ -15965,16 +16517,16 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      - 기존 t_00 (α=0.5) EX = 0.3377 → ΔEX = +0.0143 (단 difficulty 분류기 noise 미고려, oracle 상한)
      - **결론**: post-paper 재검토 가치 marginal — 사용자 2026-05-04 의사결정 (D 보류) 정량 정당화. backlog 보존 단 paper full version 우선순위 X
   6. **(f) paper_research_direction.md 5 섹션 정정 (planner Edit 완료)**:
-     - **§2.2 H-B 줄 갱신**: "Medium 타당성" → "🚫 **반증** (per-query Pearson r = 0.2396, 모든 difficulty r<0.3, gold-only 0.0691)" + cross-ref [alpha_plateau_mechanism.md §2.1](../notebooks/analysis_results/alpha_plateau_mechanism.md)
+     - **§2.2 H-B 줄 갱신**: "Medium 타당성" → "🚫 **반증** (per-query Pearson r = 0.2396, 모든 difficulty r<0.3, gold-only 0.0691)" + cross-ref [alpha_plateau_mechanism.md §2.1](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md)
      - **§2.2 H-F 줄 갱신**: "Medium" → "🟡 **Partial mechanism** (k=20 Jaccard 0.5178, k=50 0.7522 saturation)" — top-K cap 단독 plateau 설명 불가
      - **§2.2 신규 paragraph**: "H-B 반증 + H-F partial mechanism 결과 (analyzer 2026-05-04)" — paradox 명문화
      - **§3.5 정량 evidence section 격상**: H-B + H-F 결합 paradox + 9-row 정량 evidence 표 (Pearson 0.2396, Jaccard 0.5178, F1 plateau, oracle adaptive ΔEX +0.0046) + paper section III/V 직접 인용 narrative
      - **§8 H10 보류 항목 갱신**: oracle adaptive α ΔEX = +0.0046 정량 근거 + post-paper 재검토 가치 marginal 명시
-     - **§9 Limitations Future work H10 항목**: 정량 근거 link ([alpha_plateau_mechanism.md §6.2](../notebooks/analysis_results/alpha_plateau_mechanism.md))
+     - **§9 Limitations Future work H10 항목**: 정량 근거 link ([alpha_plateau_mechanism.md §6.2](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md))
      - **§10 핵심 수치 표**: 6 가설 검증 큐 H-B/H-F 완료 표기 (✅) + Filter ↔ Selector Absorption 정량 evidence 표 신규 (9-row, Pearson + Jaccard + F1 plateau + oracle adaptive ΔEX)
 
 - **근거**:
-  - **Analyzer 산출**: [notebooks/analysis_results/alpha_plateau_mechanism.md](../notebooks/analysis_results/alpha_plateau_mechanism.md) — 2026-05-04 LLM-free 즉시 위임 결과
+  - **Analyzer 산출**: [notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md](../notebooks/analysis_results/06_selector_encoder_bottleneck/alpha_plateau_mechanism.md) — 2026-05-04 LLM-free 즉시 위임 결과
     - §2 H-B per-query correlation (Pearson + Spearman + difficulty + gold-only)
     - §3 H-F top-K Jaccard overlap (k=10/20/30/50, α∈{0.0, 0.5, 1.0})
     - §4 11 α × 3 difficulty EX/F1 heatmap
@@ -16363,7 +16915,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-04-28 (Analyzer Difficulty 분해 완료) — 🎯 Difficulty-invariant robustness (F1 spread 0.0073) + Hard queries 에서 paper main 우위 발현 + paper anchor 결정 사후 정당화
 
 - **결정**:
-  1. **(a) Analyzer 분석 산출물 수령**: [`notebooks/analysis_results/paper_main_pipeline_difficulty_breakdown.md`](../notebooks/analysis_results/paper_main_pipeline_difficulty_breakdown.md) (177 lines, §0 TL;DR / §1 difficulty 분포 / §2 paper main R/P/F1 / §3 핵심 발견 + Q&A 템플릿 / §4 subsidiary 비교 / §5 per-DB × difficulty heatmap / §6 후속 큐)
+  1. **(a) Analyzer 분석 산출물 수령**: [`notebooks/analysis_results/08_paper_narratives/paper_main_pipeline_difficulty_breakdown.md`](../notebooks/analysis_results/08_paper_narratives/paper_main_pipeline_difficulty_breakdown.md) (177 lines, §0 TL;DR / §1 difficulty 분포 / §2 paper main R/P/F1 / §3 핵심 발견 + Q&A 템플릿 / §4 subsidiary 비교 / §5 per-DB × difficulty heatmap / §6 후속 큐)
   2. **(b) 🎯 발표 D-day 핵심 narrative 3개 확정**:
      - **Difficulty-invariant robustness**: F1 spread 0.0073 — End-to-End Co-Design 의 robustness 직접 evidence (일반 BIRD/Spider benchmark 의 challenging 격차 -0.10~-0.20 대비 1~2 자리수 작음)
      - **R-P trade-off difficulty 비대칭**: Simple R 최고 (over-include) / Moderate P 최고 (Filter 보수적) / Challenging 균형 → **Filter 가 candidate ambiguity 에 자동 적응** (별도 difficulty-aware threshold 없이) = Filter ↔ Extractor co-design mechanism evidence
@@ -16382,7 +16934,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - Analyzer 보고 (2026-04-28 발표 D-day):
     - 3 핵심 발견 (difficulty-invariant + R-P 비대칭 + hard queries 우위)
     - 산출물 177 lines, 6 sections + Q&A 템플릿
-  - 출처: [notebooks/analysis_results/paper_main_pipeline_difficulty_breakdown.md](../notebooks/analysis_results/paper_main_pipeline_difficulty_breakdown.md)
+  - 출처: [notebooks/analysis_results/08_paper_narratives/paper_main_pipeline_difficulty_breakdown.md](../notebooks/analysis_results/08_paper_narratives/paper_main_pipeline_difficulty_breakdown.md)
 
 - **영향 범위**:
   - **presentation_brief (planner Edit 완료)**: §10.0 신규 (difficulty breakdown) + §11 Q12 보강 + Q13 신규
@@ -17590,7 +18142,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   - **proposals/abl_sel_diameter_layers.md §2** — H2-truncate 항목 추가 (planner 본 엔트리 직후 Edit, §8 Changelog 도 갱신)
   - **발표 슬라이드 C-3** — footnote 1줄 추가 (root 또는 사용자가 슬라이드 자료 작성 시)
   - **EXPERIMENT_PLAN_selectors.md (selector 세션 작업)** — H2 항목 "closed (2026-04-26), partial neutral + training mismatch 확인, H3 future work 재활용 가능" 표기
-  - **notebooks/analysis_results/diameter_layers_sweep.md (analyzer 세션 작업)** — §2.3/§2.4 selector impl truncate row 추가 + §5.2 Wave 3 우선순위 update (C 트랙 종료, F 만 active)
+  - **notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md (analyzer 세션 작업)** — §2.3/§2.4 selector impl truncate row 추가 + §5.2 Wave 3 우선순위 update (C 트랙 종료, F 만 active)
 
 - **에스컬레이션 필요 여부**:
   1. **Selector 세션 (closure)** — H2 작업 종료 + EXPERIMENT_PLAN_selectors.md H2 표기 갱신. 프롬프트 본 엔트리 직후 응답에 코드블록 제공.
@@ -17611,7 +18163,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
   2. **(b) Root 송신 핸드오프는 selector 원본 그대로 X — augmented 버전** 필요. 원본 프롬프트의 기대 수치 (+0.005~0.020) 는 2026-04-25 개정 이전 가설 기반으로 outdated. Augmented 에 (i) 2026-04-25 맥락 + (ii) mechanism 차이 + (iii) 기대 수치 갱신 + (iv) 4-way 결과 해석 분기 + (v) 발표 슬라이드 C-3 영향 가이드 추가.
 
 - **근거**:
-  - Analyzer reconstruction 의 0.5805 (-0.0019) 계산식 ([diameter_layers_sweep.md L92](../notebooks/analysis_results/diameter_layers_sweep.md)):
+  - Analyzer reconstruction 의 0.5805 (-0.0019) 계산식 ([diameter_layers_sweep.md L92](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md)):
     `F1 = (64×0.3687 + 443×0.5114 + 437×0.5709 + 590×0.6646) / 1534`
     - D_max=3 (64 q, 4.2%) → nl=3 cell 결과 (0.3687)
     - D_max=4 (443 q, 28.9%) → **nl=4 ckpt 부재 → nl=6 fallback** (0.5114, nl=6 행 값 그대로)
@@ -17658,14 +18210,14 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 ## 2026-04-25 — Proposal C H2 가설 개정 (diameter-direct 매핑 기각 + Oracle 상한 보고 전용) + nl=5 추가 cell 승인 + Wave 3 F 재평가 post-deadline 큐 등록
 
 - **결정** (5개):
-  1. **(a) H2 원래 가설 기각** — resolve(db_name)=D_max(db) 매핑으로 inference 시 global fixed nl=6 대비 개선 가설: query-weighted ΔF1 = **-0.0019 (하락)**. Naive D_max 매핑은 per-DB empirical best 와 어긋남 ([diameter_layers_sweep.md L92](../notebooks/analysis_results/diameter_layers_sweep.md)).
+  1. **(a) H2 원래 가설 기각** — resolve(db_name)=D_max(db) 매핑으로 inference 시 global fixed nl=6 대비 개선 가설: query-weighted ΔF1 = **-0.0019 (하락)**. Naive D_max 매핑은 per-DB empirical best 와 어긋남 ([diameter_layers_sweep.md L92](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md)).
   2. **(b) H2' Oracle 상한 — 보고 전용** — 각 DB 를 그 DB 의 empirical best nl 로 inference 가정 시 query-weighted **ΔF1 = +0.0237** (D_max=4 버킷에서 +0.0604 최대). **Data leakage** (BIRD dev 에서 per-DB best 측정 후 dev 에 적용 = unfair) → inference 실측 구현 불가. 발표 슬라이드 C-3 는 "상한 존재 + 실용적 구현은 future work" 로 보고.
   3. **(c) resolve(db) 를 per-DB empirical best 로 교체하지 않음** — data leakage 이유. 대신 **H3 (future work, 신설)**: schema feature (|V|, |E|/|V|, degree distribution, D_max, D_mean, SCC count) → per-DB optimal depth **regression/classifier 학습** (학습 split=BIRD train, 평가=BIRD dev). post-2026-04-28 selector/analyzer 협업.
   4. **(d) nl=5 추가 cell 즉시 실행 승인** — D=5 DB 의 nl=5 preference 확인 (현재 sweep {1,2,3,6,7} 사이 {4,5} gap, 특히 D_max=5 버킷 미측정). 비용 ~₩764, 시간 ~50min + GAT 학습 필요 여부는 root 에서 ckpt 검증 후 판단. 발표 전 완료 가능하면 per-DB H1 엄밀 검증 보강.
-  5. **(e) Wave 3 F 재평가 Ensemble+SteinerBackbone+XiYan 1 cell post-deadline 큐 등록** — [steiner_backbone_stagewise_report.md §5 #6d](../notebooks/analysis_results/steiner_backbone_stagewise_report.md) 근거. 현재 Steiner 는 DirectGAT binary Selector 한정 측정 → Ensemble α=0.85 Selector 재평가 시 진짜 Steiner 가치 정량화. 비용 ~₩764, 2026-04-29+ 실행.
+  5. **(e) Wave 3 F 재평가 Ensemble+SteinerBackbone+XiYan 1 cell post-deadline 큐 등록** — [steiner_backbone_stagewise_report.md §5 #6d](../notebooks/analysis_results/03_extractor_pcst_steiner/steiner_backbone_stagewise_report.md) 근거. 현재 Steiner 는 DirectGAT binary Selector 한정 측정 → Ensemble α=0.85 Selector 재평가 시 진짜 Steiner 가치 정량화. 비용 ~₩764, 2026-04-29+ 실행.
 
 - **근거**:
-  - Analyzer 리포트 [diameter_layers_sweep.md §2.3/§2.4/§5.2](../notebooks/analysis_results/diameter_layers_sweep.md):
+  - Analyzer 리포트 [diameter_layers_sweep.md §2.3/§2.4/§5.2](../notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md):
     - §2.3 D_max 버킷별 F1 분해: D=3/4/5 반례 — 각 DB 의 best nl 이 D_max 와 어긋남
     - §2.4 H1 엄밀 검증 — D=6 버킷 (590 queries, 38.5%) 이 전체 peak 를 결정하는 단일 요인, 나머지 버킷 반례
     - §5.2 "Proposal C hypothesis 수정 후 재승인 필요 — planner 에스컬레이션"
@@ -17775,7 +18327,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
      
      [작업 1 — diameter_layers_sweep.md 작성, 우선]
        데이터: outputs/experiments/s04_ablation/{diameter_layers/layers_L{1,2,3,6,7}_glm/, stagewise/qcond_gat_basic_glm/, s04_04_qcond_a0_xiyan_glm/} 의 metrics.txt + output_*.jsonl + score_analysis_*.jsonl
-       산출물: notebooks/analysis_results/diameter_layers_sweep.md
+       산출물: notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md
        내용:
          §1 F1/R/P curve + peak 위치 식별 (H1 검증 곡선, nl ∈ {1,2,3,6,7})
          §2 DB 별 D_max 대비 peak alignment (data/processed/dev_diameter.pt 11 DB D_max 분포 + per-DB cell F1)
@@ -17785,7 +18337,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
        의도: 2026-04-28 advisor 미팅 브리핑 자료 + Wave 3/4 우선순위 결정 근거.
      
      [작업 2 — Wave 3 Proposal F (Steiner backbone 재조직), 병렬 가능]
-       proposals/abl_ext_steiner_backbone_report.md 참조 + 기존 notebooks/analysis_results/steiner_backbone_stagewise_report.md 보강 (또는 신규 .md)
+       proposals/abl_ext_steiner_backbone_report.md 참조 + 기존 notebooks/analysis_results/03_extractor_pcst_steiner/steiner_backbone_stagewise_report.md 보강 (또는 신규 .md)
        데이터: 기존 a03_15 / a03_18 outputs (vLLM era 보존 사용 OK, 신규 GLM era 실행 X)
        의도: 발표 슬라이드 F 트랙 보강 — A > F > C 순서.
      
@@ -17853,7 +18405,7 @@ Option B — anchor 별 우선순위 (paper main 만 9 cell sweep, 다른 anchor
 
 - **에스컬레이션 필요 여부**:
   1. **Root 세션 (즉시 재-kickoff)** — Sanity 합격 판정 + (5)(6)(7) 진행. 프롬프트 하단 §재-kickoff 참조.
-  2. **Analyzer 세션 (sweep + anchor 완료 후, 예약)** — `notebooks/analysis_results/diameter_layers_sweep.md` 작성:
+  2. **Analyzer 세션 (sweep + anchor 완료 후, 예약)** — `notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md` 작성:
      - §1 5-cell F1/R/P curve + peak 위치 식별 + DB 별 D_max 대비 peak alignment (H1 검증)
      - §부록: vLLM era ↔ GLM era 비교 (sanity 결과 + new anchor 결과로 LLM era Δ 정량화)
 
@@ -18020,7 +18572,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
      리스크: GLM-4.7 token cost — sanity 결과 후 5 cell sweep 비용 추정 → 초과 시 planner 즉시 에스컬레이션.
      ```
   2. **Filter 모듈 세션 (조건부)** — Sanity check F1 < 0.70 시 XiYan filter prompt 가 Qwen3-Coder 에 over-fit 됐을 가능성 → GLM-4.7 용 prompt 조정. api_handler 자체는 변경 불필요.
-  3. **Analyzer 세션 (Phase 2 완료 후)** — `notebooks/analysis_results/diameter_layers_sweep.md` 작성 시 vLLM era ↔ GLM era 비교 부록 동반 (s04_04 anchor 동일 setup 의 LLM 만 다른 비교).
+  3. **Analyzer 세션 (Phase 2 완료 후)** — `notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md` 작성 시 vLLM era ↔ GLM era 비교 부록 동반 (s04_04 anchor 동일 setup 의 LLM 만 다른 비교).
 
 - **추가 필요 분석**:
   - GLM token cost 추정: XiYan prompt ~3k token × 1534 queries × 5 cell + sanity 1 + anchor 1 = 7 셀 × 1534 = ~10.7K calls × ~3K tokens = 약 32M input tokens. GLM-4.7 가격 사용자 확인 필요.
@@ -18061,7 +18613,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
   3. **(c) 운영 패턴 관찰 채택** — Wave 1.5 no-filter 에서 관찰한 "LLM 미사용 + 서로 다른 GPU 배치 가능" 실험의 **GPU 0/1 병렬 실행 패턴** 을 향후 동일 조건 실험에 적용 고려. 제약: kill permission memory rule 상 script bash kill 은 사용자 명시 승인 필요 → permission prompt 사전 안내가 운영상 효율적.
 
 - **근거**:
-  - (a) 메트릭 출처: `outputs/experiments/s04_ablation/stagewise/no_filter/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}_no_filter/metrics.txt`. Cumulative 표: [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md#L1250). Analyzer 요청 맥락: [notebooks/analysis_results/stagewise_qcond_ablation.md](../notebooks/analysis_results/stagewise_qcond_ablation.md) §4 pending cells. 지도교수 G2 단계별 분해 규범: [advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §4 G2 + 2026-04-21 Q3 답변.
+  - (a) 메트릭 출처: `outputs/experiments/s04_ablation/stagewise/no_filter/{ensemble_raw_a0,qcond_raw_basic,qcond_gat_basic}_no_filter/metrics.txt`. Cumulative 표: [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md#L1250). Analyzer 요청 맥락: [notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md](../notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md) §4 pending cells. 지도교수 G2 단계별 분해 규범: [advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §4 G2 + 2026-04-21 Q3 답변.
   - (b) **Option A (per-DB dynamic) 를 채택하지 않은 이유**:
     - `EnsembleSelector` 가 v1 `SchemaHeteroGAT` 를 하드코딩 ([src/modules/selectors/ensemble_selector.py:8,47-53](../src/modules/selectors/ensemble_selector.py)), v2 분기 부재.
     - `select()` signature / 내부 경로에 `db_name` threading 없음 → runtime `resolve_num_layers(db_name)` hook 경로 미존재.
@@ -18078,7 +18630,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
   - **문서 반영**:
     - [EXPERIMENT_HISTORY.md §8](../EXPERIMENT_HISTORY.md) — Stagewise cumulative 표 갱신 완료 (루트 세션).
     - [EXPERIMENT_PLAN.md §4 Phase 0 Wave 2](../EXPERIMENT_PLAN.md#L116) — 본 엔트리에서 Option B 채택을 Proposal C 행에 명시 (L117 "num_layers ∈ {1,2,3,D_max,D_max+1} sweep" → 구체 셋 `{1,2,3,6,7}` 및 Option B 명기).
-    - [notebooks/analysis_results/stagewise_qcond_ablation.md](../notebooks/analysis_results/stagewise_qcond_ablation.md) §1.1 / §4 / §5 — analyzer 작업 중 (병렬 진행).
+    - [notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md](../notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md) §1.1 / §4 / §5 — analyzer 작업 중 (병렬 진행).
   - **Scope 분리**: 본 결정으로 Wave 2 Proposal C 는 H1 만 검증, H2 는 Wave 2.5 또는 별도 mini-wave 로 분리 (Selector 인프라 완료 후).
 
 - **에스컬레이션 필요 여부**:
@@ -18090,7 +18642,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
      성공 기준: Mode="D_max" 및 "D_max_plus1" 로 설정된 config 에서 inference 시 DB 별로 다른 depth 가 resolve 되어 forward pass 에서 사용되는지를 단위 테스트로 검증.
      블로커: train_gat_s06.py 역시 v2 flag forward 가 누락 — 루트에 escalate 필요 시 노트.
      ```
-  2. **Analyzer 세션 (Phase 2 완료 후 예정)** — 5-cell F1/R/P curve + peak 위치 식별 + DB 별 D_max 대비 peak alignment 리포트. 대상: `outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}/metrics.txt` + `output_*.jsonl`. 저장: `notebooks/analysis_results/diameter_layers_sweep.md`. 의도: H1 검증 + Option A (H2 mini-wave) 재개 판단 근거.
+  2. **Analyzer 세션 (Phase 2 완료 후 예정)** — 5-cell F1/R/P curve + peak 위치 식별 + DB 별 D_max 대비 peak alignment 리포트. 대상: `outputs/experiments/s04_ablation/diameter_layers/layers_L{1,2,3,6,7}/metrics.txt` + `output_*.jsonl`. 저장: `notebooks/analysis_results/02_v1_v5_dsn_mitigation/diameter_layers_sweep.md`. 의도: H1 검증 + Option A (H2 mini-wave) 재개 판단 근거.
   3. **Root 세션** — Wave 2 Proposal C Phase 1/2 kickoff 실행 + 실행 후 HISTORY/CATALOG/ID_MIGRATION 3종 동기 갱신 (memory rule).
 
 - **추가 필요 분석**:
@@ -18118,7 +18670,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
   - `EXPERIMENT_PLAN.md` §0 anchor 테이블 + §4 "Phase 0 Active Waves" 신규 섹션 (본 커밋에서 반영).
   - `EXPERIMENT_PLAN_selectors.md` — Wave 2 에서 소비. 선택자 세션이 Proposal C/D/E 구현 시 본 PLAN Phase 0 wave 스케줄 참조 필요 (모듈 PLAN 직접 수정은 해당 모듈 세션 책임).
   - `~/.claude/plans/vivid-sprouting-sunbeam.md` — Wave 4 kickoff 전 anchor refresh 필요 (planner 는 초안만 제공, 실제 수정은 filter 모듈 세션).
-  - `notebooks/analysis_results/stagewise_qcond_ablation.md` — §1.1 5×3 매트릭스 재작성 (Wave 1.5 셀 주입 + caveat 제거 + new top 반영). Analyzer 큐에 등록.
+  - `notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md` — §1.1 5×3 매트릭스 재작성 (Wave 1.5 셀 주입 + caveat 제거 + new top 반영). Analyzer 큐에 등록.
 - **에스컬레이션 필요 여부**:
   1. **analyzer 세션** — 본 DECISIONS 엔트리 §4번 세 번째 영향 범위 처리. 프롬프트 하단 (응답 말미 핸드오프) 참조.
   2. **root 세션** — Wave 2 Proposal C 실행 kickoff (GAT 5 재학습 → 추론 평가 → HISTORY/CATALOG/ID_MIGRATION 갱신). 프롬프트 하단 참조.
@@ -18155,7 +18707,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
 - **영향 범위 (브리핑 내 직접, §4)**: `src/models/gat_network_v2.py`, `src/models/gat_network.py`, `src/modules/builders/line_graph_builder.py`, `src/modules/selectors/ensemble_selector.py`, s04_xx / s05_xx 재설계
 - **영향 범위 (Scope gap — PLAN 파급, §5)**: 루트 PLAN §3.1 int_05 / §4 Phase A Diameter / §4 Phase B T2T / §9 리스크 — **사용자 "PLAN 상관 없음" 입장 존중, 모두 pending-clarification**
 - **에스컬레이션**: Selector / Builder / Analyzer / Root 세션 (§9 — 4개 copy-paste 프롬프트 준비됨)
-- **추가 필요 분석**: Analyzer 에 Stagewise Raw×Model ablation 표 요청 (§9 — `notebooks/analysis_results/stagewise_qcond_ablation.md`)
+- **추가 필요 분석**: Analyzer 에 Stagewise Raw×Model ablation 표 요청 (§9 — `notebooks/analysis_results/05_ablation_waves/stagewise_qcond_ablation.md`)
 - **다음 브리핑 후보**: 2×2×2 재측정(#6 E+Basic+X, R=0.8149/P=0.7597/F1=0.7863) / SteinerBackbone / s06 over-smoothing 결과 / S-V 개요 (§11)
 - **교수님께 후속 질문**: 4건 (§10 — diameter 정의 / top-k 기준 / 단계별 정의 / 보고 형식)
 
@@ -18187,7 +18739,7 @@ Sanity check 합격 판정 (ΔF1=-0.0099 vs vLLM era 동일 anchor, 노이즈 �
   4. "이번 미팅에서 새로 공유한 내용" 은 다음 advisor_input 의 §1.2 "공유된 범위" 로 승격.
 - **영향 범위**: `planning/templates/advisor_input_template.md` 전면 rewrite (12 → 14 섹션). `planning/CLAUDE.md` 변경 없음 (책임 기술은 그대로 유효).
 - **에스컬레이션 필요 여부**: 없음 (planner 세션 인프라).
-- **추가 필요 분석**: 없음. 단, 향후 Query-Conditioned GAT 피드백 수렴 시 `notebooks/analysis_results/query_conditioned_training.md` 수치를 §1.3 "관련 문서" 로 링크.
+- **추가 필요 분석**: 없음. 단, 향후 Query-Conditioned GAT 피드백 수렴 시 `notebooks/analysis_results/02_v1_v5_dsn_mitigation/query_conditioned_training.md` 수치를 §1.3 "관련 문서" 로 링크.
 
 ---
 

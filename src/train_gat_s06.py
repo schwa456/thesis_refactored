@@ -216,9 +216,13 @@ def validate(gat_model, classifier_heads, loader, device, k=15,
     }
 
 
-def run_train(config_path: str):
+def run_train(config_path: str, resume: bool = False):
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
+
+    # Resume-from-checkpoint (2026-06-09, 디스크풀 crash multiseed E100 손실 재발 방지).
+    # RESUME=1 환경변수 또는 --resume 플래그 → 시작 시 latest(우선)/best checkpoint 로드.
+    resume_enabled = bool(resume) or os.getenv("RESUME", "0") == "1"
 
     cfg_paths = cfg.get("paths", {})
     if "checkpoint_dir" in cfg_paths:
@@ -475,6 +479,42 @@ def run_train(config_path: str):
             weight_decay=weight_decay,
         )
 
+    # ── Resume-from-checkpoint 로드 (lazy-init + optimizer 생성 이후라야 안전) ──
+    # latest(<name>.latest.pt, 정확한 resume) 우선, 없으면 best(<name>) fallback.
+    # load_state_dict 는 in-place 라 optimizer 의 param 참조 유지 (위에서 이미 생성됨).
+    resume_start_epoch = 0
+    resume_best_monitor = -1.0
+    if resume_enabled:
+        _ckpt_name = cfg.get("checkpoint_name", "best_gat_s06.pt")
+        _best_path = os.path.join(PATHS["checkpoint_dir"], _ckpt_name)
+        _latest_path = _best_path + ".latest.pt"
+        _resume_path = _latest_path if os.path.exists(_latest_path) else (
+            _best_path if os.path.exists(_best_path) else None)
+        if _resume_path is None:
+            logger.info(
+                f"[s06][resume] 요청됐으나 checkpoint 없음 ({_latest_path} / {_best_path}) "
+                f"— 처음부터 학습 시작.")
+        else:
+            _rk = torch.load(_resume_path, map_location=device)
+            gat_model.load_state_dict(_rk["gat_state_dict"])
+            classifier_heads.load_state_dict(_rk["classifier_state_dict"])
+            if _rk.get("optimizer_state_dict") is not None:
+                try:
+                    optimizer.load_state_dict(_rk["optimizer_state_dict"])
+                except Exception as _oe:
+                    logger.warning(f"[s06][resume] optimizer state 복원 실패 ({_oe}) — optimizer 초기화 유지.")
+            else:
+                logger.warning("[s06][resume] optimizer_state_dict 없음 (구버전 ckpt) — optimizer 초기화 유지.")
+            # epoch 은 '완료된 epoch 수(1-indexed)' = 다음 실행할 0-indexed epoch.
+            resume_start_epoch = int(_rk.get("epoch", 0))
+            # 진행 중 running-best (latest) 우선, 없으면 best ckpt 의 monitor_value.
+            resume_best_monitor = float(
+                _rk.get("best_monitor", _rk.get("monitor_value", -1.0)))
+            logger.info(
+                f"[s06][resume] {os.path.basename(_resume_path)} 로드 — "
+                f"start_epoch={resume_start_epoch}, best_monitor={resume_best_monitor:.4f} "
+                f"(latest={'Y' if _resume_path == _latest_path else 'N'})")
+
     # Loss 설정
     loss_type = cfg["training"].get("loss_type", "bce")
     pos_weight = torch.tensor([cfg["training"]["pos_weight"]]).to(device)
@@ -535,10 +575,16 @@ def run_train(config_path: str):
     )
 
     # MA-1: best-epoch 는 monitor_metric 값 기준 (recall 변수명 retain 단 의미는 monitor).
-    best_monitor = -1.0
+    # resume 시 복원된 running-best / start_epoch 사용 (없으면 -1.0 / 0).
+    best_monitor = resume_best_monitor
+    start_epoch = resume_start_epoch
     epochs = cfg["training"]["epochs"]
+    # latest checkpoint 저장 주기 (crash 복원용). default 매 epoch (최대 안전).
+    save_latest_every = int(cfg["training"].get("save_latest_every_n_epochs", 1))
+    if start_epoch >= epochs:
+        logger.info(f"[s06][resume] start_epoch({start_epoch}) ≥ epochs({epochs}) — 이미 완료, 학습 skip.")
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         gat_model.train()
         for head in classifier_heads.values():
             head.train()
@@ -744,14 +790,16 @@ def run_train(config_path: str):
             f"| os/mad: {os_mean_m:.4f}"
         )
 
+        ckpt_name = cfg.get("checkpoint_name", "best_gat_s06.pt")
         if monitor_value > best_monitor:
             best_monitor = monitor_value
-            ckpt_name = cfg.get("checkpoint_name", "best_gat_s06.pt")
             save_path = os.path.join(PATHS["checkpoint_dir"], ckpt_name)
             torch.save({
                 "epoch": epoch + 1,
                 "gat_state_dict": gat_model.state_dict(),
                 "classifier_state_dict": classifier_heads.state_dict(),
+                # 정확한 resume 위 optimizer state 동봉 (best 에서 resume 시에도 momentum 복원).
+                "optimizer_state_dict": optimizer.state_dict(),
                 # recall = R@15 retain (보조). monitor_metric/monitor_value 로 실제 선택 기준 기록.
                 "recall": val_recall,
                 "gold_recall_at_theta": val_gold_recall,
@@ -766,11 +814,33 @@ def run_train(config_path: str):
                 f"New Best Model Saved! {monitor_metric}={best_monitor:.4f} "
                 f"(R@15={val_recall:.4f}, gold_p50={val_gold_p50:.4f})")
 
+        # ── Latest checkpoint (crash-resume 용, save_latest_every epoch 마다 overwrite) ──
+        # best-only 저장은 best epoch 이후 crash 시 진행분 손실 → latest 로 정확 복원.
+        # epoch=완료 epoch 수(1-indexed)=resume 시 다음 0-indexed epoch. best_monitor=running-best.
+        if save_latest_every > 0 and ((epoch + 1) % save_latest_every == 0 or epoch + 1 == epochs):
+            latest_path = os.path.join(PATHS["checkpoint_dir"], ckpt_name + ".latest.pt")
+            torch.save({
+                "epoch": epoch + 1,
+                "gat_state_dict": gat_model.state_dict(),
+                "classifier_state_dict": classifier_heads.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "recall": val_recall,
+                "gold_recall_at_theta": val_gold_recall,
+                "gold_p50": val_gold_p50,
+                "monitor_metric": monitor_metric,
+                "monitor_value": monitor_value,
+                "best_monitor": best_monitor,  # resume 시 running-best 복원용
+                "config": cfg,
+            }, latest_path)
+
     logger.info(f"Training Completed. Best {monitor_metric}={best_monitor:.4f}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--resume", action="store_true",
+                        help="checkpoint_dir/<name>.latest.pt(우선)/<name> 에서 resume "
+                             "(RESUME=1 환경변수로도 활성화).")
     args = parser.parse_args()
-    run_train(args.config)
+    run_train(args.config, resume=args.resume)

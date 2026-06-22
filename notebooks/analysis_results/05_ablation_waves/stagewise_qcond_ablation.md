@@ -1,8 +1,8 @@
 # Stagewise QCond Ablation — 5 Scoring × 3 Stage Cumulative (2026-04-28 발표 anchor)
 
 > **용도**: 2026-04-28 지도교수 보고 핵심 anchor. 의견 1 (GAT 기여도) + G2 (단계별 cumulative) 직격.
-> **근거 제안서**: [planning/proposals/abl_sel_rawscore_stagewise.md](../../planning/proposals/abl_sel_rawscore_stagewise.md)
-> **Cumulative 정의**: [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](../../planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §10 Q3 — 파이프라인을 해당 stage까지 실행한 뒤의 최종 노드셋 대 gold 측정 (Selector output → Extractor input → Filter input 순 누적).
+> **근거 제안서**: [planning/proposals/abl_sel_rawscore_stagewise.md](../../../planning/proposals/abl_sel_rawscore_stagewise.md)
+> **Cumulative 정의**: [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](../../../planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) §10 Q3 — 파이프라인을 해당 stage까지 실행한 뒤의 최종 노드셋 대 gold 측정 (Selector output → Extractor input → Filter input 순 누적).
 > **메트릭 포맷**: Recall / Precision / F1, 4자리.
 
 ---
@@ -304,12 +304,12 @@ Extractor 단독 F1 은 W2 (QCond Raw, 0.2862) 가 W3 (QCond GAT, 0.2271) 보다
 
 ## 7. 관련 리포트
 
-- [planning/proposals/abl_sel_rawscore_stagewise.md](../../planning/proposals/abl_sel_rawscore_stagewise.md) — 본 리포트의 제안서
-- [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](../../planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) — 의견 1 / G2 원문
-- [planning/DECISIONS.md](../../planning/DECISIONS.md) 2026-04-22 — Wave 1.5 실행 결정 로그
-- [EXPERIMENT_HISTORY.md](../../EXPERIMENT_HISTORY.md) §8 — Wave 1.5 Stagewise Backfill 원 기록
-- [notebooks/analysis_results/steiner_backbone_stagewise_report.md](steiner_backbone_stagewise_report.md) — Extractor 축 (SteinerBackbone vs Fixed PCST) 대조
-- [notebooks/analysis_results/advisor_meeting_ideas_analysis.md](advisor_meeting_ideas_analysis.md) — GAT 기여도 2.1% 원출처
+- [planning/proposals/abl_sel_rawscore_stagewise.md](../../../planning/proposals/abl_sel_rawscore_stagewise.md) — 본 리포트의 제안서
+- [planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md](../../../planning/advisor_inputs/2026-04-21_qcondgat_detailed_analysis.md) — 의견 1 / G2 원문
+- [planning/DECISIONS.md](../../../planning/DECISIONS.md) 2026-04-22 — Wave 1.5 실행 결정 로그
+- [EXPERIMENT_HISTORY.md](../../../EXPERIMENT_HISTORY.md) §8 — Wave 1.5 Stagewise Backfill 원 기록
+- [notebooks/analysis_results/steiner_backbone_stagewise_report.md](../03_extractor_pcst_steiner/steiner_backbone_stagewise_report.md) — Extractor 축 (SteinerBackbone vs Fixed PCST) 대조
+- [notebooks/analysis_results/advisor_meeting_ideas_analysis.md](../10_misc_planning/advisor_meeting_ideas_analysis.md) — GAT 기여도 2.1% 원출처
 
 ---
 

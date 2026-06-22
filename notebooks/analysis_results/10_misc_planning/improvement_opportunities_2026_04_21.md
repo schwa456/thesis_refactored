@@ -143,9 +143,9 @@
 
 ## 8. 근거 링크
 
-- 리더보드 / 2×2×2: [EXPERIMENT_HISTORY.md](../../EXPERIMENT_HISTORY.md) Phase C
-- GAT 병목: [s06_bottleneck_comparison.md](s06_bottleneck_comparison.md), [s06_bottleneck_b5_enriched_extension.md](s06_bottleneck_b5_enriched_extension.md)
-- FK-Steiner sweep: [fk_steiner_percentile_sweep.md](fk_steiner_percentile_sweep.md)
+- 리더보드 / 2×2×2: [EXPERIMENT_HISTORY.md](../../../EXPERIMENT_HISTORY.md) Phase C
+- GAT 병목: [s06_bottleneck_comparison.md](../06_selector_encoder_bottleneck/s06_bottleneck_comparison.md), [s06_bottleneck_b5_enriched_extension.md](../06_selector_encoder_bottleneck/s06_bottleneck_b5_enriched_extension.md)
+- FK-Steiner sweep: [fk_steiner_percentile_sweep.md](../03_extractor_pcst_steiner/fk_steiner_percentile_sweep.md)
 - Selector LDBO / Head retrain: [selector_analysis.md](selector_analysis.md), HISTORY §7-2·§7-3
 - Filter Reflection 실측: `outputs/experiments/abl/a05_filter_agentic/summary_all.csv` (a05_02, a05_03)
 - Advisor 5 ideas: [advisor_meeting_ideas_analysis.md](advisor_meeting_ideas_analysis.md)

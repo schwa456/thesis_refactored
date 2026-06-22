@@ -102,7 +102,7 @@ ID 체계: 2026-04-14 재정리 (b0/s01-s05/abl 접두어) + 2026-04-24 `_glm` s
 
 ## 논문
 - **학회**: 한국지능정보시스템학회 2026 춘계 학술대회 (Extended Abstract, cover + 3p)
-- **초안**: [notebooks/analysis_results/paper_draft_abstract_intro.md](notebooks/analysis_results/paper_draft_abstract_intro.md)
+- **초안**: [outputs/analysis/paper/paper_draft_abstract_intro.md](outputs/analysis/paper/paper_draft_abstract_intro.md)
 - **II장**: Related Works / **III장**: Methodology / **IV장**: Experiments / **V장**: Conclusion
 - 초록/서론에서 실험 수치는 간접적으로만 언급 (실험이 아직 최종이 아님)
 
@@ -120,18 +120,18 @@ ID 체계: 2026-04-14 재정리 (b0/s01-s05/abl 접두어) + 2026-04-24 `_glm` s
 - 단계 컬럼 예시: `Selector only` / `+ Extractor (no filter)` / `+ Filter (final)`
 - 기존 anchor 실험(a03_09, a03_11, a03_13, a03_14, a03_17 등)이 같은 Selector/Extractor 세팅을 공유하면 cumulative 셀의 출처로 활용 가능.
 - 해당 셀이 직접 측정되지 않았으면 **"pending (analyzer reconstruction)"** 표기 + `output_*.jsonl`에서 재집계 요청을 analyzer 큐에 등록.
-- 예시: [notebooks/analysis_results/steiner_backbone_stagewise_report.md](notebooks/analysis_results/steiner_backbone_stagewise_report.md)
+- 예시: [notebooks/analysis_results/03_extractor_pcst_steiner/steiner_backbone_stagewise_report.md](notebooks/analysis_results/03_extractor_pcst_steiner/steiner_backbone_stagewise_report.md)
 - **예외**: 2×2×2 전체 매트릭스 등 셀 수가 많아 가독성이 떨어지는 경우는 final-stage 표 + 별도 stage-wise 부록으로 분리.
 
 ## 진행중 실험 현황 보고
 - 쿼리당 평균 처리시간과 ETA를 함께 제시
 
 ## 핵심 분석 산출물 (루트 참조)
-- [notebooks/analysis_results/full_ablation_2x2x2.md](notebooks/analysis_results/full_ablation_2x2x2.md) — 전체 매트릭스 비교
-- [notebooks/analysis_results/per_stage_failure_analysis.md](notebooks/analysis_results/per_stage_failure_analysis.md) — PCST✗/Filter✗ 단계별 실패 분석
-- [notebooks/analysis_results/selector_analysis.md](notebooks/analysis_results/selector_analysis.md) — Selector ROC-AUC / GAT 기여도
-- [notebooks/analysis_results/ensemble_contribution_analysis.md](notebooks/analysis_results/ensemble_contribution_analysis.md)
-- [notebooks/analysis_results/difficulty_stratified_ablation.md](notebooks/analysis_results/difficulty_stratified_ablation.md)
+- [outputs/analysis/ablation/full_ablation_2x2x2.md](outputs/analysis/ablation/full_ablation_2x2x2.md) — 전체 매트릭스 비교
+- [outputs/analysis/component_analysis/per_stage_failure_analysis.md](outputs/analysis/component_analysis/per_stage_failure_analysis.md) — PCST✗/Filter✗ 단계별 실패 분석
+- [outputs/analysis/component_analysis/selector_analysis.md](outputs/analysis/component_analysis/selector_analysis.md) — Selector ROC-AUC / GAT 기여도
+- [outputs/analysis/component_analysis/ensemble_contribution_analysis.md](outputs/analysis/component_analysis/ensemble_contribution_analysis.md)
+- [outputs/analysis/ablation/difficulty_stratified_ablation.md](outputs/analysis/ablation/difficulty_stratified_ablation.md)
 
 ## 세션 분할 구조 (Orchestrator + Subsessions)
 루트 세션 외에 전용 subsession이 있다. 각 세션은 해당 폴더의 `CLAUDE.md` 를 entry로 인식한다 (Claude Code가 cwd + 상위 경로를 자동 로드).

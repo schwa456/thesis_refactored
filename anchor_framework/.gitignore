@@ -1,0 +1,18 @@
+# 준비물 (용량/라이선스 — 사용자가 직접 배치)
+checkpoints/*.pt
+data/raw/BIRD_dev/dev.json
+data/raw/BIRD_dev/dev_tables.json
+data/raw/BIRD_dev/dev_databases/
+data/raw/BIRD_train/
+data/processed/
+wandb/
+
+# 실행 산출물
+outputs/
+logs/
+.env
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

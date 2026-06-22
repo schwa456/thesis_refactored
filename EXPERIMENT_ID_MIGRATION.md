@@ -3,6 +3,31 @@
 모델 구조(주로 Selector 아키텍처) 기준으로 실험을 재분류하고 ID를 재부여.
 폴더 내 숫자는 실행 순서(chronological).
 
+## `_sonnet` suffix — Sonnet 4.6 era (2026-06-11, DECISIONS 2026-06-10 #5 /#6)
+
+backbone(Filter+SQLgen) GLM-4.7 → `claude-sonnet-4-6` 전환분. `_glm`(2026-04-24) 다음 3번째 backbone suffix. config root: `configs/experiments/sonnet_rebaseline_2026_06_10/`.
+
+| ID (`_sonnet`) | GLM era 대응 | 비고 |
+|---|---|---|
+| `m4_canonical_sonnet` | `w6_p2_m4_bidirectional` (GLM 카논 M4) | ★ 새 Sonnet M4 anchor (EX 0.6030) |
+| `m4_anchor_sonnet` | — (probe-config, 비카논) | config artifact, supersede — 등재용 아님 |
+| `ste_k0{15,20,25,30,40,50}_sonnet` | `m4_ste_k0NN_e2e` (GLM STE V7-W5) | LLM-invariance k-sweep |
+| `ste_k0{60,70,80,90}_sonnet` | — (신규, GLM 대응 없음) | frontier 연장 (2026-06-11) ✅ 완료, EX 0.5593→0.5900 |
+| `oracle_sonnet` (B1/B2/B3) | GLM oracle EX (B3 0.6239) | perfect-SL EX 상한, B3 EX 0.7190 |
+| `oracle_ideal_envelope` (P1_20..80 / R1_n2..40) | — (신규, 2026-06-13) | EX∝width dome 양팔 실측. P=1 좌(EX 0.191→0.465, prec=1.0) / R=1 우(EX 0.720→0.671, rec=1.0, free-to-prune). apex 0.7203. M4 SL gap 0.1158~0.1173 |
+| `oracle_r1_fraction` (R1_f10..f100) | — (신규, 2026-06-13) | R=1 우측 팔 full-span(비-gold 10%~100%, rec=1.0). EX 0.704→0.6356(full schema). f100≈prior B1 0.6330 교차검증 ✓ |
+| `baseline_g_retriever_sonnet` | `baseline_g_retriever` (GLM, EX 0.2490) | §10 비교, EX 0.5469 (무필터 광폭) |
+| `baseline_linkalign_sonnet` | `baseline_linkalign` (GLM, EX 0.3390) | §10 비교, EX 0.4276 (무필터) |
+| `baseline_xiyansql_sonnet` | `baseline_xiyansql` (GLM, EX 0.2405) | §10 비교, EX 0.4081 (XiYanFilter 정밀, F1 0.7435 최고이나 EX 최저) |
+| `g_s2_2_spider2` (Sonnet) | — (runner backbone 전환) | cross-dataset Spider2-lite 123 local, filter-fix 후 EX 0.0894 (bypass 0.0976보다↓=filter OOD over-prune, transfer 실패) |
+| `m4_abl_builder_sonnet` | M4 canonical −Builder(Plain) | 모듈 ablation, EX 0.5997 (Δ−0.0033) |
+| `m4_abl_selector_sonnet` | M4 canonical −Selector(Cosine α=1.0) | 모듈 ablation, EX 0.6089 (Δ+0.0059) |
+| `m4_abl_extractor_sonnet` | M4 canonical −Extractor(TopK20) | 모듈 ablation, EX 0.4263 (Δ−0.1767, 후보폭 축소=유일 큰 하락) |
+| `m4_abl_filter_sonnet` | M4 canonical −Filter(None) | 모듈 ablation, EX 0.6004 (Δ−0.0026, P 0.1488 폭락이나 EX 유지) |
+
+- ★ cross-backbone 절대수치 직접비교 금지 — backbone 마다 다른 점, 결론(Filter Dominance·EX∝후보폭)의 불변만. Pearson(ext_nodes,EX) Sonnet +0.9922 ≈ GLM +0.9732.
+- backbone suffix 계보: (vLLM era, suffix 없음) → `_glm` (2026-04-24) → `_sonnet` (2026-06-11).
+
 ## 폴더 구조
 
 ```
@@ -2700,3 +2725,61 @@ V6 chain capstone — first-conv single-shared-source 가설 B 정확한 fix-tes
 - 사용자 직관 2건 negative 확정 — extractor θ 재튜닝 ❌ (gold-분별력 미획득) + ensemble 제거 GAT-only ❌ (col net 더 음수, GAT 자립 실패)
 - **V6 chain 영구 closure marker 정식 진입** ([[project-v6-chain-closure]]) + GAT layer 추가 개입 무효화 (column rescue 영구 종료)
 - 세부: [EXPERIMENT_HISTORY.md V6-W5](EXPERIMENT_HISTORY.md) + [v6_w5_l1_mad_disconnect_2026-06-07.md](notebooks/analysis_results/v6_w5_l1_mad_disconnect_2026-06-07.md) + [v6_w5_selector_quality_2026-06-07.md](notebooks/analysis_results/v6_w5_selector_quality_2026-06-07.md)
+
+## V6-W6 + MA-2 e2e ID 체계 (2026-06-09)
+
+| ID | config 경로 | ckpt | monitor |
+|----|------------|------|---------|
+| `v6w6_a_e2e_s11` | `experiments/s06_gat_bottleneck_fix/w6_directed_sn_selfloop_e2e/v6w6_a_e2e_s11` | `best_gat_v6w6_a_s11.pt` | gold_recall@θ |
+| `v6w6_a_p50_e2e_s11` | `…/w6_directed_sn_selfloop_e2e/v6w6_a_p50_e2e_s11` | `best_gat_v6w6_a_p50_s11.pt` | gold_p50 |
+| `ma2_a_e2e_s11` | `…/w6_ma_e2e/ma2_a_e2e_s11` | `best_gat_ma2_a_s11.pt` | MA-1 (gold_recall@θ) |
+| `ma2_a_p50_e2e_s11` | `…/w6_ma_e2e/ma2_a_p50_e2e_s11` | `best_gat_ma2_a_p50_s11.pt` | gold_p50 |
+| `ma2_b_e2e_s11` | `…/w6_ma_e2e/ma2_b_e2e_s11` | `best_gat_ma2_b_s11.pt` | MA-1 |
+| `ma2_b_p50_e2e_s11` | `…/w6_ma_e2e/ma2_b_p50_e2e_s11` | `best_gat_ma2_b_p50_s11.pt` | gold_p50 |
+
+- **monitor 체계**: MA-1 = gold_recall@θ (early saturation lock 문제) → **gold_p50 monitor (no ceiling, Spearman=0.95 vs inference recall)** 로 전환. `_p50` suffix = gold_p50 monitor.
+- **baseline 재사용 (e2e skip)**: `v6w6_dsn_nosl` (=`best_gat_directed_supernode_p80.pt`, DSN baseline), `v6w6_qcond_nosl` (=`best_gat_qcond_nl3.pt`, M4 anchor) — ckpt projector 포맷 (DirectGATv2Selector 비호환), 과거값 참조 (planner 2026-06-09).
+- 세부: [EXPERIMENT_HISTORY.md V6-W6](EXPERIMENT_HISTORY.md)
+
+## G-S2-1 Spider2.0-Lite generalization ID (2026-06-10)
+
+| ID | 경로 | selector | extractor | filter |
+|----|------|----------|-----------|--------|
+| `g_s2_1_spider2` | `scripts/run_g_s2_1_spider2_inference.py` → `outputs/experiments/g_s2_1_spider2/` | M4 anchor (best_gat_qcond_nl3.pt, EnsembleSelector α=0.5, QCond GAT NL3) | MSTPCSTUnion θ=0.1 | **None (zero-shot)** |
+
+- wave = G-S2 (generalization, Spider2). G-S2-1 = zero-shot selector+extractor (Filter 無, table/column R/P/F1). G-S2-2 (예정) = full pipeline + GLM BiFilter + SQL, 135 local SQLite EX.
+- builder = Spider2GraphBuilder (커밋 7e62b53, DDL.csv ingest). 학습 0 (BIRD M4 위 zero-shot inference).
+- main metric = table-level shard-collapse R 0.6984 / P 0.3669 / F1 0.3927 (vs BIRD M4 anchor ΔF1 −0.4456, caveat 5 confirm).
+- 세부: [EXPERIMENT_HISTORY.md G-S2-1](EXPERIMENT_HISTORY.md) + [g_s2_1_spider2_generalization_2026-06-10.md](notebooks/analysis_results/g_s2_1_spider2_generalization_2026-06-10.md)
+
+## Multi-seed robustness ID 체계 (2026-06-10)
+
+| cell | ckpt (s12/s13) | config | selector-only 출력 |
+|------|----------------|--------|---------------------|
+| ma2_a_p50 (r15) | `best_gat_ma2_a_p50_r15_s{12,13}.pt` | `configs/training/ma2/ma2_a_p50_r15_s11.yaml` | `outputs/experiments/multiseed_selector_only_enriched/ma2_a_p50_r15_s{12,13}/` |
+| v6w6_a (r15) | `best_gat_v6w6_a_r15_s{12,13}.pt` | `configs/training/v6_w6/v6w6_a_r15_s11.yaml` | `…/v6w6_a_r15_s{12,13}/` |
+| qcond / M4 anchor (r15) | `best_gat_qcond_r15_s{12,13}.pt` | `configs/training/v6_w6/qcond_r15_s11.yaml` | `…/qcond_r15_s{12,13}/` |
+| w2_sum | `best_gat_v6w2_p2_sum_s{12,13}.pt` | `configs/training/v6_phase2/p2_sum.yaml` | `…/w2_sum_s{12,13}/` |
+
+- monitor = **recall_at_15** (rank-aligned, STE-topk 정합 — gold_p50 에서 정정). builder = enriched (train 매칭). resume-trainer (`_r15` = recall_at_15 monitor).
+- robustness bar: w2_sum R@15 0.6057±0.0120 / ROC 0.7029±0.0046 (winner). 2-seed primary, s11 condition-confounded 제외.
+- 세부: [multiseed_robustness_bar_2026-06-10.md](notebooks/analysis_results/multiseed_robustness_bar_2026-06-10.md)
+
+## Module-ablation B ID 체계 (2026-06-19~20)
+
+Sonnet era 모듈별 ablation. anchor=`m4_canonical_sonnet`. `_sonnet` suffix(GLM era backbone 전환 규칙 정합). config·output 미러: `experiments/sonnet_rebaseline_2026_06_10/module_ablation_b/<stage>/<cell>`.
+
+| cell ID | stage 폴더 | 기존(GLM/vLLM era) 대응 | 비고 |
+|---------|-----------|------------------------|------|
+| `bld_no_t2t_sonnet` | builder/ | `abl_build_05_no_t2t` (Qwen) | T2T edge toggle |
+| `bld_rfm_tokens_sonnet` | builder/ | `abl_build_03_rfm_tokens` (Qwen) | ⓧ ablation 제외(RFM 미학습) |
+| `sel_alpha00_sonnet` | selector/ | (신규 clean α=0.0) | 대조군(GAT-only) |
+| `sel_alpha085_sonnet` | selector/ | `abl_a02_*` α-sweep (GLM) | |
+| `ext_mst_only_sonnet` | extractor/ | `plain_ens_a05_mst_kruskal_*` (GLM) | union 의 MST 절반 |
+| `ext_pcst_only_sonnet` | extractor/ | (union 의 PCST 절반) | 유일 유의 열화 |
+| `flt_cot_sonnet` | filter/ | `w6_p2a_m2cot_strong` (GLM) | XiYan CoT-gated |
+| `flt_voting_sonnet` | filter/ | `w6_p2_m3_voting` (GLM) | MultiPromptVoting |
+| `flt_two_stage_sonnet` | filter/ | `w6_p2_m5_two_stage` (GLM) | ⚠ Sonnet stage2 고장 → ablation 제외 |
+
+- 결과·유의성: [EXPERIMENT_HISTORY.md](EXPERIMENT_HISTORY.md) "Module-ablation B" / config·hparam: [EXPERIMENT_CATALOG.md](EXPERIMENT_CATALOG.md) "module_ablation_b".
+- anchor α=0.5/1.0 은 기존 `m4_canonical_sonnet`/`m4_abl_selector_sonnet`, plain hetero 는 `m4_abl_builder_sonnet` 재사용(중복 run 안 함).

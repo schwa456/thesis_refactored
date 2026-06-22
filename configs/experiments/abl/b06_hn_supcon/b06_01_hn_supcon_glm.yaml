@@ -54,7 +54,7 @@ filter:
   name: "XiYanFilter"
   params:
     provider: "glm"
-    model_name: "zai-org/glm-4.7"
+    model_name: "glm-4.7"
     max_iteration: 1
     temperature: 0.0
 

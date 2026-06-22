@@ -3,9 +3,9 @@
 **작성 세션**: analyzer (읽기 전용, 실험 실행/설계 제안 없음)
 **범위**: 현재 `outputs/experiments/` 전체 실험에 대한 cross-matrix, per-stage failure attribution, filter cost/latency profile, GAT 학습 상태 요약
 **관련 문서**:
-- 개선 후보 목록 → planner로 에스컬레이션: [improvement_opportunities_2026_04_21.md](improvement_opportunities_2026_04_21.md)
-- GAT 병목 상세: [s06_bottleneck_comparison.md](s06_bottleneck_comparison.md), [s06_bottleneck_b5_enriched_extension.md](s06_bottleneck_b5_enriched_extension.md)
-- FK-Steiner sweep: [fk_steiner_percentile_sweep.md](fk_steiner_percentile_sweep.md)
+- 개선 후보 목록 → planner로 에스컬레이션: [improvement_opportunities_2026_04_21.md](../10_misc_planning/improvement_opportunities_2026_04_21.md)
+- GAT 병목 상세: [s06_bottleneck_comparison.md](../06_selector_encoder_bottleneck/s06_bottleneck_comparison.md), [s06_bottleneck_b5_enriched_extension.md](../06_selector_encoder_bottleneck/s06_bottleneck_b5_enriched_extension.md)
+- FK-Steiner sweep: [fk_steiner_percentile_sweep.md](../03_extractor_pcst_steiner/fk_steiner_percentile_sweep.md)
 
 ---
 
@@ -332,7 +332,7 @@ notebooks/analysis_results/s06_bottleneck_*.md                         # residua
 ## 8. Escalation (읽기 전용 세션이 할 수 없는 것)
 
 - 본 리포트는 **새 실험 제안 / config 생성 / EXPERIMENT_HISTORY·CATALOG·ID_MIGRATION 갱신** 없음.
-- 개선 가설(예: Reflection × Enriched, FK-Steiner × Filter)은 [improvement_opportunities_2026_04_21.md](improvement_opportunities_2026_04_21.md) 참조 — **planner / root 세션 책임**.
+- 개선 가설(예: Reflection × Enriched, FK-Steiner × Filter)은 [improvement_opportunities_2026_04_21.md](../10_misc_planning/improvement_opportunities_2026_04_21.md) 참조 — **planner / root 세션 책임**.
 - 진단 결과로 집계 버그/정정이 필요한 수치가 발견되면 여기에 기록 후 루트로 에스컬레이션.
 
 현재 정정 요청 없음 — 수치 일관성 OK (루트 CLAUDE.md의 "#8 F1=0.4936" vs "#6 F1=0.7863" 이슈는 2026-04-21 루트 세션에서 해결됨).

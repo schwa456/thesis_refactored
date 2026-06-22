@@ -1,0 +1,141 @@
+import time
+import networkx as nx
+from typing import List, Dict, Tuple, Any, Optional
+
+from modules.registry import register
+from modules.base import BaseExtractor
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def steiner_tree_2approx(G: nx.Graph, terminals: List[int],
+                         weight: str = 'weight') -> Tuple[List[int], List[Tuple[int, int]]]:
+    """
+    Kou, Markowsky, Berman (1981) 2-근사 Steiner Tree 알고리즘.
+
+    1. Metric closure: terminal 간 all-pairs shortest paths로 완전 그래프 생성
+    2. Metric closure 위에서 MST 구축
+    3. MST edge → 원래 graph의 shortest path로 복원
+    4. 중복 제거 후 subtree 반환
+    """
+    # Filter terminals to those actually in the graph
+    terminals = [t for t in terminals if t in G]
+    if len(terminals) <= 1:
+        return terminals, []
+
+    # 1. Metric closure: terminal 간 shortest paths
+    metric_closure = nx.Graph()
+    paths_cache = {}
+    for i, t1 in enumerate(terminals):
+        for t2 in terminals[i+1:]:
+            try:
+                path = nx.shortest_path(G, t1, t2, weight=weight)
+                path_weight = sum(
+                    G[path[k]][path[k+1]].get(weight, 1.0)
+                    for k in range(len(path) - 1)
+                )
+                metric_closure.add_edge(t1, t2, weight=path_weight)
+                paths_cache[(t1, t2)] = path
+                paths_cache[(t2, t1)] = list(reversed(path))
+            except nx.NetworkXNoPath:
+                continue
+
+    if metric_closure.number_of_edges() == 0:
+        return terminals, []
+
+    # 2. MST on metric closure
+    mst = nx.minimum_spanning_tree(metric_closure, weight=weight)
+
+    # 3. Expand MST edges back to original paths
+    steiner_nodes = set()
+    steiner_edges = set()
+    for u, v in mst.edges():
+        path = paths_cache.get((u, v), paths_cache.get((v, u)))
+        if path is None:
+            continue
+        for node in path:
+            steiner_nodes.add(node)
+        for k in range(len(path) - 1):
+            edge = (min(path[k], path[k+1]), max(path[k], path[k+1]))
+            steiner_edges.add(edge)
+
+    return list(steiner_nodes), list(steiner_edges)
+
+
+@register("extractor", "MSTExtractor")
+class MSTExtractor(BaseExtractor):
+    """
+    선택된 시드 노드들을 잇는 Steiner Tree를 추출합니다.
+    Kou-Markowsky-Berman 2-근사 알고리즘을 사용하여
+    seed 간 metric closure MST를 구한 뒤 원래 경로로 복원합니다.
+
+    seed_mode:
+      - "topk" (default): 외부에서 전달된 `seed_nodes` 를 그대로 사용 (Selector top-k)
+      - "threshold": `node_scores > score_threshold` 인 노드를 seed 로 자체 산출
+        (Basic PCST 와 동일한 candidate pool 정의)
+    """
+    def __init__(self, seed_mode: str = "topk", score_threshold: float = 0.1, **kwargs):
+        if seed_mode not in ("topk", "threshold"):
+            raise ValueError(f"seed_mode must be 'topk' or 'threshold', got '{seed_mode}'")
+        self.seed_mode = seed_mode
+        self.score_threshold = float(score_threshold)
+        self.last_info: Dict[str, Any] = {}
+        logger.info(
+            f"Initialized MST Extractor (Steiner 2-approx, seed_mode={self.seed_mode}, "
+            f"score_threshold={self.score_threshold})"
+        )
+
+    def extract(self, graph_data: Dict[str, Any], node_scores: List[float],
+                seed_nodes: Optional[List[int]] = None,
+                **kwargs) -> Tuple[List[int], List[Tuple[int, int]]]:
+        t_start = time.perf_counter()
+
+        derived_seed_count = 0
+        if self.seed_mode == "threshold":
+            seed_nodes = [i for i, s in enumerate(node_scores) if s > self.score_threshold]
+            derived_seed_count = len(seed_nodes)
+            logger.debug(
+                f"[MST] threshold seed_mode: {derived_seed_count} nodes "
+                f"with score > {self.score_threshold}"
+            )
+
+        if not seed_nodes:
+            logger.warning("MST requires seed_nodes. Returning empty.")
+            self.last_info = {
+                "extractor_type": "MSTExtractor",
+                "extractor_num_input_nodes": int(len(node_scores)),
+                "extractor_num_edges": int(len(graph_data.get('edges', []) or [])),
+                "extractor_num_selected_nodes": 0,
+                "extractor_num_selected_edges": 0,
+                "mst_seed_count": 0,
+                "mst_seed_mode": self.seed_mode,
+                "mst_score_threshold": float(self.score_threshold),
+                "no_seeds": True,
+                "extractor_time_s": float(time.perf_counter() - t_start),
+            }
+            return [], []
+
+        edges = graph_data.get('edges', [])
+        G = nx.Graph()
+        G.add_edges_from(edges)
+
+        selected_nodes, selected_edges = steiner_tree_2approx(G, seed_nodes)
+
+        logger.debug(f"[MST] Steiner tree: {len(selected_nodes)} nodes from "
+                     f"{len(seed_nodes)} seeds ({len(selected_edges)} edges)")
+        self.last_info = {
+            "extractor_type": "MSTExtractor",
+            "extractor_num_input_nodes": int(len(node_scores)),
+            "extractor_num_edges": int(len(edges)),
+            "extractor_num_selected_nodes": int(len(selected_nodes)),
+            "extractor_num_selected_edges": int(len(selected_edges)),
+            "mst_seed_count": int(len(seed_nodes)),
+            "mst_seeds_in_graph": int(sum(1 for s in seed_nodes if s in G)),
+            "mst_steiner_nodes_added": int(max(len(selected_nodes) - len(seed_nodes), 0)),
+            "mst_seed_mode": self.seed_mode,
+            "mst_score_threshold": float(self.score_threshold),
+            "mst_derived_seed_count": int(derived_seed_count),
+            "extractor_time_s": float(time.perf_counter() - t_start),
+        }
+        return selected_nodes, selected_edges

@@ -16,6 +16,7 @@
 - **Keywords (국문, 가나다 순, 5개)**: 그래프 신경망, 스키마 링킹, 적응형 부분그래프 추출, 질의응답, Text-to-SQL
 - **Keywords (영문, alphabetical)**: Adaptive Subgraph Extraction, Graph Neural Network, Retrieval-Augmented Generation, Schema Linking, Text-to-SQL
 - **사사표기**: *{해당 연구과제 번호 기입, 없으면 생략}*
+- **실험 backbone (2026-06-11 전환)**: 파이프라인 LLM stage(Filter + SQLGenerator) = **Claude Sonnet 4.6** (Anthropic API). 정량 결과·표는 [`notebooks/analysis_results/08_paper_narratives/paper_sonnet_results_2026-06-11.md`](../../../notebooks/analysis_results/08_paper_narratives/paper_sonnet_results_2026-06-11.md). ★ cross-backbone(vLLM/GLM/Sonnet) 절대수치 직접비교 금지, 결론 불변성만.
 
 ---
 

@@ -1,7 +1,7 @@
 import os
 import torch
 import sqlite3
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer, util
 from thefuzz import process
 
@@ -17,14 +17,24 @@ class XiYanSelector(BaseSelector):
     """
     XiYanSQL의 Multi-path Retrieval 로직 + Value Retrieval (DB 직접 조회)를 모사한 Selector.
     """
-    def __init__(self, model_name: str, top_k: int, embedding_model: str, db_dir: str, **kwargs):
+    def __init__(self, model_name: str, top_k: int, embedding_model: str, db_dir: str,
+                 provider: Optional[str] = None,
+                 api_key: Optional[str] = None,
+                 base_url: Optional[str] = None,
+                 **kwargs):
         self.top_k = top_k
         self.db_dir = db_dir
-        self.client = APIClient()
+        # backbone provider 스위치 (LLMSQLGenerator/BidirectionalFilter 패턴).
+        # provider=None 이면 기존 VLLM/OPENAI env fallback. "sonnet"/"claude"/"anthropic"
+        # 이면 api_handler Anthropic native 경로 (DECISIONS 2026-06-10 #5).
+        self.client = APIClient(provider=provider, api_key=api_key, base_url=base_url)
         self.model_name = model_name
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.embedder = SentenceTransformer(embedding_model, device=self.device)
-        logger.info(f"Initialized XiYanSelector with Value Retrieval (DB Access Enabled)")
+        logger.info(
+            f"Initialized XiYanSelector with Value Retrieval (DB Access Enabled) "
+            f"(model={model_name}, provider={provider or 'auto'})"
+        )
 
     def _extract_keywords(self, question: str) -> List[str]:
         prompt = f"Extract critical keywords from the following question for database schema retrieval. Give me the keywords in comma separated format.\nQuestion: {question}"
