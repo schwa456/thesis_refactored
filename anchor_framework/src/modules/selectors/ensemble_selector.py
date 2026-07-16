@@ -316,7 +316,7 @@ class EnsembleSelector(BaseSelector):
 
         # 3. 앙상블: alpha * raw + (1 - alpha) * gat
         # score_normalization: "minmax" (default, backward compat) | "none" | "zscore"
-        def _normalize(scores: torch.Tensor) -> torch.Tensor:
+        def _normalize(scores: torch.Tensor) -> torch.Tensor:                               
             if self.score_normalization == "none":
                 return scores
             elif self.score_normalization == "zscore":
